@@ -169,6 +169,24 @@ artifacts-macos: clean
 	ls -l dist/release/
 	dist/release/yao-${VERSION}-darwin-amd64 version
 
+.PHONY: debug1
+debug1: clean
+	mkdir -p dist/release
+
+#	Packing
+	mkdir -p .tmp/data
+	# cp -r ui .tmp/data/ui
+	cp -r ../xgen/dist .tmp/data/ui
+	sed -ie "s/url('\/icon/url(\/xiang\/icon/g" .tmp/data/ui/icon/md_icon.css
+	cp -r yao .tmp/data/
+	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
+	rm -rf .tmp/data
+
+#   Making artifacts
+	mkdir -p dist
+	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
+	chmod +x  dist/release/yao-debug
+
 .PHONY: debug
 debug: clean
 	mkdir -p dist/release
