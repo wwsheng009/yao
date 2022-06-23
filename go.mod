@@ -38,7 +38,7 @@ require (
 	github.com/yaoapp/gou v0.0.0-20211120135538-e5387704eb03
 	github.com/yaoapp/kun v0.9.0
 	github.com/yaoapp/xun v0.9.0
-	golang.org/x/crypto v0.0.0-20220208050332-20e1d8d225ab
+	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
 	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d // indirect
 	golang.org/x/net v0.0.0-20211118161319-6a13c67c3ce4 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect

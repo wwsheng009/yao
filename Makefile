@@ -226,6 +226,25 @@ release: clean
 	CGO_ENABLED=1 go build -v -o dist/release/yao
 	chmod +x  dist/release/yao
 
+.PHONY: linux-stage
+linux-stage: clean
+	mkdir -p dist/release
+	mkdir .tmp
+
+#	Packing
+	mkdir -p .tmp/data
+	cp -r ../xgen/dist .tmp/data/ui
+	sed -ie "s/url(\/icon/url(\/xiang\/icon/g" .tmp/data/ui/icon/md_icon.css
+	cp -r yao .tmp/data/
+	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
+	rm -rf .tmp/data
+
+#   Making artifacts
+	mkdir -p dist
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" go build -v -o dist/release/yao-stage
+	chmod +x  dist/release/yao-stage
+
+
 .PHONY: linux-release
 linux-release: clean
 	mkdir -p dist/release
