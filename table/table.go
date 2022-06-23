@@ -24,6 +24,21 @@ import (
 // Tables 已载入模型
 var Tables = map[string]*Table{}
 
+// apiNames mapping
+var apiNames = map[string]string{
+	"/:name/search":       "search",
+	"/:name/find/:id":     "find",
+	"/:name/save":         "save",
+	"/:name/delete/:id":   "delete",
+	"/:name/insert":       "insert",
+	"/:name/delete/in":    "delete-in",
+	"/:name/delete/where": "delete-where",
+	"/:name/update/in":    "update-in",
+	"/:name/update/where": "update-where",
+	"/:name/quicksave":    "quicksave",
+	"/:name/select":       "select",
+}
+
 // Guard Table guard
 func Guard(c *gin.Context) {
 
@@ -32,25 +47,45 @@ func Guard(c *gin.Context) {
 		return
 	}
 
+	log.Trace("Table Guard FullPath: %s", c.FullPath())
+
 	routes := strings.Split(c.FullPath(), "/")
-	path := routes[len(routes)-1]
+	if len(routes) < 4 {
+		log.Trace("Table Guard Routes: %v", routes)
+		c.Next()
+		return
+	}
+
+	path := "/" + strings.Join(routes[4:], "/")
+	apiName, has := apiNames[path]
+	if !has {
+		log.Trace("Table Guard API Name: %v", path)
+		c.Next()
+		return
+	}
+
 	name, has := c.Params.Get("name")
 	if !has {
+		log.Trace("Table Guard Name: %v", c.Params)
 		c.Next()
 		return
 	}
 
 	table, has := Tables[name]
 	if !has {
+		log.Trace("Table Guard Table: %s", name)
 		c.Next()
 		return
 	}
 
-	api, has := table.APIs[path]
+	api, has := table.APIs[apiName]
 	if !has {
+		log.Trace("Table Guard API: %s", apiName)
 		c.Next()
 		return
 	}
+
+	log.Trace("Table Guard: %s %s %s %s", name, api.Guard, path, apiName)
 
 	if api.Guard == "-" {
 		c.Next()
@@ -64,7 +99,7 @@ func Guard(c *gin.Context) {
 	guards := strings.Split(api.Guard, ",")
 	for _, guard := range guards {
 		guard = strings.TrimSpace(guard)
-		log.Trace("Guard Table %s %s", name, guard)
+		log.Trace("Table Guard: %s %s", name, guard)
 		if guard != "" {
 			if middleware, has := gou.HTTPGuards[guard]; has {
 				middleware(c)
