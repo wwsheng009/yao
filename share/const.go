@@ -4,7 +4,7 @@ package share
 const VERSION = "0.10.0"
 
 // PRVERSION  PreRelease Version
-const PRVERSION = "DEV"
+const PRVERSION = "f0570071544a-debug"
 
 // BUILDIN 打包应用合成一个制品
 const BUILDIN = false

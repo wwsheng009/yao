@@ -21,11 +21,10 @@ require (
 	github.com/yaoapp/gou v0.0.0-20211120135538-e5387704eb03
 	github.com/yaoapp/kun v0.9.0
 	github.com/yaoapp/xun v0.9.0
-<<<<<<< HEAD
 	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
-=======
-	golang.org/x/crypto v0.0.0-20220208050332-20e1d8d225ab
 )
+
+require github.com/SAP/go-hdb v0.105.8 // indirect
 
 require (
 	github.com/TylerBrock/colorjson v0.0.0-20200706003622-8a50f05110d2 // indirect
@@ -80,7 +79,6 @@ require (
 	github.com/tidwall/tinyqueue v0.1.1 // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/xuri/efp v0.0.0-20210322160811-ab561f5b45e3 // indirect
->>>>>>> upstream/main
 	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d // indirect
 	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20220526153639-5463443f8c37 // indirect

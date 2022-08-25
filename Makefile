@@ -182,7 +182,6 @@ artifacts-macos: clean
 	ls -l dist/release/
 	dist/release/yao-${VERSION}-darwin-amd64 version
 
-<<<<<<< HEAD
 .PHONY: debug1
 debug1: clean
 	mkdir -p dist/release
@@ -191,20 +190,21 @@ debug1: clean
 	mkdir -p .tmp/data
 	# cp -r ui .tmp/data/ui
 	cp -r ../xgen/dist .tmp/data/ui
-	sed -ie "s/url('\/icon/url(\/xiang\/icon/g" .tmp/data/ui/icon/md_icon.css
+	sed -ie "s/url(\//url(\/xiang\//g" .tmp/data/ui/icon/md_icon.css
 	cp -r yao .tmp/data/
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
 	rm -rf .tmp/data
+
+#	Replace PRVERSION
+	sed -ie "s/const PRVERSION = \"DEV\"/const PRVERSION = \"${COMMIT}-debug\"/g" share/const.go
 
 #   Making artifacts
 	mkdir -p dist
 	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
 	chmod +x  dist/release/yao-debug
-=======
 # 	Reset const 
-#	cp -f share/const.goe share/const.go
-#	rm -f share/const.goe
->>>>>>> upstream/main
+	cp -f share/const.goe share/const.go
+	rm -f share/const.goe
 
 .PHONY: debug
 debug: clean
@@ -256,7 +256,6 @@ release: clean
 	CGO_ENABLED=1 go build -v -o dist/release/yao
 	chmod +x  dist/release/yao
 
-<<<<<<< HEAD
 .PHONY: linux-stage
 linux-stage: clean
 	mkdir -p dist/release
@@ -272,14 +271,12 @@ linux-stage: clean
 
 #   Making artifacts
 	mkdir -p dist
-	CGO_ENABLED=1 CGO_LDFLAGS="-static" go build -v -o dist/release/yao-stage
-	chmod +x  dist/release/yao-stage
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" go build -v -o dist/release/yao-beta
+	chmod +x  dist/release/yao-beta
 
-=======
 # 	Reset const 
 	cp -f share/const.goe share/const.go
 	rm share/const.goe
->>>>>>> upstream/main
 
 .PHONY: linux-release
 linux-release: clean
