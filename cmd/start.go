@@ -3,13 +3,17 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/yaoapp/gou"
+	"github.com/yaoapp/gou/task"
 	"github.com/yaoapp/gou/websocket"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
 	"github.com/yaoapp/yao/service"
@@ -24,7 +28,12 @@ var startCmd = &cobra.Command{
 	Short: L("Start Engine"),
 	Long:  L("Start Engine"),
 	Run: func(cmd *cobra.Command, args []string) {
-		defer service.Stop(func() { fmt.Println(L("Service stopped")) })
+
+		// recive interrupt signal
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+
+		// defer service.Stop(func() { fmt.Println(L("Service stopped")) })
 		Boot()
 
 		if startDebug { // 强制 debug 模式启动
@@ -47,34 +56,6 @@ var startCmd = &cobra.Command{
 			host = "127.0.0.1"
 		}
 
-		if mode == "development" {
-			fmt.Println(color.WhiteString("\n---------------------------------"))
-			fmt.Println(color.WhiteString(L("API List")))
-			fmt.Println(color.WhiteString("---------------------------------"))
-
-			for _, api := range gou.APIs { // API信息
-				if len(api.HTTP.Paths) <= 0 {
-					continue
-				}
-
-				fmt.Printf(color.CyanString("\n%s(%d)\n", api.Name, len(api.HTTP.Paths)))
-				for _, p := range api.HTTP.Paths {
-					fmt.Println(
-						colorMehtod(p.Method),
-						color.WhiteString(filepath.Join("/api", api.HTTP.Group, p.Path)),
-						"\tprocess:", p.Process)
-				}
-			}
-
-			fmt.Printf(color.CyanString("\n%s(%d)\n", "WebSocket", len(websocket.Upgraders)))
-			for name, upgrader := range websocket.Upgraders { // WebSocket
-				fmt.Println(
-					colorMehtod("GET"),
-					color.WhiteString(filepath.Join("/websocket", name)),
-					"\tprocess:", upgrader.Process)
-			}
-		}
-
 		fmt.Println(color.WhiteString("\n---------------------------------"))
 		fmt.Println(color.WhiteString(share.App.Name), color.WhiteString(share.App.Version), mode)
 		fmt.Println(color.WhiteString("---------------------------------"))
@@ -88,33 +69,127 @@ var startCmd = &cobra.Command{
 		fmt.Println(color.WhiteString(L("API")), color.GreenString(" http://%s%s/api", host, port))
 		fmt.Println(color.WhiteString(L("Listening")), color.GreenString(" %s:%d", config.Conf.Host, config.Conf.Port))
 
-		fmt.Println("")
-
-		// 调试模式
+		// development mode
 		if mode == "development" {
+			printApis(false)
+			printTasks(false)
+			printSchedules(false)
+
+			// Watching
+			fmt.Println(color.WhiteString("\n---------------------------------"))
+			fmt.Println(color.WhiteString(L("Watching")))
+			fmt.Println(color.WhiteString("---------------------------------"))
 			service.Watch(config.Conf)
 		}
 
-		// with the alpha features
-		if startAlpha {
-			for _, sock := range gou.Sockets {
-				fmt.Println(color.WhiteString("\n---------------------------------"))
-				fmt.Println(color.WhiteString(sock.Name))
-				fmt.Println(color.WhiteString("---------------------------------"))
-				fmt.Println(color.GreenString("Mode: %s", sock.Mode))
-				fmt.Println(color.GreenString("Host: %s://%s", sock.Protocol, sock.Host))
-				fmt.Println(color.GreenString("Port: %s\n\n", sock.Port))
-				if sock.Mode == "server" {
-					go sock.Start()
-				} else if sock.Mode == "client" {
-					go sock.Connect()
-				}
-			}
+		if mode == "production" {
+			printApis(true)
+			printTasks(true)
+			printSchedules(true)
 		}
 
+		// Start server
+		go service.Start()
 		fmt.Println(color.GreenString(L("✨LISTENING✨")))
-		service.Start()
+
+		for {
+			select {
+			case <-interrupt:
+				service.Stop(func() {
+					fmt.Println(color.GreenString(L("✨STOPPED✨")))
+				})
+				return
+			}
+		}
 	},
+}
+
+func printSchedules(silent bool) {
+	if silent {
+		for name, sch := range gou.Schedules {
+			process := fmt.Sprintf("Process: %s", sch.Process)
+			if sch.TaskName != "" {
+				process = fmt.Sprintf("Task: %s", sch.TaskName)
+			}
+			log.Info("[Schedule] %s %s %s %s", sch.Schedule, name, sch.Name, process)
+		}
+		return
+	}
+
+	fmt.Println(color.WhiteString("\n---------------------------------"))
+	fmt.Println(color.WhiteString(L("Schedules List (%d)"), len(gou.Schedules)))
+	fmt.Println(color.WhiteString("---------------------------------"))
+	for name, sch := range gou.Schedules {
+		process := fmt.Sprintf("Process: %s", sch.Process)
+		if sch.TaskName != "" {
+			process = fmt.Sprintf("Task: %s", sch.TaskName)
+		}
+		fmt.Printf(color.CyanString("[Schedule] %s %s", sch.Schedule, name))
+		fmt.Printf(color.WhiteString("\t%s\t%s\n", sch.Name, process))
+	}
+}
+
+func printTasks(silent bool) {
+
+	if silent {
+		for _, t := range task.Tasks {
+			log.Info("[Task] %s workers:%d", t.Option.Name, t.Option.WorkerNums)
+		}
+		return
+	}
+
+	fmt.Println(color.WhiteString("\n---------------------------------"))
+	fmt.Println(color.WhiteString(L("Tasks List (%d)"), len(task.Tasks)))
+	fmt.Println(color.WhiteString("---------------------------------"))
+	for _, t := range task.Tasks {
+		fmt.Printf(color.CyanString("[Task] %s", t.Option.Name))
+		fmt.Printf(color.WhiteString("\t workers: %d\n", t.Option.WorkerNums))
+	}
+}
+
+func printApis(silent bool) {
+
+	if silent {
+		for _, api := range gou.APIs {
+			if len(api.HTTP.Paths) <= 0 {
+				continue
+			}
+			log.Info("[API] %s(%d)", api.Name, len(api.HTTP.Paths))
+			for _, p := range api.HTTP.Paths {
+				log.Info("%s %s %s", p.Method, filepath.Join("/api", api.HTTP.Group, p.Path), p.Process)
+			}
+		}
+		for name, upgrader := range websocket.Upgraders { // WebSocket
+			log.Info("[WebSocket] GET  /websocket/%s process:%s", name, upgrader.Process)
+		}
+		return
+	}
+
+	fmt.Println(color.WhiteString("\n---------------------------------"))
+	fmt.Println(color.WhiteString(L("API List")))
+	fmt.Println(color.WhiteString("---------------------------------"))
+
+	for _, api := range gou.APIs { // API信息
+		if len(api.HTTP.Paths) <= 0 {
+			continue
+		}
+
+		fmt.Printf(color.CyanString("\n%s(%d)\n", api.Name, len(api.HTTP.Paths)))
+		for _, p := range api.HTTP.Paths {
+			fmt.Println(
+				colorMehtod(p.Method),
+				color.WhiteString(filepath.Join("/api", api.HTTP.Group, p.Path)),
+				"\tprocess:", p.Process)
+		}
+	}
+
+	fmt.Printf(color.CyanString("\n%s(%d)\n", "WebSocket", len(websocket.Upgraders)))
+	for name, upgrader := range websocket.Upgraders { // WebSocket
+		fmt.Println(
+			colorMehtod("GET"),
+			color.WhiteString(filepath.Join("/websocket", name)),
+			"\tprocess:", upgrader.Process)
+	}
 }
 
 func colorMehtod(method string) string {

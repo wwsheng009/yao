@@ -1,4 +1,4 @@
-package server
+package socket
 
 import (
 	"testing"
@@ -12,20 +12,6 @@ func TestLoad(t *testing.T) {
 	Load(config.Conf)
 	LoadFrom("not a path", "404.")
 	check(t)
-}
-
-func TestProcessStart(t *testing.T) {
-	Load(config.Conf)
-	// assert.NotPanics(t, func() {
-	// 	gou.NewProcess("xiang.server.Start", "rfid").Run()
-	// })
-}
-
-func TestProcessConnect(t *testing.T) {
-	Load(config.Conf)
-	// assert.NotPanics(t, func() {
-	// 	gou.NewProcess("xiang.server.Connect", "rfid_client").Run()
-	// })
 }
 
 func check(t *testing.T) {

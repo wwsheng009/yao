@@ -12,6 +12,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"github.com/yaoapp/gou"
 	"github.com/yaoapp/gou/helper"
+	"github.com/yaoapp/gou/lang"
 	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/kun/log"
@@ -126,14 +127,20 @@ func LoadFrom(dir string, prefix string) error {
 		return fmt.Errorf("%s does not exists", dir)
 	}
 
+	messages := []string{}
 	err := share.Walk(dir, ".json", func(root, filename string) {
 		name := share.SpecName(root, filename)
 		content := share.ReadFile(filename)
 		_, err := LoadTable(string(content), name)
 		if err != nil {
 			log.With(log.F{"root": root, "file": filename}).Error(err.Error())
+			messages = append(messages, fmt.Sprintf("%s %s", name, err.Error()))
 		}
 	})
+
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";"))
+	}
 
 	return err
 }
@@ -172,7 +179,20 @@ func LoadTable(source string, name string) (*Table, error) {
 	table.loadColumns()
 	table.loadFilters()
 	table.loadAPIs()
+
+	err = table.Validate()
+	if err != nil {
+		log.Error("[Table] %s is not valid: %s ", table.Table, err.Error())
+		return nil, err
+	}
+
 	Tables[name] = &table
+
+	// Apply a language pack
+	if lang.Default != nil {
+		lang.Default.Apply(Tables[name])
+	}
+
 	return Tables[name], nil
 }
 
