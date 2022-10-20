@@ -22,13 +22,38 @@ env:
   OSS_TEST_SECRET: ${{ secrets.OSS_TEST_SECRET}}
   ROOT_PLUGIN: ${{ github.WORKSPACE }}/../../../data/gou-unit/plugins
 
+  MYSQL_TEST_HOST: "127.0.0.1"
+  MYSQL_TEST_PORT: "3308"
+  MYSQL_TEST_USER: test
+  MYSQL_TEST_PASS: "123456"
+
+  SQLITE_DB: "./app/db/yao.db"
+
+  REDIS_TEST_HOST: "127.0.0.1"
+  REDIS_TEST_PORT: "6379"
+  REDIS_TEST_DB: "2"
+
+  MONGO_TEST_HOST: "127.0.0.1"
+  MONGO_TEST_PORT: "27017"
+  MONGO_TEST_USER: "root"
+  MONGO_TEST_PASS: "123456"
+
+  TAB_NAME: "::PET ADMIN"
+  PAGE_SIZE: "20"
+  PAGE_LINK: "https://yaoapps.com"
+  PAGE_ICON: "icon-trash"
+
+  DEMO_APP: ${{ github.WORKSPACE }}/../app
+
 jobs:
   UnitTest:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [1.18.2]
+        go: [1.19.2]
         db: [MySQL8.0, MySQL5.7, SQLite3]
+        redis: [4, 5, 6]
+        mongo: ["6.0"]
     if: >
       ${{ github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'success' }}
@@ -74,7 +99,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue_number,
-              body: 'Thank you for the PR! The ${{ matrix.db }} test workflow is running, the results of the run will be commented later.'
+              body: 'Thank you for the PR! The db: ${{ matrix.db }}  redis: ${{ matrix.redis }}  mongo: ${{ matrix.mongo }} test workflow is running, the results of the run will be commented later.'
             });
 
       - name: Setup Cache
@@ -112,12 +137,19 @@ jobs:
           ref: 5e91d3d9dcabd2986f901b6b31590e49fc3c4dd8
           path: v8go
 
+      - name: Checkout Demo App
+        uses: actions/checkout@v2
+        with:
+          repository: yaoapp/demo-app
+          path: app
+
       - name: Move Kun, Xun, Gou, V8Go
         run: |
           mv kun ../
           mv xun ../
           mv gou ../
           mv v8go ../
+          mv app ../
           ls -l .
           ls -l ../
 
@@ -125,6 +157,28 @@ jobs:
         uses: actions/checkout@v2
         with:
           ref: ${{ env.HEAD }}
+
+      - name: Start Redis
+        uses: supercharge/redis-github-action@1.4.0
+        with:
+          redis-version: ${{ matrix.redis }}
+
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          mongodb-version: ${{ matrix.mongo }}
+          mongodb-username: root
+          mongodb-password: 123456
+          mongodb-db: test
+
+      - name: Setup MySQL8.0 (connector)
+        uses: ./.github/actions/setup-db
+        with:
+          kind: "MySQL8.0"
+          db: "test"
+          user: "test"
+          password: "123456"
+          port: "3308"
 
       - name: Setup ${{ matrix.db }}
         uses: ./.github/actions/setup-db
@@ -178,6 +232,12 @@ jobs:
         run: |
           make test
 
+      - name: Run widgets test
+        env:
+          YAO_ROOT: ${{ env.DEMO_APP }}
+        run: |
+          make test-widgets
+
       - name: Codecov Report
         uses: codecov/codecov-action@v2
         with:
@@ -195,5 +255,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue_number,
-              body: '✨DONE✨ ${{ matrix.db }} passed.'
+              body: '✨DONE✨  db: ${{ matrix.db }}  redis: ${{ matrix.redis }}  mongo: ${{ matrix.mongo }} passed.'
             });

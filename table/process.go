@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou"
 	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/kun/log"
@@ -343,7 +344,9 @@ func ProcessSelect(process *gou.Process) interface{} {
 // ProcessExport xiang.table.Export (:table, :queryParam, :chunkSize)
 // Export query result to Excel
 func ProcessExport(process *gou.Process) interface{} {
+	// var testDataM = map[string]string{}
 
+	debug := os.Getenv("YAO_EXPORT_DEBUG") != ""
 	process.ValidateArgNums(1)
 	name := process.ArgsString(0)
 	table := Select(name)
@@ -372,18 +375,53 @@ func ProcessExport(process *gou.Process) interface{} {
 			pagesize = process.ArgsInt(3, api.DefaultInt(1))
 		}
 
+		// fmt.Printf("\n%d/%d\n", page, pagesize)
+
+		if debug {
+			bytes, _ := jsoniter.Marshal(param)
+			log.Info("[Export] %s %s %d %d Params: %s", api.Process, filename, page, pagesize, string(bytes))
+		}
+
 		// 查询数据
 		response := gou.NewProcess(api.Process, param, page, pagesize).
 			WithGlobal(process.Global).
 			WithSID(process.Sid).
 			Run()
 
-		// After Hook
-		response = table.After(table.Hooks.AfterSearch, response, []interface{}{param, page, pagesize}, process.Sid)
+		// for i, v := range response.(maps.MapStrAny)["data"].([]maps.MapStrAny) {
+		// 	fmt.Println("i=", i, "id=", v["id"], v["status"])
+		// }
 
-		res, ok := response.(map[string]interface{})
+		if debug {
+			bytes, _ := jsoniter.Marshal(response)
+			log.Info("[Export] %s %d %d Prepare: %s", filename, page, pagesize, string(bytes))
+		}
+
+		// After Hook
+		respAfterHook := table.After(table.Hooks.AfterSearch, response, []interface{}{param, page, pagesize}, process.Sid)
+
+		if debug {
+			bytes, _ := jsoniter.Marshal(respAfterHook)
+			log.Info("[Export] %s %d %d Prepare After: %s", filename, page, pagesize, string(bytes))
+		}
+
+		// utils.Dump(respAfterHook)
+		// for _, v := range respAfterHook.(map[string]interface{})["data"].([]interface{}) {
+		// 	name := v.(map[string]interface{})["name"].(string)
+		// 	if _, has := testDataM[name]; has {
+		// 		fmt.Printf("**** %s Has\n\n", testDataM[name])
+		// 	} else {
+		// 		testDataM[name] = fmt.Sprintf("%s %d/%d", name, page, pagesize)
+		// 	}
+		// 	fmt.Println("i=", i, "id=", v.(map[string]interface{})["id"], v.(map[string]interface{})["status"])
+		// }
+
+		// fmt.Println("---")
+		// fmt.Println("")
+
+		res, ok := respAfterHook.(map[string]interface{})
 		if !ok {
-			res, ok = response.(maps.MapStrAny)
+			res, ok = respAfterHook.(maps.MapStrAny)
 			if !ok {
 				page = -1
 				continue

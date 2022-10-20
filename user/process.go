@@ -6,7 +6,6 @@ import (
 	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/kun/maps"
-	"github.com/yaoapp/kun/utils"
 )
 
 func init() {
@@ -40,7 +39,6 @@ func ProcessLogin(process *gou.Process) interface{} {
 	if email != "" {
 		return Auth("email", email, password)
 	} else if mobile != "" {
-		utils.Dump(mobile, password)
 		return Auth("mobile", mobile, password)
 	}
 

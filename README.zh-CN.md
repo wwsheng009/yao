@@ -3,33 +3,43 @@
 [![UnitTest](https://github.com/YaoApp/yao/actions/workflows/unit-test.yml/badge.svg)](https://github.com/YaoApp/yao/actions/workflows/unit-test.yml)
 [![codecov](https://codecov.io/gh/YaoApp/yao/branch/main/graph/badge.svg?token=294Y05U71J)](https://codecov.io/gh/YaoApp/yao)
 
-![intro](docs/1.intro.png)
-
-Yao 是一款支持快速创建 Web 服务和管理后台的开源低代码应用引擎。
+![intro](docs/architecture.png)
 
 [English](README.md)
+
+YAO 是一款开源应用引擎，使用 Golang 编写，以一个命令行工具的形式存在, 下载即用。适合用于开发业务系统、网站/APP API 接口、管理后台、自建低代码平台等。
+
+YAO 采用 flow-based 的编程模式，通过编写 YAO DSL (JSON 格式逻辑描述) 或使用 JavaScript 编写处理器，实现各种功能。 YAO DSL 可以有多种编写方式:
+
+1. 纯手工编写
+
+2. 使用自动化脚本，根据上下文逻辑生成
+
+3. 使用可视化编辑器，通过“拖拉拽”制作
 
 官网: [https://yaoapps.com](https://yaoapps.com)
 
 文档: [https://yaoapps.com/doc](https://yaoapps.com/doc)
 
+微信群: 添加微信 17192175099 备注(开发交流)
+
+![微信群](docs/wechat.jpg)
+
 ## 演示
 
-### 客户管理系统
+使用 YAO 开发的典型应用
 
-使用 Yao 搭建的一套通用 CRM 管理系统。
-
-[https://demo-crm.yaoapps.com](https://demo-crm.yaoapps.com/xiang/login/admin?autoLogin=true)
-
-### 智能仓库管理系统
-
-使用 Yao 搭建的云+边物联网应用，支持人脸识别、RFID 的无人值守智能仓库管理系统。
-
-[https://demo-wms.yaoapps.com](https://demo-crm.yaoapps.com/xiang/login/admin?autoLogin=true)
+| 应用        | 介绍                 | 代码仓库                              |
+| ----------- | -------------------- | ------------------------------------- |
+| YAO WMS     | 仓库管理系统         | https://github.com/yaoapp/yao-wms     |
+| LMS DEMO    | 图书管理系统(演示)   | https://github.com/yaoapp/demo-lms    |
+| CRM DEMO    | 客户管理系统(演示)   | https://github.com/YaoApp/demo-crm    |
+| AMS DEMO    | 资产管理系统(演示)   | https://github.com/YaoApp/demo-asset  |
+| Widget DEMO | 自建低代码平台(演示) | https://github.com/YaoApp/demo-widget |
 
 ## 介绍
 
-Yao 是一个只需使用 JSON 即可创建数据库模型、编写 API 接口、描述管理后台界面的低代码引擎，使用 Yao 构建的应用可运行在云端或物联网设备上。 开发者不需要写一行代码，就可以拥有 10 倍生产力。
+Yao 是一个只需使用 JSON 即可创建数据库模型、编写 API 接口、描述管理后台界面的应用引擎，使用 Yao 构建的应用可运行在云端或物联网设备上。 开发者不需要写一行代码，就可以拥有 10 倍生产力。
 
 Yao 基于 **flow-based** 编程思想，采用 **Go** 语言开发，支持多种方式扩展数据流处理器。这使得 Yao 具有极好的**通用性**，大部分场景下可以代替编程语言, 在复用性和编码效率上是传统编程语言的 **10 倍**；应用性能和资源占比上优于 **PHP**, **JAVA** 等语言。
 
@@ -89,7 +99,7 @@ yao run flows.setmenu
 yao start
 ```
 
-1. 打开浏览器, 访问 `https://127.0.0.1:5099/xiang/login/admin`，
+1. 打开浏览器, 访问 `http://127.0.0.1:5099/xiang/login/admin`，
 
 2. 输入默认用户名: `xiang@iqka.com`， 密码: `A123456p+`
 

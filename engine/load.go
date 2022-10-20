@@ -14,7 +14,10 @@ import (
 	"github.com/yaoapp/yao/cert"
 	"github.com/yaoapp/yao/chart"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/connector"
 	"github.com/yaoapp/yao/flow"
+	"github.com/yaoapp/yao/fs"
+	"github.com/yaoapp/yao/i18n"
 	"github.com/yaoapp/yao/importer"
 	"github.com/yaoapp/yao/model"
 	"github.com/yaoapp/yao/page"
@@ -25,10 +28,12 @@ import (
 	"github.com/yaoapp/yao/share"
 	"github.com/yaoapp/yao/socket"
 	"github.com/yaoapp/yao/store"
+	"github.com/yaoapp/yao/studio"
 	"github.com/yaoapp/yao/table"
 	"github.com/yaoapp/yao/task"
 	"github.com/yaoapp/yao/websocket"
 	"github.com/yaoapp/yao/widget"
+	"github.com/yaoapp/yao/widgets"
 )
 
 // Load 根据配置加载 API, FLow, Model, Plugin
@@ -47,6 +52,32 @@ func Load(cfg config.Config) (err error) {
 	err = cert.Load(cfg)
 	if err != nil {
 		printErr(cfg.Mode, "Cert", err)
+	}
+
+	// Load connectors
+	err = connector.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "Connector", err)
+	}
+
+	// Load FileSystem
+	err = fs.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "FileSystem", err)
+	}
+
+	// Load i18n
+	err = i18n.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "i18n", err)
+	}
+
+	// Load Studio development mode only
+	if cfg.Mode == "development" {
+		err = studio.Load(cfg)
+		if err != nil {
+			printErr(cfg.Mode, "Studio", err)
+		}
 	}
 
 	// 第二步: 建立数据库 & 会话连接
@@ -95,24 +126,44 @@ func Load(cfg config.Config) (err error) {
 		printErr(cfg.Mode, "Plugin", err)
 	}
 
-	err = table.Load(cfg) // 加载数据表格 table
-	if err != nil {
-		printErr(cfg.Mode, "Table", err)
-	}
+	// XGEN 1.0
+	if share.App.XGen == "1.0" {
 
-	err = chart.Load(cfg) // 加载分析图表 chart
-	if err != nil {
-		printErr(cfg.Mode, "Chart", err)
-	}
+		// SET XGEN_BASE
+		// adminRoot := "yao"
+		// if share.App.Optional != nil {
+		// 	if root, has := share.App.Optional["adminRoot"]; has {
+		// 		adminRoot = fmt.Sprintf("%v", root)
+		// 	}
+		// }
+		// os.Setenv("XGEN_BASE", adminRoot)
 
-	err = page.Load(cfg) // 加载页面 page 忽略错误
-	if err != nil {
-		printErr(cfg.Mode, "Page", err)
+		// Load build-in widgets
+		err = widgets.Load(cfg)
+		if err != nil {
+			printErr(cfg.Mode, "Widgets", err)
+		}
+
+		delete(gou.APIs, "xiang.table")
+
+	} else { // old version
+		err = table.Load(cfg) // 加载数据表格 table
+		if err != nil {
+			printErr(cfg.Mode, "Table", err)
+		}
+
+		err = chart.Load(cfg) // 加载分析图表 chart
+		if err != nil {
+			printErr(cfg.Mode, "Chart", err)
+		}
+
+		err = page.Load(cfg) // 加载页面 page 忽略错误
+		if err != nil {
+			printErr(cfg.Mode, "Page", err)
+		}
 	}
 
 	importer.Load(cfg) // 加载数据导入 imports
-
-	// workflow.Load(cfg) // 加载工作流  workflow
 
 	err = api.Load(cfg) // 加载业务接口 API
 	if err != nil {
