@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "args": ["-a","/home/go/projects/go-sapsso/license","-e","/home/go/projects/go-sapsso/license/.env","run","flows.key.create","3"]
+            "args": ["start","-a","/tmp/yao-app-test","-e","/tmp/yao-app-test/.env"]
         }
     ]
 }

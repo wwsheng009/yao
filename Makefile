@@ -231,15 +231,29 @@ artifacts-macos: clean
 debug1: clean
 	mkdir -p dist/release
 
+#	Building XGEN v1.0
+	export NODE_ENV=production
+	rm -f ../xgen-v1.0/pnpm-lock.yaml
+	echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
+	cd ../xgen-v1.0 && pnpm install && pnpm run build
+
 #	Packing
-	mkdir -p .tmp/data
-	# cp -r ui .tmp/data/ui
-	cp -r ../xgen/dist .tmp/data/ui
-	sed -ie "s/url(\//url(\/xiang\//g" .tmp/data/ui/icon/md_icon.css
+	mkdir -p .tmp/data/xgen
+	cp -r ./ui .tmp/data/ui
+# cp -r ../xgen-v0.9/dist .tmp/data/xgen/v0.9
+	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r yao .tmp/data/
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
 	rm -rf .tmp/data
 
+#	Packing
+# mkdir -p .tmp/data
+# # cp -r ui .tmp/data/ui
+# cp -r ../xgen/dist .tmp/data/ui
+# sed -ie "s/url(\//url(\/xiang\//g" .tmp/data/ui/icon/md_icon.css
+# cp -r yao .tmp/data/
+# go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
+# rm -rf .tmp/data
 #	Replace PRVERSION
 	sed -ie "s/const PRVERSION = \"DEV\"/const PRVERSION = \"${COMMIT}-${NOW}-debug\"/g" share/const.go
 
@@ -258,6 +272,7 @@ debug: clean
 #	Packing
 	mkdir -p .tmp/data
 	cp -r ui .tmp/data/ui
+	cp -r xgen .tmp/data/
 	cp -r yao .tmp/data/
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
 	rm -rf .tmp/data
