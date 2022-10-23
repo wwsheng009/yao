@@ -10,7 +10,16 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "args": ["start","-a","/tmp/yao-app-test","-e","/tmp/yao-app-test/.env"]
+            "args": ["start"],
+            "cwd": "/home/go/projects/yao/demos-v1.0/demo-app/"
+        },
+        {
+            "name": "Launch migrate",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "main.go",
+            "args": ["migrate","-a","/tmp/yao-app-test","-e","/tmp/yao-app-test/.env"]
         }
     ]
 }

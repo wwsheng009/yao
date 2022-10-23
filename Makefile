@@ -232,10 +232,10 @@ debug1: clean
 	mkdir -p dist/release
 
 #	Building XGEN v1.0
-	export NODE_ENV=production
-	rm -f ../xgen-v1.0/pnpm-lock.yaml
-	echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
-	cd ../xgen-v1.0 && pnpm install && pnpm run build
+	# export NODE_ENV=development
+	# rm -f ../xgen-v1.0/pnpm-lock.yaml
+	# echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
+	# cd ../xgen-v1.0 && pnpm install && pnpm run build
 
 #	Packing
 	mkdir -p .tmp/data/xgen
