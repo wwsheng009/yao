@@ -15,6 +15,12 @@ var defaults = []CArg{
 	{IsExp: true, key: "value", value: nil},
 	{IsExp: true, key: "props", value: nil},
 	{IsExp: true, key: "type", value: nil},
+	{IsExp: true, key: "id", value: nil},
+}
+
+// NewExp create a new exp CArg
+func NewExp(key string) CArg {
+	return CArg{IsExp: true, key: key, value: nil}
 }
 
 // Value compute value

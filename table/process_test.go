@@ -16,11 +16,13 @@ import (
 	_ "github.com/yaoapp/yao/helper"
 	"github.com/yaoapp/yao/model"
 	"github.com/yaoapp/yao/query"
+	"github.com/yaoapp/yao/runtime"
 	"github.com/yaoapp/yao/script"
 	"github.com/yaoapp/yao/share"
 )
 
 func init() {
+	runtime.Load(config.Conf)
 	share.DBConnect(config.Conf.DB)
 	model.Load(config.Conf)
 	share.Load(config.Conf)
@@ -226,22 +228,18 @@ func TestTableProcessDeleteIn(t *testing.T) {
 		},
 	}
 	process := gou.NewProcess("xiang.table.Save", args...)
-	response := ProcessSave(process)
-	assert.NotNil(t, response)
-	assert.True(t, any.Of(response).IsInt())
+	id := ProcessSave(process)
+	assert.NotNil(t, id)
+	assert.True(t, any.Of(id).IsNumber())
 
-	id := any.Of(response).CInt()
-	args = []interface{}{
-		"service",
-		any.Of(response).Int(),
-		"id",
-	}
+	// id := any.Of(response).CInt()
+	args = []interface{}{"service", id, "id"}
 	process = gou.NewProcess("xiang.table.DeleteIn", args...)
-	response = ProcessDeleteIn(process)
+	id = ProcessDeleteIn(process)
 
-	assert.NotNil(t, response)
-	assert.True(t, any.Of(response).IsInt())
-	assert.Equal(t, any.Of(response).CInt(), 1)
+	assert.NotNil(t, id)
+	assert.True(t, any.Of(id).IsNumber())
+	assert.Equal(t, id, 1)
 
 	// 清空数据
 	capsule.Query().Table("service").Where("id", id).Delete()
@@ -401,12 +399,12 @@ func TestTableProcessQuickSave(t *testing.T) {
 			"query": map[string]interface{}{"manu_id": 1},
 		})
 	res := process.Run()
-	newID, ok := res.([]int)
+	newID, ok := res.([]interface{})
 	assert.True(t, ok)
 	assert.NotEqual(t, id, newID[0])
 
 	// 清空数据
-	capsule.Query().Table("service").WhereIn("id", []int{id, newID[0]}).Delete()
+	capsule.Query().Table("service").WhereIn("id", []interface{}{id, newID[0]}).Delete()
 }
 
 func TestTableProcessSelect(t *testing.T) {

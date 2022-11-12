@@ -69,14 +69,14 @@ jobs:
       - name: Checkout XGen v0.9
         uses: actions/checkout@v2
         with:
-          repository: yaoapp/xgen
+          repository: yaoapp/xgen-deprecated
           path: xgen-v0.9
 
       - name: Checkout XGen v1.0
         uses: actions/checkout@v2
         with:
-          repository: yaoapp/xgen-next
-          # ref: 9ce17a22904b3f09de90f08abbbdaf42f6b0ef68
+          repository: yaoapp/xgen
+          #ref: 5002c3fded585aaa69a4366135b415ea3234964e
           path: xgen-v1.0
 
       - name: Move Kun, Xun, Gou, UI, V8Go
