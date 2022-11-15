@@ -248,6 +248,10 @@ debug1: clean
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
 # cp -r ../xgen-v0.9/dist .tmp/data/xgen/v0.9
+
+# 在集成之前，需要修改xgen的环境变量BASE=__yao_admin_root，如果是前端单独测试，设置BASE=yao，或是清空BASE设置
+# echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
+# cd ../xgen-v1.0/ && pnpm install && pnpm run build
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r yao .tmp/data/
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
