@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         go: [1.19.2]
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-20.04"
     steps:
       - name: Arm Build
         run: |
@@ -76,8 +76,14 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: yaoapp/xgen
-          #ref: 5002c3fded585aaa69a4366135b415ea3234964e
+          #ref: 408470b84c9d6bb8ed988b545b6e46ffc2872014
           path: xgen-v1.0
+
+      - name: Checkout Yao-Init
+        uses: actions/checkout@v2
+        with:
+          repository: yaoapp/yao-init
+          path: yao-init
 
       - name: Move Kun, Xun, Gou, UI, V8Go
         run: |
@@ -87,6 +93,7 @@ jobs:
           mv v8go ../
           mv xgen-v0.9 ../
           mv xgen-v1.0 ../
+          mv yao-init ../
           ls -l .
           ls -l ../
 

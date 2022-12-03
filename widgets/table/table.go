@@ -23,6 +23,8 @@ import (
 //   GET  /api/__yao/table/:id/get  						-> Default process: yao.table.Get $param.id :query
 //   GET  /api/__yao/table/:id/find/:primary  				-> Default process: yao.table.Find $param.id $param.primary :query
 //   GET  /api/__yao/table/:id/component/:xpath/:method  	-> Default process: yao.table.Component $param.id $param.xpath $param.method :query
+//   GET  /api/__yao/table/:id/upload/:xpath/:method  		-> Default process: yao.table.Upload $param.id $param.xpath $param.method $file.file
+//   GET  /api/__yao/table/:id/download/:field  			-> Default process: yao.table.Download $param.id $param.field $query.name $query.token
 //  POST  /api/__yao/table/:id/save  						-> Default process: yao.table.Save $param.id :payload
 //  POST  /api/__yao/table/:id/create  						-> Default process: yao.table.Create $param.id :payload
 //  POST  /api/__yao/table/:id/insert  						-> Default process: yao.table.Insert :payload
@@ -39,7 +41,9 @@ import (
 //   yao.table.Search Return the records with pagination
 //   yao.table.Get  Return the records without pagination
 //   yao.table.Find Return the record via the given primary key
-//   yao.table.Component Return the result defined in props.xProps
+//   yao.table.Component Return the result defined in props
+//   yao.table.Upload Upload file defined in props
+//   yao.table.Download Download file defined in props
 //   yao.table.Save Save a record, if given a primary key update, else insert
 //   yao.table.Create Create a record
 //   yao.table.Insert Insert records
@@ -271,6 +275,11 @@ func (dsl *DSL) Xgen() (map[string]interface{}, error) {
 	setting["config"] = dsl.Config
 	for _, cProp := range dsl.CProps {
 		err := cProp.Replace(setting, func(cProp component.CloudPropsDSL) interface{} {
+
+			if cProp.Type == "Upload" {
+				return fmt.Sprintf("/api/__yao/table/%s%s", dsl.ID, cProp.UploadPath())
+			}
+
 			return map[string]interface{}{
 				"api":    fmt.Sprintf("/api/__yao/table/%s%s", dsl.ID, cProp.Path()),
 				"params": cProp.Query,

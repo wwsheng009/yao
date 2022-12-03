@@ -3,12 +3,15 @@ package table
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yaoapp/gou"
+	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/helper"
 	q "github.com/yaoapp/yao/query"
 )
 
@@ -345,6 +348,51 @@ func TestProcessComponentError(t *testing.T) {
 	assert.Contains(t, err.Error(), "fields.filter.edit.props.状态.::not-exist")
 }
 
+func TestProcessUpload(t *testing.T) {
+	load(t)
+	clear(t)
+	testData(t)
+	args := []interface{}{
+		"pet",
+		"fields.table.相关图片.edit.props",
+		"api",
+		gou.UploadFile{TempFile: tempFile(t)},
+	}
+
+	res, err := gou.NewProcess("yao.table.Upload", args...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	file, ok := res.(string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, file)
+}
+
+func TestProcessDownload(t *testing.T) {
+	load(t)
+	clear(t)
+	testData(t)
+
+	jwt := helper.JwtMake(1, map[string]interface{}{"id": 1}, map[string]interface{}{"sid": 1})
+	fs := fs.MustGet("system")
+	_, err := fs.WriteFile("/text.txt", []byte("Hello"), uint32(os.ModePerm))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	args := []interface{}{"pet", "images", "/text.txt", jwt.Token}
+	res, err := gou.NewProcess("yao.table.Download", args...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, ok := res.(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, []byte("Hello"), body["content"])
+	assert.Equal(t, "text/plain; charset=utf-8", body["type"])
+}
+
 func TestProcessSetting(t *testing.T) {
 	load(t)
 	clear(t)
@@ -361,6 +409,7 @@ func TestProcessSetting(t *testing.T) {
 	assert.Equal(t, "查看详情2", data.Get("header.preset.import.actions[1].title"))
 	assert.Equal(t, "/api/__yao/table/pet/component/fields.table."+url.QueryEscape("入院状态")+".view.props.xProps/remote", data.Get("fields.table.入院状态.view.props.xProps.remote.api"))
 	assert.Equal(t, "/api/__yao/table/pet/component/fields.table."+url.QueryEscape("入院状态")+".edit.props.xProps/remote", data.Get("fields.table.入院状态.edit.props.xProps.remote.api"))
+	assert.Equal(t, "/api/__yao/table/pet/upload/fields.table."+url.QueryEscape("相关图片")+".edit.props/api", data.Get("fields.table.相关图片.edit.props.api"))
 }
 
 func TestProcessXgen(t *testing.T) {
@@ -379,6 +428,20 @@ func TestProcessXgen(t *testing.T) {
 	assert.Equal(t, "查看详情2", data.Get("header.preset.import.actions[1].title"))
 	assert.Equal(t, "/api/__yao/table/pet/component/fields.table."+url.QueryEscape("入院状态")+".view.props.xProps/remote", data.Get("fields.table.入院状态.view.props.xProps.remote.api"))
 	assert.Equal(t, "/api/__yao/table/pet/component/fields.table."+url.QueryEscape("入院状态")+".edit.props.xProps/remote", data.Get("fields.table.入院状态.edit.props.xProps.remote.api"))
+	assert.Equal(t, "/api/__yao/table/pet/upload/fields.table."+url.QueryEscape("相关图片")+".edit.props/api", data.Get("fields.table.相关图片.edit.props.api"))
+
+}
+
+func TestProcessExport(t *testing.T) {
+	load(t)
+	clear(t)
+	testData(t)
+	args := []interface{}{"pet", gou.QueryParam{Wheres: []gou.QueryWhere{{Column: "mode", Value: "enabled"}}}, 2}
+	response := gou.NewProcess("yao.table.Export", args...).Run()
+	assert.NotNil(t, response)
+	fs := fs.MustGet("system")
+	size, _ := fs.Size(response.(string))
+	assert.Greater(t, size, 1000)
 }
 
 func load(t *testing.T) {
@@ -403,6 +466,21 @@ func testData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func tempFile(t *testing.T) string {
+	file, err := os.CreateTemp("", "unit-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	_, err = file.Write([]byte("HELLO"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return file.Name()
 }
 
 func clear(t *testing.T) {
