@@ -6,6 +6,7 @@ import (
 	"github.com/yaoapp/yao/widgets/compute"
 	"github.com/yaoapp/yao/widgets/field"
 	"github.com/yaoapp/yao/widgets/hook"
+	"github.com/yaoapp/yao/widgets/mapping"
 )
 
 // DSL the form DSL
@@ -19,10 +20,12 @@ type DSL struct {
 	Config map[string]interface{} `json:"config,omitempty"`
 	CProps field.CloudProps       `json:"-"`
 	compute.Computable
+	*mapping.Mapping
 }
 
 // ActionDSL the form action DSL
 type ActionDSL struct {
+	Guard        string          `json:"guard,omitempty"` // the default guard
 	Bind         *BindActionDSL  `json:"bind,omitempty"`
 	Setting      *action.Process `json:"setting,omitempty"`
 	Component    *action.Process `json:"component,omitempty"`
@@ -56,16 +59,10 @@ type BindActionDSL struct {
 
 // LayoutDSL the form layout DSL
 type LayoutDSL struct {
-	Primary   string                 `json:"primary,omitempty"`
-	Operation *OperationLayoutDSL    `json:"operation,omitempty"`
-	Form      *ViewLayoutDSL         `json:"form,omitempty"`
-	Config    map[string]interface{} `json:"config,omitempty"`
-}
-
-// OperationLayoutDSL layout.operation
-type OperationLayoutDSL struct {
-	Preset  map[string]map[string]interface{} `json:"preset,omitempty"`
-	Actions component.Actions                 `json:"actions,omitempty"`
+	Primary string                 `json:"primary,omitempty"`
+	Actions component.Actions      `json:"actions,omitempty"`
+	Form    *ViewLayoutDSL         `json:"form,omitempty"`
+	Config  map[string]interface{} `json:"config,omitempty"`
 }
 
 // FieldsDSL the form fields DSL

@@ -551,3 +551,41 @@ func (dsl *DSL) icons(cfg config.Config) {
 		dsl.Logo = fmt.Sprintf("/api/__yao/app/icons/app.png")
 	}
 }
+
+// Permissions get the permission blacklist
+// {"<widget>.<ID>":[<id...>]}
+func Permissions(process *gou.Process, widget string, id string) map[string]bool {
+	permissions := map[string]bool{}
+	sessionData, _ := session.Global().ID(process.Sid).Get("__permissions")
+	data, ok := sessionData.(map[string]interface{})
+	if !ok && sessionData != nil {
+		log.Error("[Permissions] session data should be a map, but got %#v", sessionData)
+		return permissions
+	}
+
+	switch values := data[fmt.Sprintf("%s.%s", widget, id)].(type) {
+	case []interface{}:
+		for _, value := range values {
+			permissions[fmt.Sprintf("%v", value)] = true
+		}
+		break
+
+	case []string:
+		for _, value := range values {
+			permissions[value] = true
+		}
+		break
+
+	case map[string]interface{}:
+		for key := range values {
+			permissions[key] = true
+		}
+		break
+
+	case map[string]bool:
+		permissions = values
+		break
+	}
+
+	return permissions
+}

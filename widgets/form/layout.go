@@ -6,6 +6,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou"
 	"github.com/yaoapp/yao/widgets/component"
+	"github.com/yaoapp/yao/widgets/mapping"
 	"github.com/yaoapp/yao/widgets/table"
 )
 
@@ -15,21 +16,22 @@ func (layout *LayoutDSL) BindModel(m *gou.Model, formID string, fields *FieldsDS
 		layout.Primary = m.PrimaryKey
 	}
 
-	if layout.Operation == nil {
-		layout.Operation = &OperationLayoutDSL{
-			Preset: map[string]map[string]interface{}{"save": {}, "back": {}},
-			Actions: []component.ActionDSL{
-				{
-					Title: "::Delete",
-					Icon:  "icon-trash-2",
-					Style: "danger",
-					Action: map[string]component.ParamsDSL{
-						"Form.delete": {"model": formID},
+	if layout.Actions == nil {
+		layout.Actions = []component.ActionDSL{
+			{
+				Title: "::Delete",
+				Icon:  "icon-trash-2",
+				Style: "danger",
+				Action: component.ActionNodes{
+					{
+						"name":    "Delete",
+						"type":    "Form.delete",
+						"payload": map[string]interface{}{"model": formID},
 					},
-					Confirm: &component.ConfirmActionDSL{
-						Title: "::Confirm",
-						Desc:  "::Please confirm, the data cannot be recovered",
-					},
+				},
+				Confirm: &component.ConfirmActionDSL{
+					Title: "::Confirm",
+					Desc:  "::Please confirm, the data cannot be recovered",
 				},
 			},
 		}
@@ -71,21 +73,9 @@ func (layout *LayoutDSL) BindForm(form *DSL, fields *FieldsDSL) error {
 		layout.Primary = form.Layout.Primary
 	}
 
-	if layout.Operation == nil && form.Layout.Operation != nil {
-		layout.Operation = &OperationLayoutDSL{
-			Actions: []component.ActionDSL{},
-			Preset:  map[string]map[string]interface{}{},
-		}
-	}
-
-	if (layout.Operation.Actions == nil || len(layout.Operation.Actions) == 0) &&
-		form.Layout.Operation.Actions != nil {
-		layout.Operation.Actions = form.Layout.Operation.Actions
-	}
-
-	if layout.Operation.Preset == nil || len(layout.Operation.Preset) == 0 &&
-		form.Layout.Operation.Preset != nil {
-		layout.Operation.Preset = form.Layout.Operation.Preset
+	if (layout.Actions == nil || len(layout.Actions) == 0) &&
+		form.Layout.Actions != nil {
+		layout.Actions = form.Layout.Actions
 	}
 
 	if layout.Form == nil && form.Layout.Form != nil {
@@ -102,21 +92,22 @@ func (layout *LayoutDSL) BindTable(tab *table.DSL, formID string, fields *Fields
 		layout.Primary = tab.Layout.Primary
 	}
 
-	if layout.Operation == nil {
-		layout.Operation = &OperationLayoutDSL{
-			Preset: map[string]map[string]interface{}{"save": {}, "back": {}},
-			Actions: []component.ActionDSL{
-				{
-					Title: "::Delete",
-					Icon:  "icon-trash-2",
-					Style: "danger",
-					Action: map[string]component.ParamsDSL{
-						"Form.delete": {"model": formID},
+	if layout.Actions == nil {
+		layout.Actions = []component.ActionDSL{
+			{
+				Title: "::Delete",
+				Icon:  "icon-trash-2",
+				Style: "danger",
+				Action: component.ActionNodes{
+					{
+						"name":    "Delete",
+						"type":    "Form.delete",
+						"payload": map[string]interface{}{"model": formID},
 					},
-					Confirm: &component.ConfirmActionDSL{
-						Title: "::Confirm",
-						Desc:  "::Please confirm, the data cannot be recovered",
-					},
+				},
+				Confirm: &component.ConfirmActionDSL{
+					Title: "::Confirm",
+					Desc:  "::Please confirm, the data cannot be recovered",
 				},
 			},
 		}
@@ -187,17 +178,89 @@ func (layout *LayoutDSL) listColumns(fn func(string, Column), path string, secti
 }
 
 // Xgen trans to Xgen setting
-func (layout *LayoutDSL) Xgen() (map[string]interface{}, error) {
-	res := map[string]interface{}{}
-	data, err := jsoniter.Marshal(layout)
+func (layout *LayoutDSL) Xgen(data map[string]interface{}, excludes map[string]bool, mapping *mapping.Mapping) (*LayoutDSL, error) {
+	clone, err := layout.Clone()
 	if err != nil {
 		return nil, err
 	}
 
-	err = jsoniter.Unmarshal(data, &res)
+	// layout.actions
+	if clone.Actions != nil && len(clone.Actions) > 0 {
+		clone.Actions = clone.Actions.Filter(excludes)
+	}
+
+	// layout.form.sections
+	if clone.Form != nil && clone.Form.Sections != nil {
+		sections := []SectionDSL{}
+		for _, section := range clone.Form.Sections {
+			new, err := section.Filter(excludes, mapping)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(new.Columns) > 0 {
+				sections = append(sections, new)
+			}
+		}
+		clone.Form.Sections = sections
+	}
+
+	return clone, nil
+}
+
+// Filter exclude filter
+func (section SectionDSL) Filter(excludes map[string]bool, mapping *mapping.Mapping) (SectionDSL, error) {
+	new := SectionDSL{Columns: []Column{}, Title: section.Title, Desc: section.Desc}
+	columns, err := section.filterColumns(section.Columns, excludes, mapping)
+	if err != nil {
+		return new, err
+	}
+	new.Columns = columns
+	return new, nil
+}
+
+func (section SectionDSL) filterColumns(columns []Column, excludes map[string]bool, mapping *mapping.Mapping) ([]Column, error) {
+
+	new := []Column{}
+	for i, column := range columns {
+
+		if column.Tabs != nil {
+			for j, tab := range column.Tabs {
+				tabColumns, err := tab.filterColumns(columns[i].Tabs[j].Columns, excludes, mapping)
+				if err != nil {
+					return nil, err
+				}
+				column.Tabs[j].Columns = tabColumns
+			}
+
+			new = append(new, column)
+			continue
+		}
+
+		id, has := mapping.Columns[column.Name]
+		if !has {
+			continue
+		}
+
+		if _, has := excludes[id]; has {
+			continue
+		}
+
+		new = append(new, column)
+	}
+	return new, nil
+}
+
+// Clone layout for output
+func (layout *LayoutDSL) Clone() (*LayoutDSL, error) {
+	new := LayoutDSL{}
+	bytes, err := jsoniter.Marshal(layout)
 	if err != nil {
 		return nil, err
 	}
-
-	return res, nil
+	err = jsoniter.Unmarshal(bytes, &new)
+	if err != nil {
+		return nil, err
+	}
+	return &new, nil
 }
