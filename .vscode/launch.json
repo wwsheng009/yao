@@ -11,7 +11,7 @@
             "mode": "auto",
             "program": "main.go",
             "args": ["start"],
-            "cwd": "/home/go/projects/yao/demos-v1.0/demo-app/"
+            "cwd": "/home/go/projects/yao/demos-v1.0/yao-dev-app/"
         },
         {
             "name": "Launch migrate",
@@ -19,7 +19,35 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "args": ["migrate","-a","/tmp/yao-app-test","-e","/tmp/yao-app-test/.env"]
+            "args": ["migrate"],
+            "cwd": "/home/go/projects/yao/demos-v1.0/yao-dev-app/"
+        },
+        {
+            "name": "Launch init",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "main.go",
+            "args": ["run","flows.app.menu"],
+            "cwd": "/home/go/projects/yao/demos-v1.0/yao-dev-app/"
+        },
+        {
+            "name": "Launch studio",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "main.go",
+            "args": ["studio","run","model.Create"],
+            "cwd": "/tmp/yaoapp/"
+        },
+        {
+            "name": "Launch yaoapp",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "main.go",
+            "args": ["start"],
+            "cwd": "/tmp/yaoapp/"
         }
     ]
 }

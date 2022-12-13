@@ -267,40 +267,52 @@ artifacts-macos: clean
 
 .PHONY: debug1
 debug1: clean
+	rm -rf dist/release
 	mkdir -p dist/release
+	rm -rf ./tmp
+
+#	Building XGEN v0.9
+	mkdir -p .tmp/xgen/v0.9/dist
+	echo "XGEN v0.9" > .tmp/xgen/v0.9/dist/index.html
+
 
 #	Building XGEN v1.0
-	# export NODE_ENV=development
-	# rm -f ../xgen-v1.0/pnpm-lock.yaml
-	# echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
-	# cd ../xgen-v1.0 && pnpm install && pnpm run build
+# 在集成之前，需要修改xgen的环境变量BASE=__yao_admin_root，如果是前端单独测试，设置BASE=yao，或是清空BASE设置
+# export NODE_ENV=production
+# git clone https://github.com/YaoApp/xgen.git ../xgen-v1.0
+# echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
+# rm -f ../xgen-v1.0/pnpm-lock.yaml
+# cd ../xgen-v1.0/packages/xgen && pnpm install && pnpm run build
+# cd ../xgen-v1.0/packages/setup  && pnpm install && pnpm run build
+# echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
+
+#	Checkout init
+	git clone https://github.com/YaoApp/yao-init.git .tmp/yao-init
+	rm -rf .tmp/yao-init/.git
+	rm -rf .tmp/yao-init/.gitignore
+	rm -rf .tmp/yao-init/LICENSE
+	rm -rf .tmp/yao-init/README.md
+	
 
 #	Packing
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
-# cp -r ../xgen-v0.9/dist .tmp/data/xgen/v0.9
-
-# 在集成之前，需要修改xgen的环境变量BASE=__yao_admin_root，如果是前端单独测试，设置BASE=yao，或是清空BASE设置
-# echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
-# cd ../xgen-v1.0/ && pnpm install && pnpm run build
+	cp -r ./yao .tmp/data/
+	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
-	cp -r yao .tmp/data/
+	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
+	cp -r .tmp/yao-init .tmp/data/init
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
-	rm -rf .tmp/data
+#	rm -rf .tmp/data
+#	rm -rf .tmp/xgen
 
-#	Packing
-# mkdir -p .tmp/data
-# # cp -r ui .tmp/data/ui
-# cp -r ../xgen/dist .tmp/data/ui
-# sed -ie "s/url(\//url(\/xiang\//g" .tmp/data/ui/icon/md_icon.css
-# cp -r yao .tmp/data/
-# go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
-# rm -rf .tmp/data
+
 #	Replace PRVERSION
 	sed -ie "s/const PRVERSION = \"DEV\"/const PRVERSION = \"${COMMIT}-${NOW}-debug\"/g" share/const.go
 
 #   Making artifacts
 	mkdir -p dist
+	rm -f dist/release/yao-debug
 	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
 	chmod +x  dist/release/yao-debug
 # 	Reset const 
