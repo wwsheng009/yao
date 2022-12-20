@@ -1,4 +1,4 @@
-package chart
+package dashboard
 
 import (
 	"fmt"
@@ -16,9 +16,9 @@ import (
 
 //
 // API:
-//   GET  /api/__yao/chart/:id/setting  					-> Default process: yao.chart.Xgen
-//   GET  /api/__yao/chart/:id/data 						-> Default process: yao.chart.Data $param.id :query
-//   GET  /api/__yao/chart/:id/component/:xpath/:method  	-> Default process: yao.chart.Component $param.id $param.xpath $param.method :query
+//   GET  /api/__yao/dashboard/:id/setting  					-> Default process: yao.dashboard.Xgen
+//   GET  /api/__yao/dashboard/:id/data 						-> Default process: yao.dashboard.Data $param.id :query
+//   GET  /api/__yao/dashboard/:id/component/:xpath/:method  	-> Default process: yao.dashboard.Component $param.id $param.xpath $param.method :query
 //
 // Process:
 // 	 yao.form.Setting Return the App DSL
@@ -31,14 +31,14 @@ import (
 //   after:data
 //
 
-// Charts the loaded chart widgets
-var Charts map[string]*DSL = map[string]*DSL{}
+// Dashboards the loaded dashboard widgets
+var Dashboards map[string]*DSL = map[string]*DSL{}
 
 // New create a new DSL
 func New(id string) *DSL {
 	return &DSL{
 		ID:     id,
-		Fields: &FieldsDSL{Chart: field.Columns{}, Filter: field.Filters{}},
+		Fields: &FieldsDSL{Dashboard: field.Columns{}, Filter: field.Filters{}},
 		CProps: field.CloudProps{},
 		Config: map[string]interface{}{},
 	}
@@ -55,7 +55,7 @@ func LoadAndExport(cfg config.Config) error {
 
 // Load load task
 func Load(cfg config.Config) error {
-	var root = filepath.Join(cfg.Root, "charts")
+	var root = filepath.Join(cfg.Root, "dashboards")
 	return LoadFrom(root, "")
 }
 
@@ -100,7 +100,7 @@ func LoadFrom(dir string, prefix string) error {
 			return
 		}
 
-		Charts[id] = dsl
+		Dashboards[id] = dsl
 	})
 
 	if len(messages) > 0 {
@@ -110,28 +110,28 @@ func LoadFrom(dir string, prefix string) error {
 	return err
 }
 
-// Get chart via process or id
-func Get(chart interface{}) (*DSL, error) {
+// Get dashboard via process or id
+func Get(dashboard interface{}) (*DSL, error) {
 	id := ""
-	switch chart.(type) {
+	switch dashboard.(type) {
 	case string:
-		id = chart.(string)
+		id = dashboard.(string)
 	case *gou.Process:
-		id = chart.(*gou.Process).ArgsString(0)
+		id = dashboard.(*gou.Process).ArgsString(0)
 	default:
-		return nil, fmt.Errorf("%v type does not support", chart)
+		return nil, fmt.Errorf("%v type does not support", dashboard)
 	}
 
-	t, has := Charts[id]
+	t, has := Dashboards[id]
 	if !has {
 		return nil, fmt.Errorf("%s does not exist", id)
 	}
 	return t, nil
 }
 
-// MustGet Get chart via process or id thow error
-func MustGet(chart interface{}) *DSL {
-	t, err := Get(chart)
+// MustGet Get dashboard via process or id thow error
+func MustGet(dashboard interface{}) *DSL {
+	t, err := Get(dashboard)
 	if err != nil {
 		exception.New(err.Error(), 400).Throw()
 	}
@@ -170,36 +170,48 @@ func (dsl *DSL) Xgen(data map[string]interface{}, excludes map[string]bool) (map
 	setting["name"] = dsl.Name
 	setting["fields"] = fields
 	setting["config"] = dsl.Config
+
+	onChange := map[string]interface{}{} // Hooks
 	for _, cProp := range dsl.CProps {
 		err := cProp.Replace(setting, func(cProp component.CloudPropsDSL) interface{} {
 			return map[string]interface{}{
-				"api":    fmt.Sprintf("/api/__yao/chart/%s%s", dsl.ID, cProp.Path()),
+				"api":    fmt.Sprintf("/api/__yao/dashboard/%s%s", dsl.ID, cProp.Path()),
 				"params": cProp.Query,
 			}
 		})
 		if err != nil {
 			return nil, err
 		}
-	}
 
+		// hooks
+		if cProp.Name == "on:change" {
+			field := strings.TrimPrefix(cProp.Xpath, "fields.dashboard.")
+			field = strings.TrimSuffix(field, ".view.props")
+			field = strings.TrimSuffix(field, ".edit.props")
+			onChange[field] = map[string]interface{}{
+				"api":    fmt.Sprintf("/api/__yao/dashboard/%s%s", dsl.ID, cProp.Path()),
+				"params": cProp.Query,
+			}
+		}
+	}
+	setting["hooks"] = map[string]interface{}{"onChange": onChange}
 	return setting, nil
 }
 
-// Actions get the chart actions
+// Actions get the dashboard actions
 func (dsl *DSL) Actions() []component.ActionsExport {
 
 	res := []component.ActionsExport{}
 
-	// layout.operation.actions
+	// layout.actions
 	if dsl.Layout != nil &&
-		dsl.Layout.Operation != nil &&
-		dsl.Layout.Operation.Actions != nil &&
-		len(dsl.Layout.Operation.Actions) > 0 {
+		dsl.Layout.Actions != nil &&
+		len(dsl.Layout.Actions) > 0 {
 
 		res = append(res, component.ActionsExport{
 			Type:    "operation",
-			Xpath:   "layout.operation.actions",
-			Actions: dsl.Layout.Operation.Actions,
+			Xpath:   "layout.actions",
+			Actions: dsl.Layout.Actions,
 		})
 	}
 
