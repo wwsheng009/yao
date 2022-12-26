@@ -22,7 +22,7 @@ require (
 	github.com/yaoapp/gou v0.0.0-20211120135538-e5387704eb03
 	github.com/yaoapp/kun v0.9.0
 	github.com/yaoapp/xun v0.9.0
-	golang.org/x/crypto v0.1.0
+	golang.org/x/crypto v0.4.0
 )
 
 require github.com/SAP/go-hdb v0.105.8 // indirect
@@ -101,10 +101,10 @@ require (
 	go.mongodb.org/mongo-driver v1.10.2 // indirect
 	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/net v0.3.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.1.0 // indirect
-	golang.org/x/text v0.4.0 // indirect
+	golang.org/x/sys v0.3.0 // indirect
+	golang.org/x/text v0.5.0 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 	google.golang.org/genproto v0.0.0-20220526192754-51939a95c655 // indirect
 	google.golang.org/grpc v1.46.2 // indirect
