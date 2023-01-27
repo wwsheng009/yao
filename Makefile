@@ -270,11 +270,13 @@ debug1: clean
 
 #	Building XGEN v1.0
 # 在集成之前，需要修改xgen的环境变量BASE=__yao_admin_root，如果是前端单独测试，设置BASE=yao，或是清空BASE设置
-# export NODE_ENV=production
+# 
 # git clone https://github.com/YaoApp/xgen.git ../xgen-v1.0
+# export NODE_ENV=production
 # echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
 # rm -f ../xgen-v1.0/pnpm-lock.yaml
 # cd ../xgen-v1.0/packages/xgen && pnpm install && pnpm run build
+# cd ../xgen-v1.0/packages/actionflow && pnpm install && pnpm run build
 # cd ../xgen-v1.0/packages/setup  && pnpm install && pnpm run build
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
