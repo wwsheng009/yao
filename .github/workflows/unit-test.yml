@@ -85,6 +85,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: ${{ env.REPO_GOU }}
+          ref: v0.10.2-locked
           path: gou
 
       - name: Checkout V8Go
@@ -98,6 +99,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: yaoapp/yao-dev-app
+          ref: fef08943afc6ff91ed7a9a44559118ad40074e6b
           path: app
 
       - name: Move Kun, Xun, Gou, V8Go
