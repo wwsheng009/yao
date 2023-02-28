@@ -219,7 +219,7 @@
       "validations": [
         {
           "method": "typeof",
-          "args": ["integer"],
+          "args": ["string"],
           "message": "{{input}}类型错误, {{label}}应该为数字"
         },
         {
