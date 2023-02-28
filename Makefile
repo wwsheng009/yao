@@ -309,6 +309,8 @@ debug1: clean
 	rm -f dist/release/yao-debug
 	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
 	chmod +x  dist/release/yao-debug
+	mv dist/release/yao-debug "${GOPATH}/bin/"
+	
 # 	Reset const 
 	cp -f share/const.goe share/const.go
 	rm -f share/const.goe
