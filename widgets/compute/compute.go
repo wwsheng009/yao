@@ -101,7 +101,7 @@ func (c *Computable) editRow(process *gou.Process, res map[string]interface{}, g
 			}
 
 			data.Set("id", id)
-			data.Set("value", res[key])
+			data.Set("value", row[key])
 			data.Set("path", fmt.Sprintf("%s.%s", path, unit.Name))
 			data.Merge(any.MapOf(field.Edit.Map()).MapStrAny.Dot())
 			new, err := field.Edit.Compute.Value(data, process.Sid, process.Global)
@@ -109,7 +109,8 @@ func (c *Computable) editRow(process *gou.Process, res map[string]interface{}, g
 				messages = append(messages, fmt.Sprintf("%s.%s bind: %s, value: %v error: %s", path, unit.Name, key, res[key], err.Error()))
 				continue
 			}
-			res[key] = new
+			// res[key] = new
+			setData(res, key, new)
 		}
 	}
 
@@ -242,7 +243,7 @@ func (c *Computable) viewRow(name string, process *gou.Process, res map[string]i
 			continue
 		}
 
-		data.Set("value", res[key])
+		data.Set("value", row[key])
 		data.Set("id", id)
 		data.Set("path", fmt.Sprintf("%s.%s", path, unit.Name))
 		data.Merge(any.MapOf(field.View.Map()).MapStrAny.Dot())
@@ -252,7 +253,8 @@ func (c *Computable) viewRow(name string, process *gou.Process, res map[string]i
 			messages = append(messages, fmt.Sprintf("%s.%s bind: %s, value: %v error: %s", path, unit.Name, key, res[key], err.Error()))
 			continue
 		}
-		res[key] = new
+		// res[key] = new
+		setData(res, key, new)
 	}
 
 	if len(messages) > 0 {
@@ -265,4 +267,26 @@ func (c *Computable) viewRow(name string, process *gou.Process, res map[string]i
 // ComputeFilter filter
 func (c *Computable) ComputeFilter(name string, process *gou.Process, args []interface{}, getFilter func(string) (*field.FilterDSL, string, string, error)) error {
 	return nil
+}
+
+// 处理关联子对象
+func setData(res map[string]interface{}, key string, value interface{}) {
+	if !strings.Contains(key, ".") {
+		res[key] = value
+		return
+	}
+
+	keys := strings.Split(key, ".")
+	tail := strings.Join(keys[1:], ".")
+
+	v, ok := res[keys[0]].(map[string]interface{})
+	if ok {
+		setData(v, tail, value)
+		return
+	}
+	v1, ok := res[keys[0]].(maps.MapStrAny)
+	if ok {
+		v1.SetUnDot(tail, value)
+		return
+	}
 }
