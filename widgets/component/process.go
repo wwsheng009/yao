@@ -76,6 +76,29 @@ func processSelectOptions(process *gou.Process) interface{} {
 			wheres = append(wheres, where)
 		}
 		break
+	case []interface{}:
+		for _, line := range input {
+			if data, ok := line.(string); ok {
+				where := gou.QueryWhere{}
+				err := jsoniter.Unmarshal([]byte(data), &where)
+				if err != nil {
+					exception.New("query.wheres error %s", 400, err.Error()).Throw()
+				}
+				wheres = append(wheres, where)
+			} else {
+				data, err := jsoniter.Marshal(line)
+				if err != nil {
+					exception.New("query.wheres error: %s", 400, err).Throw()
+				}
+				where := gou.QueryWhere{}
+				err = jsoniter.Unmarshal([]byte(data), &where)
+				if err != nil {
+					exception.New("query.wheres error %s", 400, err.Error()).Throw()
+				}
+				wheres = append(wheres, where)
+			}
+		}
+
 	}
 
 	if data, ok := query.Get("wheres").(string); ok {
