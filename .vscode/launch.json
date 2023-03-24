@@ -11,16 +11,17 @@
       "mode": "auto",
       "program": "main.go",
       "args": ["start"],
-      "cwd": "/data/projects/yao/demos-v1.0/yao-chatgpt"
+      "cwd": "/data/projects/yao/demos-v1.0/yao-wms"
     },
     {
-      "name": "/tmp/saphanatest2",
+      "name": "test2",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "flows.utils.wrap", "hello"],
-      "cwd": "/data/projects/yao/demos-v1.0/vben-yao-admin/"
+      "dlvFlags": ["--log"],
+      "args": ["run", "scripts.category.Test"],
+      "cwd": "/data/projects/yao/demos-v1.0/yao-wms"
     },
     {
       "name": "Launch migrate",
@@ -72,13 +73,13 @@
       "cwd": "/tmp/saphanatest2"
     },
     {
-      "name": "Launch yaoapp",
+      "name": "print hash",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["start"],
-      "cwd": "/tmp/yaoapp/"
+      "args": ["run", "scripts.print.excute"],
+      "cwd": "/data/projects/yao/demos-v1.0/Xgen-dev-app-test/"
     }
   ]
 }

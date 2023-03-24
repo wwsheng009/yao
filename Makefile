@@ -281,7 +281,8 @@ debug1: clean
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
 #	Checkout init
-	git clone https://github.com/YaoApp/yao-init.git .tmp/yao-init
+	# git clone https://github.com/YaoApp/yao-init.git .tmp/yao-init
+	cp -r /data/projects/yao/demos-v1.0/yao-docs/0.10.3/yao-init .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
 	rm -rf .tmp/yao-init/.gitignore
 	rm -rf .tmp/yao-init/LICENSE
@@ -309,7 +310,7 @@ debug1: clean
 	rm -f dist/release/yao-debug
 	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
 	chmod +x  dist/release/yao-debug
-	mv dist/release/yao-debug "${GOPATH}/bin/"
+	mv dist/release/yao-debug "${GOPATH}/bin/yao"
 	
 # 	Reset const 
 	cp -f share/const.goe share/const.go
