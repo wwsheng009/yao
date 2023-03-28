@@ -281,8 +281,8 @@ debug1: clean
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
 #	Checkout init
-	# git clone https://github.com/YaoApp/yao-init.git .tmp/yao-init
-	cp -r /data/projects/yao/demos-v1.0/yao-docs/0.10.3/yao-init .tmp/yao-init
+	# git clone https://github.com/YaoApp/yao-init-0.10.3.git .tmp/yao-init
+	cp -r /data/projects/yao/demos-v1.0/yao-init-0.10.3 .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
 	rm -rf .tmp/yao-init/.gitignore
 	rm -rf .tmp/yao-init/LICENSE
