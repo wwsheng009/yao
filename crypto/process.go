@@ -6,12 +6,9 @@ import (
 )
 
 func init() {
-	process.Register("yao.crypto.AESBase64Encode", processBase64AESEncode)
-	process.Register("yao.crypto.AESBase64Decode", processBase64AESDecode)
-	process.Register("yao.crypto.WeworkDecrypt", processWeworkDecrypt)
 	process.Register("yao.crypto.hash", ProcessHash) // deprecated → crypto.Hash
 	process.Register("yao.crypto.hmac", ProcessHmac) // deprecated → crypto.Hash
-
+	process.Register("yao.crypto.WeworkDecrypt", processWeworkDecrypt)
 	process.Alias("yao.crypto.hash", "crypto.Hash")
 	process.Alias("yao.crypto.hmac", "crypto.Hmac")
 }
@@ -63,30 +60,7 @@ func ProcessHmac(process *process.Process) interface{} {
 	}
 	return res
 }
-
-func processBase64AESEncode(process *gou.Process) interface{} {
-	process.ValidateArgNums(2)
-	key := process.ArgsString(0)
-	value := process.ArgsString(1)
-	res, err := Base64AESEncode([]byte(key), value)
-	if err != nil {
-		exception.New("error: %s value: %s", 400, err, value).Throw()
-	}
-	return res
-}
-
-func processBase64AESDecode(process *gou.Process) interface{} {
-	process.ValidateArgNums(2)
-	key := process.ArgsString(0)
-	value := process.ArgsString(1)
-	res, err := Base64AESDecode([]byte(key), value)
-	if err != nil {
-		exception.New("error: %s value: %s", 400, err, value).Throw()
-	}
-	return res
-}
-
-func processWeworkDecrypt(process *gou.Process) interface{} {
+func processWeworkDecrypt(process *process.Process) interface{} {
 
 	process.ValidateArgNums(2)
 	encodingAESKey := process.ArgsString(0)

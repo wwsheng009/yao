@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yaoapp/gou"
+	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/maps"
 )
 
@@ -28,7 +28,7 @@ func TestWeworkProcess(t *testing.T) {
 	encodingAESKey := "RhH75tStMzrH8bMxkTw8BrBfr0ZWULL5himUaRWCs7H"
 
 	args := []interface{}{encodingAESKey, msgEncrypt}
-	res := gou.NewProcess("yao.crypto.WeworkDecrypt", args...).Run().(map[string]interface{})
+	res := process.New("yao.crypto.WeworkDecrypt", args...).Run().(map[string]interface{})
 
 	assert.Equal(t, "8446271472585838141", res["message"])
 	assert.Equal(t, "wwe146299c731e6301", res["receiveid"])

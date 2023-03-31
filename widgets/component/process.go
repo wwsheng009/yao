@@ -80,7 +80,7 @@ func processSelectOptions(process *process.Process) interface{} {
 	case []interface{}:
 		for _, line := range input {
 			if data, ok := line.(string); ok {
-				where := gou.QueryWhere{}
+				where := model.QueryWhere{}
 				err := jsoniter.Unmarshal([]byte(data), &where)
 				if err != nil {
 					exception.New("query.wheres error %s", 400, err.Error()).Throw()
@@ -91,7 +91,7 @@ func processSelectOptions(process *process.Process) interface{} {
 				if err != nil {
 					exception.New("query.wheres error: %s", 400, err).Throw()
 				}
-				where := gou.QueryWhere{}
+				where := model.QueryWhere{}
 				err = jsoniter.Unmarshal([]byte(data), &where)
 				if err != nil {
 					exception.New("query.wheres error %s", 400, err.Error()).Throw()
@@ -104,7 +104,7 @@ func processSelectOptions(process *process.Process) interface{} {
 		if err != nil {
 			exception.New("query.wheres error: %s", 400, err).Throw()
 		}
-		where := gou.QueryWhere{}
+		where := model.QueryWhere{}
 		err = jsoniter.Unmarshal([]byte(data), &where)
 		if err != nil {
 			exception.New("query.wheres error %s", 400, err.Error()).Throw()
