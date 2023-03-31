@@ -11,7 +11,7 @@
       "mode": "auto",
       "program": "main.go",
       "args": ["start"],
-      "cwd": "/data/projects/yao/demos-v1.0/yao-wms"
+      "cwd": "/data/projects/yao/demos-v1.0/Xgen-dev-app-test/"
     },
     {
       "name": "test2",
@@ -64,13 +64,13 @@
       "cwd": "/home/go/projects/yao/demos-v1.0/xgen-dev-app/"
     },
     {
-      "name": "Launch studio",
+      "name": "schema",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["studio", "run", "schema.GetTable", "SAPHANADB.MAKT"],
-      "cwd": "/tmp/saphanatest2"
+      "args": ["run", "schemas.default.TableGet", "cms_help"],
+      "cwd": "/data/projects/yao/demos-v1.0/yao-admin/"
     },
     {
       "name": "print hash",
