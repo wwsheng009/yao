@@ -13,6 +13,7 @@ import (
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/connector"
 	"github.com/yaoapp/gou/fs"
+	"github.com/yaoapp/gou/plugin"
 	"github.com/yaoapp/gou/schedule"
 	"github.com/yaoapp/gou/server/http"
 	"github.com/yaoapp/gou/store"
@@ -24,6 +25,7 @@ import (
 	"github.com/yaoapp/yao/service"
 	"github.com/yaoapp/yao/setup"
 	"github.com/yaoapp/yao/share"
+	"github.com/yaoapp/yao/studio"
 )
 
 var startDebug = false
@@ -34,6 +36,9 @@ var startCmd = &cobra.Command{
 	Short: L("Start Engine"),
 	Long:  L("Start Engine"),
 	Run: func(cmd *cobra.Command, args []string) {
+
+		defer share.SessionStop()
+		defer plugin.KillAll()
 
 		// Setup
 		if setup.Check() {
@@ -111,14 +116,14 @@ var startCmd = &cobra.Command{
 		if mode == "development" {
 
 			// Start Studio Server
-			// go func() {
-			// 	err := studio.Start(config.Conf)
-			// 	if err != nil {
-			// 		fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
-			// 		os.Exit(2)
-			// 	}
-			// }()
-			// defer studio.Stop()
+			go func() {
+				err := studio.Start(config.Conf)
+				if err != nil {
+					fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
+					os.Exit(2)
+				}
+			}()
+			defer studio.Stop()
 
 			printApis(false)
 			printTasks(false)
@@ -129,13 +134,15 @@ var startCmd = &cobra.Command{
 
 		}
 
-		// start watching
-		if mode == "development" && !startDisableWatching {
-			// Watching
-			fmt.Println(color.WhiteString("\n---------------------------------"))
-			fmt.Println(color.WhiteString(L("Watching")))
-			fmt.Println(color.WhiteString("---------------------------------"))
-			// service.Watch(config.Conf)
+		srv, err := service.Start(config.Conf)
+		defer func() {
+			service.Stop(srv)
+			fmt.Println(color.GreenString(L("✨EXITED✨")))
+		}()
+
+		if err != nil {
+			fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
+			os.Exit(1)
 		}
 
 		// print the messages under the production mode
@@ -147,11 +154,15 @@ var startCmd = &cobra.Command{
 			printStores(true)
 		}
 
-		srv, err := service.Start(config.Conf)
-		defer func() {
-			service.Stop(srv)
-			fmt.Println(color.GreenString(L("✨EXITED✨")))
-		}()
+		// start watching
+		watchDone := make(chan uint8, 1)
+		if mode == "development" && !startDisableWatching {
+			// Watching
+			fmt.Println(color.WhiteString("\n---------------------------------"))
+			fmt.Println(color.WhiteString(L("Watching")))
+			fmt.Println(color.WhiteString("---------------------------------"))
+			go service.Watch(srv, watchDone)
+		}
 
 		for {
 			select {
@@ -170,6 +181,7 @@ var startCmd = &cobra.Command{
 				}
 
 			case <-interrupt:
+				watchDone <- 1
 				return
 			}
 		}

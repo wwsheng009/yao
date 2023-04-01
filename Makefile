@@ -9,7 +9,7 @@ COMMIT := $(shell git log | head -n 1 | awk '{print substr($$2, 0, 12)}')
 NOW := $(shell date +"%FT%T%z")
 
 # ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-TESTFOLDER := $(shell $(GO) list ./... | grep -E 'api|model|flow|script|fs|i18n|connector|query|plugin|cert|crypto|task|schedule|runtime|helper|utils|widget|importer|store|widgets|engine|service' | grep -vE 'examples|tests*|config')
+TESTFOLDER := $(shell $(GO) list ./... | grep -vE 'examples|tests|share*')
 TESTTAGS ?= ""
 
 # TESTWIDGETS := $(shell $(GO) list ./widgets/...)
@@ -154,7 +154,6 @@ artifacts-linux: clean
 #	Packing
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
-	cp -r ../xgen-v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r ../yao-init .tmp/data/init
@@ -167,14 +166,14 @@ artifacts-linux: clean
 
 #   Making artifacts
 	mkdir -p dist
-	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=amd64 go build -v -o dist/yao-${VERSION}-linux-amd64
-	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ go build -v -o dist/yao-${VERSION}-linux-arm64
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=amd64 go build -v -o dist/yao-${VERSION}-dev-linux-amd64
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ go build -v -o dist/yao-${VERSION}-dev-linux-arm64
 
 	mkdir -p dist/release
 	mv dist/yao-*-* dist/release/
 	chmod +x dist/release/yao-*-*
 	ls -l dist/release/
-	dist/release/yao-${VERSION}-linux-amd64 version
+	dist/release/yao-${VERSION}-dev-linux-amd64 version
 
 # 	Reset const 
 #	cp -f share/const.goe share/const.go
@@ -204,7 +203,6 @@ artifacts-macos: clean
 #	Packing
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
-	cp -r ../xgen-v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r ../yao-init .tmp/data/init
@@ -217,14 +215,14 @@ artifacts-macos: clean
 
 #   Making artifacts
 	mkdir -p dist
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -v -o dist/yao-${VERSION}-darwin-amd64
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -v -o dist/yao-${VERSION}-darwin-arm64
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -v -o dist/yao-${VERSION}-dev-darwin-amd64
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -v -o dist/yao-${VERSION}-dev-darwin-arm64
 
 	mkdir -p dist/release
 	mv dist/yao-*-* dist/release/
 	chmod +x dist/release/yao-*-*
 	ls -l dist/release/
-	dist/release/yao-${VERSION}-darwin-amd64 version
+	dist/release/yao-${VERSION}-dev-darwin-amd64 version
 
 .PHONY: debug1
 debug1: clean

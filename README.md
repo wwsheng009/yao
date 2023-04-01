@@ -14,10 +14,10 @@
   <a aria-label="twitter" href="https://twitter.com/YaoApp" target="_blank">
     Twitter
   </a>
-  ·
+  <!-- ·
   <a aria-label="discord" href="https://discord.gg/nsKmCXwvxU" target="_blank">
     Discord
-  </a>
+  </a> -->
 </p>
 
 <p align="center">
