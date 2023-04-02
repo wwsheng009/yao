@@ -22,10 +22,12 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
+	ischedule "github.com/yaoapp/yao/schedule"
 	"github.com/yaoapp/yao/service"
 	"github.com/yaoapp/yao/setup"
 	"github.com/yaoapp/yao/share"
 	"github.com/yaoapp/yao/studio"
+	itask "github.com/yaoapp/yao/task"
 )
 
 var startDebug = false
@@ -68,7 +70,7 @@ var startCmd = &cobra.Command{
 		// load the application engine
 		err := engine.Load(config.Conf)
 		if err != nil {
-			fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
+			fmt.Println(color.RedString(L("Load: %s"), err.Error()))
 			os.Exit(1)
 		}
 
@@ -80,7 +82,7 @@ var startCmd = &cobra.Command{
 		// variables for the service
 		fs, err := fs.Get("system")
 		if err != nil {
-			fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
+			fmt.Println(color.RedString(L("FileSystem: %s"), err.Error()))
 			os.Exit(1)
 		}
 
@@ -119,7 +121,7 @@ var startCmd = &cobra.Command{
 			go func() {
 				err := studio.Start(config.Conf)
 				if err != nil {
-					fmt.Println(color.RedString(L("Fatal: %s"), err.Error()))
+					fmt.Println(color.RedString(L("Studio: %s"), err.Error()))
 					os.Exit(2)
 				}
 			}()
@@ -134,6 +136,15 @@ var startCmd = &cobra.Command{
 
 		}
 
+		// Start Tasks
+		itask.Start()
+		defer itask.Stop()
+
+		// Start Schedules
+		ischedule.Start()
+		defer ischedule.Stop()
+
+		// Start HTTP Server
 		srv, err := service.Start(config.Conf)
 		defer func() {
 			service.Stop(srv)
@@ -145,23 +156,22 @@ var startCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// print the messages under the production mode
+		// Start watching
+		watchDone := make(chan uint8, 1)
+		if mode == "development" && !startDisableWatching {
+			// fmt.Println(color.WhiteString("\n---------------------------------"))
+			// fmt.Println(color.WhiteString(L("Watching")))
+			// fmt.Println(color.WhiteString("---------------------------------"))
+			go service.Watch(srv, watchDone)
+		}
+
+		// Print the messages under the production mode
 		if mode == "production" {
 			printApis(true)
 			printTasks(true)
 			printSchedules(true)
 			printConnectors(true)
 			printStores(true)
-		}
-
-		// start watching
-		watchDone := make(chan uint8, 1)
-		if mode == "development" && !startDisableWatching {
-			// Watching
-			fmt.Println(color.WhiteString("\n---------------------------------"))
-			fmt.Println(color.WhiteString(L("Watching")))
-			fmt.Println(color.WhiteString("---------------------------------"))
-			go service.Watch(srv, watchDone)
 		}
 
 		for {

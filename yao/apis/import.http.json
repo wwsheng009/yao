@@ -1,7 +1,7 @@
 {
   "name": "数据导入接口",
   "version": "1.0.0",
-  "description": "数据分析接口API",
+  "description": "数据分析接口API(***即将移除***)",
   "group": "xiang/import",
   "guard": "bearer-jwt",
   "paths": [
