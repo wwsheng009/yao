@@ -50,7 +50,6 @@ func Load(cfg config.Config) (err error) {
 	err = loadApp(cfg.AppSource)
 	if err != nil {
 		printErr(cfg.Mode, "Load Application", err)
-		panic(err)
 	}
 
 	// Load Certs
@@ -278,7 +277,7 @@ func loadApp(root string) error {
 
 func printErr(mode, widget string, err error) {
 	message := fmt.Sprintf("[%s] %s", widget, err.Error())
-	if !strings.Contains(message, "does not exists") && mode == "development" {
+	if !strings.Contains(message, "does not exists") && !strings.Contains(message, "no such file or directory") && mode == "development" {
 		color.Red(message)
 	}
 }
