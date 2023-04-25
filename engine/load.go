@@ -13,11 +13,13 @@ import (
 	"github.com/yaoapp/yao/cert"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/connector"
+	"github.com/yaoapp/yao/data"
 	"github.com/yaoapp/yao/flow"
 	"github.com/yaoapp/yao/fs"
 	"github.com/yaoapp/yao/i18n"
 	"github.com/yaoapp/yao/importer"
 	"github.com/yaoapp/yao/model"
+	"github.com/yaoapp/yao/pack"
 	"github.com/yaoapp/yao/plugin"
 	"github.com/yaoapp/yao/query"
 	"github.com/yaoapp/yao/runtime"
@@ -225,28 +227,49 @@ func loadApp(root string) error {
 	var err error
 	var app application.Application
 
-	if root == "bin:application.pkg" {
-		app, err = application.OpenFromBin(root, &share.Pack{}) // Load app from Bin
+	if share.BUILDIN {
+
+		file, err := os.Executable()
+		if err != nil {
+			return err
+		}
+
+		// Load from cache
+		app, err := application.OpenFromYazCache(file, pack.Cipher)
+
+		if err != nil {
+
+			// load from bin
+			reader, err := data.ReadApp()
+			if err != nil {
+				return err
+			}
+
+			app, err = application.OpenFromYaz(reader, file, pack.Cipher) // Load app from Bin
+			if err != nil {
+				return err
+			}
+		}
+
+		application.Load(app)
+		config.Init() // Reset Config
+		data.RemoveApp()
+
+	} else if strings.HasSuffix(root, ".yaz") {
+		app, err = application.OpenFromYazFile(root, pack.Cipher) // Load app from .yaz file
 		if err != nil {
 			return err
 		}
 		application.Load(app)
+		config.Init() // Reset Config
 
-	} else if strings.HasSuffix(root, ".pkg") {
-
-		app, err = application.OpenFromPkg(root, &share.Pack{}) // Load app from .pkg file
+	} else {
+		app, err = application.OpenFromDisk(root) // Load app from Disk
 		if err != nil {
 			return err
 		}
 		application.Load(app)
 	}
-
-	app, err = application.OpenFromDisk(root) // Load app from Disk
-	if err != nil {
-		return err
-	}
-
-	application.Load(app)
 
 	var info []byte
 
