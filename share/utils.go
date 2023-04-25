@@ -45,10 +45,10 @@ func File(id string, ext string) string {
 
 // SpecName 解析名称  root: "/tests/apis"  file: "/tests/apis/foo/bar.http.json"
 func SpecName(root string, file string) string {
-	filename := strings.TrimPrefix(file, root+"/") // "foo/bar.http.json"
-	namer := strings.Split(filename, ".")          // ["foo/bar", "http", "json"]
-	nametypes := strings.Split(namer[0], "/")      // ["foo", "bar"]
-	name := strings.Join(nametypes, ".")           // "foo.bar"
+	filename := strings.TrimPrefix(file, root+string(os.PathSeparator)) // "foo/bar.http.json"
+	namer := strings.Split(filename, ".")                               // ["foo/bar", "http", "json"]
+	nametypes := strings.Split(namer[0], string(os.PathSeparator))      // ["foo", "bar"]
+	name := strings.Join(nametypes, ".")                                // "foo.bar"
 	return name
 }
 
