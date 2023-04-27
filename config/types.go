@@ -52,8 +52,8 @@ type Session struct {
 
 // Runtime Config
 type Runtime struct {
-	MinSize           int    `json:"minSize,omitempty" env:"YAO_RUNTIME_MIN" envDefault:"2"`                              // the number of V8 VM when runtime start. max value is 100, the default value is 2
-	MaxSize           int    `json:"maxSize,omitempty" env:"YAO_RUNTIME_MAX" envDefault:"5"`                              // the maximum of V8 VM should be smaller than minSize, the default value is 10
+	MinSize           int    `json:"minSize,omitempty" env:"YAO_RUNTIME_MIN" envDefault:"50"`                             // the number of V8 VM when runtime start. max value is 100, the default value is 2
+	MaxSize           int    `json:"maxSize,omitempty" env:"YAO_RUNTIME_MAX" envDefault:"100"`                            // the maximum of V8 VM should be smaller than minSize, the default value is 10
 	HeapSizeLimit     uint64 `json:"heapSizeLimit,omitempty" env:"YAO_RUNTIME_HEAP_LIMIT" envDefault:"1518338048"`        // the isolate heap size limit should be smaller than 1.5G, and the default value is 1518338048 (1.5G)
 	HeapSizeRelease   uint64 `json:"heapSizeRelease,omitempty" env:"YAO_RUNTIME_HEAP_RELEASE" envDefault:"52428800"`      // the isolate will be re-created when reaching this value, and the default value is 52428800 (50M)
 	HeapAvailableSize uint64 `json:"heapAvailableSize,omitempty" env:"YAO_RUNTIME_HEAP_AVAILABLE" envDefault:"524288000"` // the isolate will be re-created when the available size is smaller than this value, and the default value is 524288000 (500M)
