@@ -22,6 +22,8 @@ rem cd ../xgen-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
 rem echo BASE=yao > ../xgen-v1.0/packages/xgen/.env
 
 rem Checkout init
+rem del /s /q .tmp\yao-init
+rem rmdir /s /q .tmp\yao-init
 rem git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp\yao-init
 rem del /s /q .tmp\yao-init\.git
 rem del /s /q .tmp\yao-init\.gitignore
@@ -48,6 +50,8 @@ rem Making artifacts
 mkdir dist
 rem del /q dist\release\yao-debug.exe
 set CGO_ENABLED=1
+set GOARCH=amd64
+set GOOS=windows
 go build -v -o dist\release\yao-debug.exe
 
 del /Q %GOPATH%\bin\yao-dev.exe
