@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -350,7 +351,7 @@ func printApis(silent bool) {
 			}
 			log.Info("[API] %s(%d)", api.ID, len(api.HTTP.Paths))
 			for _, p := range api.HTTP.Paths {
-				log.Info("%s %s %s", p.Method, filepath.Join("/api", api.HTTP.Group, p.Path), p.Process)
+				log.Info("%s %s %s", p.Method, path.Join("/api", api.HTTP.Group, p.Path), p.Process)
 			}
 		}
 		for name, upgrader := range websocket.Upgraders { // WebSocket
@@ -377,7 +378,7 @@ func printApis(silent bool) {
 		for _, p := range api.HTTP.Paths {
 			fmt.Println(
 				colorMehtod(p.Method),
-				color.WhiteString(filepath.Join("/api", api.HTTP.Group, p.Path)),
+				color.WhiteString(path.Join("/api", api.HTTP.Group, p.Path)),
 				"\tprocess:", p.Process)
 		}
 	}
@@ -387,7 +388,7 @@ func printApis(silent bool) {
 		for name, upgrader := range websocket.Upgraders { // WebSocket
 			fmt.Println(
 				colorMehtod("GET"),
-				color.WhiteString(filepath.Join("/websocket", name)),
+				color.WhiteString(path.Join("/websocket", name)),
 				"\tprocess:", upgrader.Process)
 		}
 	}
