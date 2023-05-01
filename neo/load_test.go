@@ -1,4 +1,4 @@
-package aigc
+package neo
 
 import (
 	"testing"
@@ -12,17 +12,13 @@ func TestLoad(t *testing.T) {
 	test.Prepare(t, config.Conf)
 	defer test.Clean()
 
-	Load(config.Conf)
+	err := Load(config.Conf)
+	if err != nil {
+		t.Fatal(err)
+	}
 	check(t)
 }
 
 func check(t *testing.T) {
-	ids := map[string]bool{}
-	for id := range AIGCs {
-		ids[id] = true
-	}
-
-	assert.True(t, ids["translate"])
-	assert.True(t, ids["draw"])
-	assert.GreaterOrEqual(t, len(Autopilots), 2)
+	assert.NotNil(t, Neo)
 }
