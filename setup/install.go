@@ -152,8 +152,8 @@ func makeService(root string, host string, port string, studioPort string, lang 
 func makeDB(root string, option map[string]string) error {
 
 	driver, dsn, err := getDSN(option)
-	if driver != "mysql" && driver != "sqlite3" {
-		return fmt.Errorf("数据库驱动应该为: mysql/sqlite3")
+	if driver != "mysql" && driver != "sqlite3" && driver != "postgres" && driver != "hdb" {
+		return fmt.Errorf("数据库驱动应该为: mysql/sqlite3/postgres/hdb")
 	}
 
 	file := filepath.Join(root, ".env")

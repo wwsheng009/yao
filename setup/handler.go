@@ -191,6 +191,25 @@ func getDBOption(payload map[string]map[string]string) (map[string]string, error
 		dbOption["user"] = db["option.host.user"]
 		dbOption["pass"] = db["option.host.pass"]
 		return dbOption, nil
+	case "postgres":
+		dbOption["type"] = "postgres"
+		dbOption["db"] = db["option.db"]
+		dbOption["host"] = db["option.host.host"]
+		dbOption["port"] = db["option.host.port"]
+		dbOption["user"] = db["option.host.user"]
+		dbOption["pass"] = db["option.host.pass"]
+		dbOption["schema"] = db["option.host.schema"]
+		dbOption["sslmode"] = db["option.host.sslmode"]
+		return dbOption, nil
+	case "hdb":
+		dbOption["type"] = "hdb"
+		dbOption["db"] = db["option.db"]
+		dbOption["host"] = db["option.host.host"]
+		dbOption["port"] = db["option.host.port"]
+		dbOption["user"] = db["option.host.user"]
+		dbOption["pass"] = db["option.host.pass"]
+		dbOption["schema"] = db["option.host.schema"]
+		return dbOption, nil
 	}
 
 	return nil, fmt.Errorf("数据库驱动暂不支持")
@@ -251,6 +270,72 @@ func getDSN(dbOption map[string]string) (string, string, error) {
 		}
 
 		return "mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, db), nil
+	case "postgres":
+
+		db := "yao"
+		if v, has := dbOption["db"]; has {
+			db = v
+		}
+
+		host := "127.0.0.1"
+		if v, has := dbOption["host"]; has {
+			host = v
+		}
+
+		port := "5096"
+		if v, has := dbOption["port"]; has {
+			port = v
+		}
+
+		user := "root"
+		if v, has := dbOption["user"]; has {
+			user = v
+		}
+
+		pass := ""
+		if v, has := dbOption["pass"]; has {
+			pass = v
+		}
+		schema := "public"
+		if v, has := dbOption["schema"]; has {
+			schema = v
+		}
+		sslmode := "disable"
+		if v, has := dbOption["sslmode"]; has {
+			sslmode = v
+		}
+		return "postgres", fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&search_path=%s", user, pass, host, port, db, sslmode, schema), nil
+	case "hdb":
+
+		db := "yao"
+		if v, has := dbOption["db"]; has {
+			db = v
+		}
+
+		host := "127.0.0.1"
+		if v, has := dbOption["host"]; has {
+			host = v
+		}
+
+		port := "5096"
+		if v, has := dbOption["port"]; has {
+			port = v
+		}
+
+		user := "root"
+		if v, has := dbOption["user"]; has {
+			user = v
+		}
+
+		pass := ""
+		if v, has := dbOption["pass"]; has {
+			pass = v
+		}
+		schema := ""
+		if v, has := dbOption["schema"]; has {
+			schema = v
+		}
+		return "hdb", fmt.Sprintf("hdb://%s:%s@%s:%s/%s?defaultSchema=%s", user, pass, host, port, db, schema), nil
 	}
 
 	return "", "", fmt.Errorf("driver does not support")
