@@ -16,9 +16,11 @@ rem Building XGEN v1.0
 rem 在集成之前，需要修改xgen的环境变量BASE=__yao_admin_root，如果是前端单独测试，设置BASE=yao，或是清空BASE设置
 rem
 rem git clone git@github.com:wwsheng009/xgen.git ../xgen-v1.0
-rem set NODE_ENV=production
+
 rem echo BASE=__yao_admin_root > ../xgen-v1.0/packages/xgen/.env
-rem cd ../xgen-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
+rem cd ../xgen-v1.0 && pnpm install --no-frozen-lockfile
+rem set NODE_ENV=production
+rem pnpm run build
 rem echo BASE=yao > ../xgen-v1.0/packages/xgen/.env
 
 rem Checkout init
