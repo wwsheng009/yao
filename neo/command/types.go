@@ -5,14 +5,14 @@ import (
 
 	"github.com/yaoapp/yao/aigc"
 	"github.com/yaoapp/yao/neo/command/driver"
+	"github.com/yaoapp/yao/neo/command/query"
 )
 
 // Request the command request
 type Request struct {
-	id       string
-	sid      string
-	ctx      Context
-	messages []map[string]interface{}
+	id  string
+	sid string
+	ctx Context
 	*Command
 }
 
@@ -66,13 +66,13 @@ type Optional struct {
 type Context struct {
 	Sid             string `json:"-" yaml:"-"`
 	Stack           string `json:"stack,omitempty"`
-	Path            string `json:"path,omitempty"`
+	Path            string `json:"pathname,omitempty"`
 	context.Context `json:"-" yaml:"-"`
 }
 
 // Store the command driver
 type Store interface {
-	Match(query driver.Query, content string) (string, error)
+	Match(query query.Param, content string) (string, error)
 	Set(id string, cmd driver.Command) error
 	Get(id string) (driver.Command, bool)
 	Del(id string)

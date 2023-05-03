@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/neo/command/query"
 	"github.com/yaoapp/yao/test"
 )
 
@@ -51,13 +52,13 @@ func TestMemoryMatch(t *testing.T) {
 	defer test.Clean()
 
 	mem := prepare(t)
-	id, err := mem.Match(Query{}, "Generate table test data")
+	id, err := mem.Match(query.Param{Stack: "Table.Page.pet"}, "Generate table test data")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "table.data", id)
 
-	id, err = mem.Match(Query{Stack: "Form"}, "Generate table test data")
+	id, err = mem.Match(query.Param{Stack: "Form.Page.pet", Path: "/Form/pet"}, "Generate table test data")
 	assert.ErrorContains(t, err, "no related command found")
 }
 
@@ -72,7 +73,7 @@ func prepare(t *testing.T) *Memory {
 		Name:        "Generate test data for the table",
 		Description: "Generate test data for the table",
 		Stack:       "Table.*",
-		Path:        "*",
+		Path:        "Table.*",
 		Args: []map[string]interface{}{
 			{
 				"name":        "data",
