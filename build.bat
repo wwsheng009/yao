@@ -56,8 +56,8 @@ set GOARCH=amd64
 set GOOS=windows
 go build -v -o dist\release\yao-debug.exe
 
-del /Q %GOPATH%\bin\yao-dev.exe
-move dist\release\yao-debug.exe %GOPATH%\bin\yao-dev.exe
+del /Q %GOPATH%\bin\yao.exe
+move dist\release\yao-debug.exe %GOPATH%\bin\yao.exe
 
 rem Reset const
 
