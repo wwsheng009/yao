@@ -11,17 +11,17 @@
       "mode": "auto",
       "program": "main.go",
       "args": ["start"],
-      "cwd": "/data/projects/yao/demos-v1.0/Xgen-dev-app-test/"
+      "cwd": "D:/projects/go/yao/yao-demos/yao-dev-app"
     },
     {
-      "name": "test2",
+      "name": "test run",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "dlvFlags": ["--log"],
-      "args": ["run", "scripts.category.Test"],
-      "cwd": "/data/projects/yao/demos-v1.0/yao-wms"
+      "args": ["run", "scripts.ddic.model.AfterFind2", "::{\"id\":1}"],
+      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
       "name": "Launch migrate",
@@ -29,8 +29,8 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["migrate", "-n", "contact.user"],
-      "cwd": "/data/projects/yao/demos-v1.0/vben-yao-admin/"
+      "args": ["migrate", "--reset", "-n", "admin.user"],
+      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
       "name": "Launch search",
@@ -69,8 +69,8 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "schemas.default.TableGet", "cms_help"],
-      "cwd": "/data/projects/yao/demos-v1.0/yao-admin/"
+      "args": ["run", "schemas.default.TableGet", "admin_user"],
+      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
       "name": "print hash",
