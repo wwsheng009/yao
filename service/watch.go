@@ -31,13 +31,14 @@ func Watch(srv *http.Server, interrupt chan uint8) (err error) {
 		}
 		fmt.Println(color.GreenString("[Watch] Reload Completed"))
 
+		uname := strings.ReplaceAll(name, "\\", "/")
 		// Model
-		if strings.HasPrefix(name, "/models") {
+		if strings.HasPrefix(uname, "/models") {
 			fmt.Println(color.GreenString("[Watch] Model: %s changed (Please run yao migrate manually)", name))
 		}
 
 		// Restart
-		if strings.HasPrefix(name, "/apis") {
+		if strings.HasPrefix(uname, "/apis") {
 			err = srv.Restart()
 			if err != nil {
 				fmt.Println(color.RedString("[Watch] Restart: %s", err.Error()))
