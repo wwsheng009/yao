@@ -7,12 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/yaoapp/gou/model"
 	"github.com/yaoapp/gou/process"
+	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/data"
 	"github.com/yaoapp/yao/engine"
+	"github.com/yaoapp/yao/studio"
 	"github.com/yaoapp/yao/widgets/app"
 )
 
@@ -110,10 +113,17 @@ func Install(payload map[string]map[string]string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() {
 		engine.Unload()
 		time.Sleep(time.Millisecond * 200)
 	}()
+
+	// Load Studio
+	err = studio.Load(cfg)
+	if err != nil {
+		return err
+	}
 
 	//  Migrage & Setup
 	err = makeMigrate(root, cfg)
@@ -305,14 +315,23 @@ func makeSetup(root string, cfg config.Config) error {
 				return fmt.Errorf("setup studio script %s error", app.Setting.Setup)
 			}
 
-			// service := strings.Join(names[1:len(names)-1], ".")
-			// method := names[len(names)-1]
-			// req := gou.Yao.New(service, method)
-			// _, err := req.RootCall(cfg)
-			// if err != nil {
-			// 	return err
-			// }
-			return nil
+			service := strings.Join(names[1:len(names)-1], ".")
+			method := names[len(names)-1]
+
+			script, err := v8.SelectRoot(service)
+			if err != nil {
+				return err
+			}
+
+			sid := uuid.NewString()
+			ctx, err := script.NewContext(fmt.Sprintf("%v", sid), nil)
+			if err != nil {
+				return err
+			}
+			defer ctx.Close()
+
+			_, err = ctx.Call(method)
+			return err
 		}
 
 		p, err := process.Of(app.Setting.Setup, cfg)

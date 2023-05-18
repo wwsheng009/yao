@@ -183,8 +183,10 @@ func (pkg *Package) Unpack(dest string) (*app.DSL, error) {
 		return nil, err
 	}
 
-	if len(files) > 0 {
-		return nil, fmt.Errorf("current folder shoud be empty")
+	for _, f := range files {
+		if !strings.HasPrefix(f.Name(), "logs") {
+			return nil, fmt.Errorf("current folder shoud be empty")
+		}
 	}
 
 	temp, err := os.MkdirTemp("", "*-yao-unzip")
@@ -213,7 +215,7 @@ func (pkg *Package) Unpack(dest string) (*app.DSL, error) {
 		}
 	}
 
-	data, err := os.ReadFile(filepath.Join(path, "app.json"))
+	data, err := os.ReadFile(filepath.Join(path, "app.yao"))
 	if err != nil {
 		return nil, err
 	}
