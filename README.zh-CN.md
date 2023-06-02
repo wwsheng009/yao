@@ -3,7 +3,7 @@
 [![UnitTest](https://github.com/YaoApp/yao/actions/workflows/unit-test.yml/badge.svg)](https://github.com/YaoApp/yao/actions/workflows/unit-test.yml)
 [![codecov](https://codecov.io/gh/YaoApp/yao/branch/main/graph/badge.svg?token=294Y05U71J)](https://codecov.io/gh/YaoApp/yao)
 
-![介绍](docs/architecture.png)
+https://github.com/YaoApp/yao/assets/1842210/6b23ac89-ef6e-4c24-874f-753a98370dec
 
 [English](README.md)
 
@@ -34,7 +34,7 @@ YAO 采用 flow-based 的编程模式，通过编写 YAO DSL (JSON 格式逻辑�
 | 应用                 | 简介                                    | 代码仓库                                |
 | -------------------- | --------------------------------------- | --------------------------------------- |
 | yaoapp/yao-examples  | Yao 应用示例                            | https://github.com/YaoApp/yao-examples  |
-| yaoapp/yao-knowledge | ChatGPT 驱动的知识管理库应用 (稍后开放) | https://github.com/YaoApp/yao-knowledge |
+| yaoapp/yao-knowledge | ChatGPT 驱动的知识管理库应用              | https://github.com/YaoApp/yao-knowledge |
 | yaoapp/xgen-dev-app  | 演示应用 (演示)                         | https://github.com/YaoApp/xgen-dev-app  |
 | yaoapp/demo-project  | 工程项目管理演示应用(演示)              | https://github.com/yaoapp/demo-project  |
 | yaoapp/demo-finance  | 财务管理演示应用(演示)                  | https://github.com/yaoapp/demo-finance  |
