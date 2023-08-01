@@ -245,14 +245,12 @@ debug1: clean
 # export NODE_ENV=production
 # echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
 # rm -f ../xgen-v1.0/pnpm-lock.yaml
-# cd ../xgen-v1.0/packages/xgen && pnpm install && pnpm run build
-# cd ../xgen-v1.0/packages/actionflow && pnpm install && pnpm run build
-# cd ../xgen-v1.0/packages/setup  && pnpm install && pnpm run build
+# cd ../xgen-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
 #	Checkout init
-	# git clone https://github.com/YaoApp/yao-init-0.10.3.git .tmp/yao-init
-	cp -r /data/projects/yao/demos-v1.0/yao-init-0.10.3 .tmp/yao-init
+	# git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
+	cp -r ../yao-init-0.10.3 .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
 	rm -rf .tmp/yao-init/.gitignore
 	rm -rf .tmp/yao-init/LICENSE

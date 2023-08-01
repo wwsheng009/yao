@@ -2,6 +2,7 @@
 
 $BASE="__yao_admin_root"; Set-Content ../xgen-v1.0/packages/xgen/.env "BASE=$BASE"
 Set-Location ../xgen-v1.0
+$env:NODE_ENV="development"
 pnpm install --no-frozen-lockfile
 $env:NODE_ENV="production"
 pnpm run build

@@ -19,12 +19,11 @@ New-Item -ItemType Directory -Force -Path .tmp\xgen\v0.9\dist
 # Write 'XGEN v0.9' to a file called index.html in the directory .tmp\xgen\v0.9\dist
 Set-Content -Path .tmp\xgen\v0.9\dist\index.html -Value 'XGEN v0.9'
 
-echo "yao init"
-& "./build_init.ps1"
+# echo "yao init"
+# & "./build_init.ps1"
 
-echo "build xgen"
-
-& "./build_xgen.ps1"
+# echo "build xgen"
+# & "./build_xgen.ps1"
 
 # Create directory .tmp\data\xgen
 New-Item -ItemType Directory -Force -Path .tmp\data\xgen
@@ -71,4 +70,5 @@ echo "build yao"
 go build -v -o dist\release\yao-debug.exe
 
 # Move yao-debug.exe to GOPATH\bin\yao.exe
+echo "Move yao"
 Move-Item dist\release\yao-debug.exe $env:GOPATH\bin\yao.exe -Force
