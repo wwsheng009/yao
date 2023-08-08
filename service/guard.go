@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -54,7 +56,15 @@ func guardQueryJWT(c *gin.Context) {
 
 // CORS Cross Origin
 func guardCrossOrigin(c *gin.Context) {
-	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	//当前端配置withCredentials=true时, 后端配置Access-Control-Allow-Origin不能为*, 必须是相应地址
+	referer := c.Request.Referer()
+	if referer != "" {
+		url, _ := url.Parse(referer)
+		referer = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
+		c.Writer.Header().Set("Access-Control-Allow-Origin", referer)
+	} else {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	}
 	c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 	c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 	c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
