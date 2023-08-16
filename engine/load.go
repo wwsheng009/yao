@@ -361,6 +361,11 @@ func Reload(cfg config.Config) (err error) {
 	if err != nil {
 		printErr(cfg.Mode, "Widget", err)
 	}
+	// Load Custom Widget Instances
+	err = widget.LoadInstances()
+	if err != nil {
+		printErr(cfg.Mode, "Widget", err)
+	}
 
 	// Load AIGC
 	err = aigc.Load(cfg)
