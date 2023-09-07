@@ -22,7 +22,7 @@ func ProcessIF(process *process.Process) interface{} {
 		params = append(params, CaseParamOf(v))
 	}
 	if len(params) > 1 {
-		IF(params[0], params[1])
+		return IF(params[0], params[1])
 	}
 	return IF(params[0])
 }
