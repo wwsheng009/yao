@@ -48,40 +48,40 @@ jobs:
       - name: Checkout Kun
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/kun
+          repository: wwsheng009/kun
           path: kun
 
       - name: Checkout Xun
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/xun
+          repository: wwsheng009/xun
           path: xun
 
       - name: Checkout Gou
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/gou
+          repository: wwsheng009/gou
           # ref: dc3d98411f61e21cf775e4c82d92d5ac2acfc03c
           path: gou
 
       - name: Checkout V8Go
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/v8go
+          repository: wwsheng009/v8go
           # ref: aac4923ed74083e58ae7b42b1acb0fa0d11a26cb
           path: v8go
 
       - name: Checkout XGen v1.0
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/xgen
+          repository: wwsheng009/xgen
           #ref: 408470b84c9d6bb8ed988b545b6e46ffc2872014
           path: xgen-v1.0
 
       - name: Checkout Yao-Init
         uses: actions/checkout@v3
         with:
-          repository: yaoapp/yao-init
+          repository: wwsheng009/yao-init-0.10.3
           path: yao-init
 
       - name: Move Kun, Xun, Gou, UI, V8Go
