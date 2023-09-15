@@ -10,7 +10,9 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["start"],
+      "args": [
+        "start"
+      ],
       "cwd": "D:/projects/go/yao/yao-demos/yao-dev-app"
     },
     {
@@ -19,8 +21,14 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "dlvFlags": ["--log"],
-      "args": ["run", "scripts.ddic.model.AfterFind2", "::{\"id\":1}"],
+      "dlvFlags": [
+        "--log"
+      ],
+      "args": [
+        "run",
+        "scripts.ddic.model.AfterFind2",
+        "::{\"id\":1}"
+      ],
       "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
@@ -29,7 +37,12 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["migrate", "--reset", "-n", "admin.user"],
+      "args": [
+        "migrate",
+        "--reset",
+        "-n",
+        "admin.user"
+      ],
       "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
@@ -38,7 +51,12 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "websocket.Write", "message", "hello"],
+      "args": [
+        "run",
+        "websocket.Write",
+        "message",
+        "hello"
+      ],
       "cwd": "/data/projects/yao/demos-v1.0/yao-node-client/"
     },
     {
@@ -47,7 +65,12 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "yao.form.Find", "mard", "TG10"],
+      "args": [
+        "run",
+        "yao.form.Find",
+        "mard",
+        "TG10"
+      ],
       "cwd": "/tmp/saphanatest2"
     },
     {
@@ -69,7 +92,11 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "schemas.default.TableGet", "admin_user"],
+      "args": [
+        "run",
+        "schemas.default.TableGet",
+        "admin_user"
+      ],
       "cwd": "D:/projects/go/yao/yao-temp/yao-test"
     },
     {
@@ -78,7 +105,10 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["run", "scripts.print.excute"],
+      "args": [
+        "run",
+        "scripts.print.excute"
+      ],
       "cwd": "/data/projects/yao/demos-v1.0/Xgen-dev-app-test/"
     },
     {
@@ -87,8 +117,11 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
-      "args": ["start"],
-      "cwd": "D:\\projects\\go\\yao\\wwsheng009\\yao-amis"
+      "args": [
+        "run",
+        "scripts.parser.v4.test1.dummy"
+      ],
+      "cwd": "D:\\projects\\go\\yao\\wwsheng009\\yao-odata"
     }
   ]
 }

@@ -117,18 +117,18 @@ jobs:
           mv dist/release/yao-$VERSION-dev-linux-arm64 dist/release/yao-$VERSION-unstable-linux-arm64
           mv dist/release/yao-$VERSION-dev-linux-amd64 dist/release/yao-$VERSION-unstable-linux-amd64
 
-      - name: Configure COS For Silicon Valley
-        env:
-          SECRET_ID: ${{ secrets.COS_ID }}
-          SECRET_KEY: ${{ secrets.COS_KEY }}
-          BUCKET: release-sv-1252011659
-          REGION: na-siliconvalley
-        run: |
-          coscmd config -a $SECRET_ID -s $SECRET_KEY -b $BUCKET -r $REGION
+      # - name: Configure COS For Silicon Valley
+      #   env:
+      #     SECRET_ID: ${{ secrets.COS_ID }}
+      #     SECRET_KEY: ${{ secrets.COS_KEY }}
+      #     BUCKET: release-sv-1252011659
+      #     REGION: na-siliconvalley
+      #   run: |
+      #     coscmd config -a $SECRET_ID -s $SECRET_KEY -b $BUCKET -r $REGION
 
-      - name: Push To Silicon Valley
-        run: |
-          for file in ./dist/release/*; do coscmd upload $file /archives/; done;
+      # - name: Push To Silicon Valley
+      #   run: |
+      #     for file in ./dist/release/*; do coscmd upload $file /archives/; done;
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v3
