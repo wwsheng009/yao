@@ -131,14 +131,14 @@ jobs:
       #     for file in ./dist/release/*; do coscmd upload $file /archives/; done;
 
       - name: Tar files
-        run: tar -czvf yao-$VERSION-release.tar.gz dist/release
+        run: tar -czvf yao-${{ env.VERSION }}-release.tar.gz dist/release
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v3
         with:
           name: yao-linux
           path: |
-            yao-$VERSION-release.tar.gz
+            yao-${{ env.VERSION }}-release.tar.gz
 
       - name: Create Draft Release
         id: create_release
@@ -146,8 +146,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: yao-$VERSION
-          release_name: yao-$VERSION
+          tag_name: yao-${{ env.VERSION }}
+          release_name: yao-${{ env.VERSION }}
           draft: true
           prerelease: false
 
@@ -156,8 +156,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: yao-$VERSION-release.tar.gz
-          asset_name: yao-linux-$VERSION-release
+          asset_path: yao-${{ env.VERSION }}-release.tar.gz
+          asset_name: yao-linux-${{ env.VERSION }}-release
           asset_content_type: application/gzip
 
       - uses: eregon/publish-release@v1
