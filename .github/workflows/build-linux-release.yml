@@ -118,7 +118,8 @@ jobs:
         run: |
           echo VERSION=$(cat share/const.go  |grep 'const VERSION' | awk '{print $4}' | sed "s/\"//g")  >> $GITHUB_ENV
 
-      - uses: evantorrie/mott-the-tider@v1-beta
+      - name: mod-tidy-action
+        uses: evantorrie/mott-the-tidier@v1-beta
         with:
           gomods: |
             go.mod
