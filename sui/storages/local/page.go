@@ -17,7 +17,7 @@ func (tmpl *Template) Pages() ([]core.IPage, error) {
 	tmpl.local.fs.Walk(tmpl.Root, func(root, file string, isdir bool) error {
 		name := filepath.Base(file)
 		if isdir {
-			if strings.HasPrefix(name, "__") {
+			if strings.HasPrefix(name, "__") || name == ".tmp" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -38,6 +38,98 @@ func (tmpl *Template) Pages() ([]core.IPage, error) {
 	}, exts...)
 
 	return pages, nil
+}
+
+// PageTree gets the page tree.
+func (tmpl *Template) PageTree(route string) ([]*core.PageTreeNode, error) {
+
+	exts := []string{"*.sui", "*.html", "*.htm", "*.page"}
+	rootNode := &core.PageTreeNode{
+		Name:     tmpl.Name,
+		IsDir:    true,
+		Expand:   true,
+		Children: []*core.PageTreeNode{}, // 初始为空的切片
+	}
+
+	tmpl.local.fs.Walk(tmpl.Root, func(root, file string, isdir bool) error {
+		name := filepath.Base(file)
+		relPath := file
+
+		if isdir {
+			if strings.HasPrefix(name, "__") || name == ".tmp" {
+				return filepath.SkipDir
+			}
+
+			// Create directory nodes in the tree structure.
+			currentDir := rootNode
+			dirs := strings.Split(relPath, string(filepath.Separator))
+
+			for _, dir := range dirs {
+				if dir == "" {
+					continue
+				}
+
+				// Check if the directory node already exists.
+				var found bool
+				for _, child := range currentDir.Children {
+					if child.Name == dir {
+						currentDir = child
+						found = true
+						break
+					}
+				}
+				// If not found, create a new directory node.
+				if !found {
+					newDir := &core.PageTreeNode{
+						Name:     dir,
+						IsDir:    true,
+						Children: []*core.PageTreeNode{},
+						Expand:   true,
+					}
+					currentDir.Children = append(currentDir.Children, newDir)
+					currentDir = newDir
+				}
+			}
+			return nil
+		}
+
+		if strings.HasPrefix(name, "__") {
+			return nil
+		}
+
+		page, err := tmpl.getPageFrom(file)
+		if err != nil {
+			log.Error("Get page error: %v", err)
+			return err
+		}
+
+		pageInfo := page.Get()
+		active := route == pageInfo.Route
+
+		// Attach the page to the appropriate directory node.
+		dirs := strings.Split(relPath, string(filepath.Separator))
+		currentDir := rootNode
+		for _, dir := range dirs {
+			for _, child := range currentDir.Children {
+				if child.Name == dir {
+					currentDir = child
+					break
+				}
+			}
+		}
+
+		currentDir.Expand = active
+		currentDir.Children = append(currentDir.Children, &core.PageTreeNode{
+			Name:   tmpl.getPageBase(currentDir.Name),
+			IsDir:  false,
+			IPage:  page,
+			Active: active,
+		})
+
+		return nil
+	}, exts...)
+
+	return rootNode.Children, nil
 }
 
 // Page get the page
@@ -62,6 +154,101 @@ func (tmpl *Template) Page(route string) (core.IPage, error) {
 		}
 	}
 	return nil, fmt.Errorf("Page %s not found", route)
+}
+
+// PageExist check if the page exist
+func (tmpl *Template) PageExist(route string) bool {
+	path := tmpl.getPagePath(route)
+	exts := []string{".sui", ".html", ".htm", ".page"}
+	for _, ext := range exts {
+		file := fmt.Sprintf("%s%s", path, ext)
+		if exist, _ := tmpl.local.fs.Exists(file); exist {
+			return true
+		}
+	}
+	return false
+}
+
+// RemovePage remove the page
+func (tmpl *Template) RemovePage(route string) error {
+	if !tmpl.PageExist(route) {
+		return nil
+	}
+
+	path := filepath.Join(tmpl.Root, route)
+	name := filepath.Base(path) + ".*"
+	err := tmpl.local.fs.Walk(path, func(root, file string, isdir bool) error {
+		if isdir {
+			return nil
+		}
+		return tmpl.local.fs.Remove(file)
+	}, name)
+
+	if err != nil {
+		return err
+	}
+
+	dirs, err := tmpl.local.fs.ReadDir(path, false)
+	if err != nil {
+		return err
+	}
+
+	if len(dirs) == 0 {
+		return tmpl.local.fs.Remove(path)
+	}
+
+	return nil
+
+}
+
+// CreatePage create a new page
+func (tmpl *Template) CreatePage(route string) (core.IPage, error) {
+	if tmpl.PageExist(route) {
+		return nil, fmt.Errorf("Page %s already exist", route)
+	}
+
+	// Create the page directory
+	name := tmpl.getPageBase(route)
+	return &Page{
+		tmpl: tmpl,
+		Page: &core.Page{
+			Route: route,
+			Path:  filepath.Join(tmpl.Root, route),
+			Name:  name,
+			Codes: core.SourceCodes{
+				HTML: core.Source{File: fmt.Sprintf("%s.html", name)},
+				CSS:  core.Source{File: fmt.Sprintf("%s.css", name)},
+				JS:   core.Source{File: fmt.Sprintf("%s.js", name)},
+				TS:   core.Source{File: fmt.Sprintf("%s.ts", name)},
+				LESS: core.Source{File: fmt.Sprintf("%s.less", name)},
+			},
+		},
+	}, nil
+}
+
+// Remove remove the page
+func (page *Page) Remove() error {
+	return page.tmpl.RemovePage(page.Route)
+}
+
+// GetPageFromAsset get the page from the asset
+func (tmpl *Template) GetPageFromAsset(file string) (core.IPage, error) {
+	route := filepath.Dir(file)
+	name := tmpl.getPageBase(route)
+	return &Page{
+		tmpl: tmpl,
+		Page: &core.Page{
+			Route: route,
+			Path:  filepath.Join(tmpl.Root, route),
+			Name:  name,
+			Codes: core.SourceCodes{
+				CSS:  core.Source{File: fmt.Sprintf("%s.css", name)},
+				JS:   core.Source{File: fmt.Sprintf("%s.js", name)},
+				TS:   core.Source{File: fmt.Sprintf("%s.ts", name)},
+				LESS: core.Source{File: fmt.Sprintf("%s.less", name)},
+			},
+		},
+	}, nil
 }
 
 func (tmpl *Template) getPageFrom(file string) (core.IPage, error) {
@@ -161,4 +348,206 @@ func (page *Page) Load() error {
 	// Set the page document
 	page.Document = page.tmpl.Document
 	return nil
+}
+
+// SaveTemp save page to the temp file
+func (page *Page) SaveTemp(request *core.RequestSource) error {
+	tempPath := filepath.Join(page.Path, ".tmp", request.UID)
+	return page.save(tempPath, request)
+
+}
+
+// Save save page to the storage, if the page not exist, create it
+func (page *Page) Save(request *core.RequestSource) error {
+	path := page.Path
+	err := page.save(path, request)
+	if err != nil {
+		return err
+	}
+
+	// Remove the temp file
+	tempPath := filepath.Join(page.Path, ".tmp", request.UID)
+	if exist, _ := page.tmpl.local.fs.Exists(tempPath); exist {
+		err = page.tmpl.local.fs.RemoveAll(tempPath)
+		if err != nil {
+			return err
+		}
+
+		dirs, err := page.tmpl.local.fs.ReadDir(filepath.Join(page.Path, ".tmp"), false)
+		if err != nil {
+			return err
+		}
+
+		if len(dirs) == 0 {
+			return page.tmpl.local.fs.Remove(filepath.Join(page.Path, ".tmp"))
+		}
+	}
+	return nil
+}
+
+// save page to the temp file
+func (page *Page) save(path string, request *core.RequestSource) error {
+	if request.NeedToSave.Board {
+		err := page.saveBoard(path, request.Board)
+		if err != nil {
+			return err
+		}
+	}
+
+	if request.NeedToSave.Page {
+		err := page.savePage(path, request.Page)
+		if err != nil {
+			return err
+		}
+	}
+
+	if request.NeedToSave.Style {
+		err := page.saveStyle(path, request.Style)
+		if err != nil {
+			return err
+		}
+	}
+
+	if request.NeedToSave.Script {
+		err := page.saveScript(path, request.Script)
+		if err != nil {
+			return err
+		}
+	}
+
+	if request.NeedToSave.Data {
+		err := page.saveData(path, request.Data)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// saveBoard save the board to the storage
+func (page *Page) saveBoard(path string, board *core.BoardSourceData) error {
+
+	htmlFile := filepath.Join(path, page.Codes.HTML.File)
+	_, err := page.tmpl.local.fs.WriteFile(htmlFile, []byte(board.HTML), 0644)
+	if err != nil {
+		return err
+	}
+
+	cssFile := filepath.Join(path, page.Codes.CSS.File)
+	_, err = page.tmpl.local.fs.WriteFile(cssFile, []byte(board.Style), 0644)
+	return err
+}
+
+func (page *Page) savePage(path string, src *core.SourceData) error {
+	if src.Language != "html" {
+		return fmt.Errorf("Page %s language not support", page.Route)
+	}
+
+	htmlFile := filepath.Join(path, page.Codes.HTML.File)
+	_, err := page.tmpl.local.fs.WriteFile(htmlFile, []byte(src.Source), 0644)
+	return err
+}
+
+func (page *Page) saveStyle(path string, src *core.SourceData) error {
+	if src.Language != "css" {
+		return fmt.Errorf("Page %s language not support", page.Route)
+	}
+
+	cssFile := filepath.Join(path, page.Codes.CSS.File)
+	_, err := page.tmpl.local.fs.WriteFile(cssFile, []byte(src.Source), 0644)
+	return err
+}
+
+func (page *Page) saveScript(path string, src *core.SourceData) error {
+
+	switch src.Language {
+	case "typescript":
+		tsFile := filepath.Join(path, page.Codes.TS.File)
+		_, err := page.tmpl.local.fs.WriteFile(tsFile, []byte(src.Source), 0644)
+		return err
+	case "javascript":
+		jsFile := filepath.Join(path, page.Codes.JS.File)
+		_, err := page.tmpl.local.fs.WriteFile(jsFile, []byte(src.Source), 0644)
+		return err
+
+	default:
+		return fmt.Errorf("Page %s language not support", page.Route)
+	}
+}
+
+func (page *Page) saveData(path string, src *core.SourceData) error {
+	if src.Language != "json" {
+		return fmt.Errorf("Page %s language not support", page.Route)
+	}
+
+	dataFile := filepath.Join(path, page.Codes.DATA.File)
+	_, err := page.tmpl.local.fs.WriteFile(dataFile, []byte(src.Source), 0644)
+	return err
+}
+
+// AssetScript get the script
+func (page *Page) AssetScript() (*core.Asset, error) {
+
+	// Read the Script code
+	// Type script is the default language
+	tsFile := filepath.Join(page.Path, page.Codes.TS.File)
+	if exist, _ := page.tmpl.local.fs.Exists(tsFile); exist {
+		tsCode, err := page.tmpl.local.fs.ReadFile(tsFile)
+		if err != nil {
+			return nil, err
+		}
+
+		jsCode, err := page.CompileTS(tsCode, false)
+		if err != nil {
+			return nil, err
+		}
+
+		return &core.Asset{
+			Type:    "text/javascript; charset=utf-8",
+			Content: []byte(jsCode),
+		}, nil
+	}
+
+	jsFile := filepath.Join(page.Path, page.Codes.JS.File)
+	if exist, _ := page.tmpl.local.fs.Exists(jsFile); exist {
+		jsCode, err := page.tmpl.local.fs.ReadFile(jsFile)
+		if err != nil {
+			return nil, err
+		}
+
+		jsCode, err = page.CompileJS(jsCode, false)
+		if err != nil {
+			return nil, err
+		}
+
+		return &core.Asset{
+			Type:    "text/javascript; charset=utf-8",
+			Content: jsCode,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("Page %s script not found", page.Route)
+}
+
+// AssetStyle get the style
+func (page *Page) AssetStyle() (*core.Asset, error) {
+	cssFile := filepath.Join(page.Path, page.Codes.CSS.File)
+	if exist, _ := page.tmpl.local.fs.Exists(cssFile); exist {
+		cssCode, err := page.tmpl.local.fs.ReadFile(cssFile)
+		if err != nil {
+			return nil, err
+		}
+
+		cssCode, err = page.CompileCSS(cssCode, false)
+		if err != nil {
+			return nil, err
+		}
+
+		return &core.Asset{
+			Type:    "text/css; charset=utf-8",
+			Content: cssCode,
+		}, nil
+	}
+	return nil, fmt.Errorf("Page %s style not found", page.Route)
 }

@@ -17,6 +17,16 @@ type Page struct {
 	Document []byte      `json:"-"`
 }
 
+// PageTreeNode is the struct for the page tree node
+type PageTreeNode struct {
+	Name     string          `json:"name,omitempty"`
+	IsDir    bool            `json:"is_dir,omitempty"`
+	Children []*PageTreeNode `json:"children,omitempty"`
+	IPage    IPage           `json:"page,omitempty"`
+	Expand   bool            `json:"expand,omitempty"`
+	Active   bool            `json:"active,omitempty"`
+}
+
 // Component is the struct for the component
 type Component struct {
 	ID       string      `json:"id"`
@@ -56,6 +66,13 @@ type SelectOption struct {
 	Value string `json:"value"`
 }
 
+// Asset is the struct for the asset
+type Asset struct {
+	file    string
+	Type    string `json:"type"`
+	Content []byte `json:"content"`
+}
+
 // Request is the struct for the request
 type Request struct {
 	Method  string                 `json:"method"`
@@ -68,13 +85,45 @@ type Request struct {
 	Locale  string                 `json:"locale,omitempty"`
 }
 
+// RequestSource is the struct for the request
+type RequestSource struct {
+	UID        string           `json:"uid"`
+	User       string           `json:"user,omitempty"`
+	Page       *SourceData      `json:"page,omitempty"`
+	Style      *SourceData      `json:"style,omitempty"`
+	Script     *SourceData      `json:"script,omitempty"`
+	Data       *SourceData      `json:"data,omitempty"`
+	Board      *BoardSourceData `json:"board,omitempty"`
+	NeedToSave struct {
+		Page     bool `json:"page,omitempty"`
+		Style    bool `json:"style,omitempty"`
+		Script   bool `json:"script,omitempty"`
+		Data     bool `json:"data,omitempty"`
+		Board    bool `json:"board,omitempty"`
+		Validate bool `json:"validate,omitempty"`
+	} `json:"needToSave,omitempty"`
+}
+
 // ResponseEditor is the struct for the response
 type ResponseEditor struct {
-	HTML     string   `json:"html,omitempty"`
-	CSS      string   `json:"css,omitempty"`
-	Scripts  []string `json:"scripts,omitempty"`
-	Styles   []string `json:"styles,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
+	HTML     string                 `json:"html,omitempty"`
+	CSS      string                 `json:"css,omitempty"`
+	Scripts  []string               `json:"scripts,omitempty"`
+	Styles   []string               `json:"styles,omitempty"`
+	Setting  map[string]interface{} `json:"setting,omitempty"`
+	Warnings []string               `json:"warnings,omitempty"`
+}
+
+// SourceData is the struct for the response
+type SourceData struct {
+	Source   string `json:"source,omitempty"`
+	Language string `json:"language,omitempty"`
+}
+
+// BoardSourceData is the struct for the response
+type BoardSourceData struct {
+	HTML  string `json:"html,omitempty"`
+	Style string `json:"style,omitempty"`
 }
 
 // SourceCodes is the struct for the page codes
