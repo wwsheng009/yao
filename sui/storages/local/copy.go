@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 )
@@ -29,11 +30,6 @@ func copyDirectory(scrDir, dest string) error {
 			return err
 		}
 
-		stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
-		}
-
 		switch fileInfo.Mode() & os.ModeType {
 		case os.ModeDir:
 			if err := createIfNotexists(destPath, 0755); err != nil {
@@ -55,9 +51,14 @@ func copyDirectory(scrDir, dest string) error {
 				return fmt.Errorf("failed to copy '%s' to '%s': %s", sourcePath, destPath, err.Error())
 			}
 		}
-
-		if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
-			return err
+		if runtime.GOOS == "linux" {
+			stat, ok := fileInfo.Sys().(*syscall.Stat_t) //只有linux才有这个属性
+			if !ok {
+				return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
+			}
+			if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+				return err
+			}
 		}
 
 		fInfo, err := entry.Info()
