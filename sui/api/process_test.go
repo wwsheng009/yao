@@ -542,29 +542,9 @@ func TestEditorRender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.IsType(t, &core.ResponseEditor{}, res)
-	assert.NotEmpty(t, res.(*core.ResponseEditor).HTML)
-}
-
-func TestEditorRenderWithQuery(t *testing.T) {
-	load(t)
-	defer clean()
-
-	// test demo
-	p, err := process.Of("sui.editor.render", "demo", "tech-blue", "/index", map[string]interface{}{
-		"method": "POST",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	res, err := p.Exec()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.IsType(t, &core.ResponseEditor{}, res)
-	assert.NotEmpty(t, res.(*core.ResponseEditor).HTML)
+	assert.IsType(t, &core.ResponseEditorRender{}, res)
+	assert.NotEmpty(t, res.(*core.ResponseEditorRender).HTML)
+	assert.NotEmpty(t, res.(*core.ResponseEditorRender).Config)
 }
 
 func TestEditorPageSource(t *testing.T) {
@@ -586,6 +566,82 @@ func TestEditorPageSource(t *testing.T) {
 		assert.NotEmpty(t, res.(core.SourceData).Source)
 		assert.NotEmpty(t, res.(core.SourceData).Language)
 	}
+}
+
+func TestEditorRenderWithQuery(t *testing.T) {
+	load(t)
+	defer clean()
+
+	// test demo
+	p, err := process.Of("sui.editor.render", "demo", "tech-blue", "/index", map[string]interface{}{
+		"method": "POST",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := p.Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.IsType(t, &core.ResponseEditorRender{}, res)
+	assert.NotEmpty(t, res.(*core.ResponseEditorRender).HTML)
+}
+
+func TestPreviewRender(t *testing.T) {
+	load(t)
+	defer clean()
+
+	// test demo
+	p, err := process.Of("sui.preview.render", "demo", "tech-blue", "/index")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := p.Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.IsType(t, "", res)
+	assert.NotEmpty(t, res)
+}
+
+func TestBuildAll(t *testing.T) {
+	load(t)
+	defer clean()
+
+	// test demo
+	p, err := process.Of("sui.build.all", "demo", "tech-blue", map[string]interface{}{"ssr": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := p.Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Nil(t, res)
+}
+
+func TestBuildPage(t *testing.T) {
+	load(t)
+	defer clean()
+
+	// test demo
+	p, err := process.Of("sui.build.page", "demo", "tech-blue", "/index", map[string]interface{}{"ssr": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := p.Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.Nil(t, res)
 }
 
 func load(t *testing.T) {

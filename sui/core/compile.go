@@ -46,3 +46,8 @@ func (page *Page) CompileCSS(source []byte, minify bool) ([]byte, error) {
 	}
 	return source, nil
 }
+
+// CompileHTML compile the html
+func (page *Page) CompileHTML(source []byte, minify bool) ([]byte, error) {
+	return source, nil
+}

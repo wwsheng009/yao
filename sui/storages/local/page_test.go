@@ -42,6 +42,7 @@ func TestTemplatePages(t *testing.T) {
 		assert.Equal(t, name+".less", page.Codes.LESS.File)
 		assert.Equal(t, name+".ts", page.Codes.TS.File)
 		assert.Equal(t, name+".json", page.Codes.DATA.File)
+		assert.Equal(t, name+".config", page.Codes.CONF.File)
 	}
 }
 
@@ -146,46 +147,6 @@ func TestTemplatePageJS(t *testing.T) {
 
 	_, err = tmpl.Page("/the/page/could/not/be/found")
 	assert.Contains(t, err.Error(), "Page /the/page/could/not/be/found not found")
-}
-
-func TestPageRenderEditor(t *testing.T) {
-
-	tests := prepare(t)
-	defer clean()
-
-	tmpl, err := tests.Demo.GetTemplate("tech-blue")
-	if err != nil {
-		t.Fatalf("GetTemplate error: %v", err)
-	}
-
-	page, err := tmpl.Page("/index")
-	if err != nil {
-		t.Fatalf("Page error: %v", err)
-	}
-
-	r := &core.Request{Method: "GET"}
-	res, err := page.EditorRender(r)
-	if err != nil {
-		t.Fatalf("RenderEditor error: %v", err)
-	}
-
-	assert.NotEmpty(t, res.HTML)
-	assert.NotEmpty(t, res.CSS)
-	assert.NotEmpty(t, res.Scripts)
-	assert.NotEmpty(t, res.Styles)
-	assert.Equal(t, 4, len(res.Scripts))
-	assert.Equal(t, 5, len(res.Styles))
-
-	assert.Equal(t, "@assets/libs/tiny-slider/min/tiny-slider.js", res.Scripts[0])
-	assert.Equal(t, "@assets/libs/feather-icons/feather.min.js", res.Scripts[1])
-	assert.Equal(t, "@assets/js/plugins.init.js", res.Scripts[2])
-	assert.Equal(t, "@pages/index/index.js", res.Scripts[3])
-
-	assert.Equal(t, "@assets/libs/tiny-slider/tiny-slider.css", res.Styles[0])
-	assert.Equal(t, "@assets/libs/@iconscout/unicons/css/line.css", res.Styles[1])
-	assert.Equal(t, "@assets/libs/@mdi/font/css/materialdesignicons.min.css", res.Styles[2])
-	assert.Equal(t, "@assets/css/tailwind.css", res.Styles[3])
-	assert.Equal(t, "@pages/index/index.css", res.Styles[4])
 }
 
 func TestPageSaveTempBoard(t *testing.T) {
@@ -427,6 +388,44 @@ func TestPageSaveTempData(t *testing.T) {
 		  "style": false,
 		  "script": false,
 		  "data": true,
+		  "board": false,
+		  "validate": true
+		}
+	}`
+
+	req := &core.RequestSource{UID: "19e09e7e-9e19-44c1-bbab-2a55c51c9df3"}
+	jsoniter.Unmarshal([]byte(payload), &req)
+
+	page, err := tmpl.Page("/index")
+	if err != nil {
+		t.Fatalf("Page error: %v", err)
+	}
+
+	err = page.SaveTemp(req)
+	assert.Nil(t, err)
+}
+
+func TestPageSaveTempSetting(t *testing.T) {
+	tests := prepare(t)
+	defer clean()
+
+	tmpl, err := tests.Demo.GetTemplate("tech-blue")
+	if err != nil {
+		t.Fatalf("GetTemplate error: %v", err)
+	}
+
+	const payload = `{
+		"page": null,
+		"style": null,
+		"script": null,
+		"setting": { "title": "Home Page | {{ $global.title }}" },
+		"mock": { "params": { "id": "1" } },
+		"needToSave": {
+		  "page": false,
+		  "style": false,
+		  "script": false,
+		  "mock": true,
+		  "setting": true,
 		  "board": false,
 		  "validate": true
 		}

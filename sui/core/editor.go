@@ -7,15 +7,16 @@ import (
 )
 
 // EditorRender render HTML for the editor
-func (page *Page) EditorRender(request *Request) (*ResponseEditor, error) {
+func (page *Page) EditorRender(request *Request) (*ResponseEditorRender, error) {
 
 	html := page.Codes.HTML.Code
-	res := &ResponseEditor{
+	res := &ResponseEditorRender{
 		HTML:     "",
 		CSS:      page.Codes.CSS.Code,
 		Scripts:  []string{},
 		Styles:   []string{},
 		Warnings: []string{},
+		Config:   page.GetConfig(),
 		Setting:  map[string]interface{}{},
 	}
 
@@ -60,7 +61,7 @@ func (page *Page) EditorRender(request *Request) (*ResponseEditor, error) {
 	}
 
 	if html != "" {
-		html, err := page.renderData(html, data, res.Warnings)
+		html, err := page.Render(html, data, res.Warnings)
 		if err != nil {
 			res.Warnings = append(res.Warnings, err.Error())
 		}

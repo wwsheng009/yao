@@ -31,6 +31,9 @@ type ITemplate interface {
 	Themes() []SelectOption
 
 	Asset(file string) (*Asset, error)
+
+	Build(option *BuildOption) error
+	SyncAssets(option *BuildOption) error
 }
 
 // IPage is the interface for the page
@@ -38,18 +41,23 @@ type IPage interface {
 	Load() error
 
 	Get() *Page
+	GetConfig() *PageConfig
 	Save(request *RequestSource) error
 	SaveTemp(request *RequestSource) error
 	Remove() error
 
-	EditorRender(request *Request) (*ResponseEditor, error)
+	EditorRender(request *Request) (*ResponseEditorRender, error)
 	EditorPageSource() SourceData
 	EditorScriptSource() SourceData
 	EditorStyleSource() SourceData
 	EditorDataSource() SourceData
 
+	PreviewRender(request *Request) (string, error)
+
 	AssetScript() (*Asset, error)
 	AssetStyle() (*Asset, error)
+
+	Build(option *BuildOption) error
 }
 
 // IBlock is the interface for the block

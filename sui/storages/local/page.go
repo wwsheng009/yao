@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/sui/core"
 )
@@ -212,15 +213,18 @@ func (tmpl *Template) CreatePage(route string) (core.IPage, error) {
 	return &Page{
 		tmpl: tmpl,
 		Page: &core.Page{
-			Route: route,
-			Path:  filepath.Join(tmpl.Root, route),
-			Name:  name,
+			Route:      route,
+			TemplateID: tmpl.ID,
+			SuiID:      tmpl.local.ID,
+			Path:       filepath.Join(tmpl.Root, route),
+			Name:       name,
 			Codes: core.SourceCodes{
 				HTML: core.Source{File: fmt.Sprintf("%s.html", name)},
 				CSS:  core.Source{File: fmt.Sprintf("%s.css", name)},
 				JS:   core.Source{File: fmt.Sprintf("%s.js", name)},
 				TS:   core.Source{File: fmt.Sprintf("%s.ts", name)},
 				LESS: core.Source{File: fmt.Sprintf("%s.less", name)},
+				CONF: core.Source{File: fmt.Sprintf("%s.config", name)},
 			},
 		},
 	}, nil
@@ -238,9 +242,11 @@ func (tmpl *Template) GetPageFromAsset(file string) (core.IPage, error) {
 	return &Page{
 		tmpl: tmpl,
 		Page: &core.Page{
-			Route: route,
-			Path:  filepath.Join(tmpl.Root, route),
-			Name:  name,
+			Route:      route,
+			TemplateID: tmpl.ID,
+			SuiID:      tmpl.local.ID,
+			Path:       filepath.Join(tmpl.Root, route),
+			Name:       name,
 			Codes: core.SourceCodes{
 				CSS:  core.Source{File: fmt.Sprintf("%s.css", name)},
 				JS:   core.Source{File: fmt.Sprintf("%s.js", name)},
@@ -262,9 +268,11 @@ func (tmpl *Template) getPage(route, file string) (core.IPage, error) {
 	return &Page{
 		tmpl: tmpl,
 		Page: &core.Page{
-			Route: route,
-			Path:  path,
-			Name:  name,
+			Route:      route,
+			Path:       path,
+			Name:       name,
+			TemplateID: tmpl.ID,
+			SuiID:      tmpl.local.ID,
 			Codes: core.SourceCodes{
 				HTML: core.Source{File: fmt.Sprintf("%s%s", name, filepath.Ext(file))},
 				CSS:  core.Source{File: fmt.Sprintf("%s.css", name)},
@@ -272,6 +280,7 @@ func (tmpl *Template) getPage(route, file string) (core.IPage, error) {
 				DATA: core.Source{File: fmt.Sprintf("%s.json", name)},
 				TS:   core.Source{File: fmt.Sprintf("%s.ts", name)},
 				LESS: core.Source{File: fmt.Sprintf("%s.less", name)},
+				CONF: core.Source{File: fmt.Sprintf("%s.config", name)},
 			},
 		},
 	}, nil
@@ -343,6 +352,16 @@ func (page *Page) Load() error {
 			return err
 		}
 		page.Codes.DATA.Code = string(dataCode)
+	}
+
+	// Read the config code
+	confFile := filepath.Join(page.Path, page.Codes.CONF.File)
+	if exist, _ := page.tmpl.local.fs.Exists(confFile); exist {
+		confCode, err := page.tmpl.local.fs.ReadFile(confFile)
+		if err != nil {
+			return err
+		}
+		page.Codes.CONF.Code = string(confCode)
 	}
 
 	// Set the page document
@@ -422,6 +441,13 @@ func (page *Page) save(path string, request *core.RequestSource) error {
 		}
 	}
 
+	if request.NeedToSave.Setting || request.NeedToSave.Mock {
+		err := page.saveSetting(path, request.Setting, request.Mock)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -484,6 +510,27 @@ func (page *Page) saveData(path string, src *core.SourceData) error {
 	dataFile := filepath.Join(path, page.Codes.DATA.File)
 	_, err := page.tmpl.local.fs.WriteFile(dataFile, []byte(src.Source), 0644)
 	return err
+}
+
+func (page *Page) saveSetting(path string, setting *core.PageSetting, mock *core.PageMock) error {
+
+	config := core.PageConfig{Mock: mock}
+	if setting != nil {
+		config.PageSetting = *setting
+	}
+
+	configBytes, err := jsoniter.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if setting != nil || mock != nil {
+		dataFile := filepath.Join(path, page.Codes.CONF.File)
+		_, err = page.tmpl.local.fs.WriteFile(dataFile, configBytes, 0644)
+		return err
+	}
+
+	return nil
 }
 
 // AssetScript get the script
