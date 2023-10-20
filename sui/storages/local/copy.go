@@ -5,9 +5,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
-	"syscall"
 )
 
 // copyDirectory copy the directory
@@ -52,11 +52,16 @@ func copyDirectory(scrDir, dest string) error {
 			}
 		}
 		if runtime.GOOS == "linux" {
-			stat, ok := fileInfo.Sys().(*syscall.Stat_t) //只有linux才有这个属性
-			if !ok {
-				return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
-			}
-			if err := os.Lchown(destPath, int(stat.Uid), int(stat.Gid)); err != nil {
+			stat := fileInfo.Sys() //只有linux才有这个属性
+			// reflect.ValueOf(stat).String() == "*syscall.Stat_t"
+			uid := reflect.ValueOf(stat).Elem().FieldByName("Uid").Field(0).Int()
+			gid := reflect.ValueOf(stat).Elem().FieldByName("Gid").Field(0).Int()
+
+			// stat, ok := fileInfo.Sys().(*syscall.Stat_t) //只有linux才有这个属性
+			// if !ok {
+			// 	return fmt.Errorf("failed to get raw syscall.Stat_t data for '%s'", sourcePath)
+			// }
+			if err := os.Lchown(destPath, int(uid), int(gid)); err != nil {
 				return err
 			}
 		}
