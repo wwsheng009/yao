@@ -15,6 +15,8 @@ import (
 
 func init() {
 	process.RegisterGroup("sui", map[string]process.Handler{
+		"setting": Setting,
+
 		"template.get":   TemplateGet,
 		"template.find":  TemplateFind,
 		"template.asset": TemplateAsset,
@@ -22,8 +24,10 @@ func init() {
 		"locale.get": LocaleGet,
 		"theme.get":  ThemeGet,
 
-		"block.get":  BlockGet,
-		"block.find": BlockFind,
+		"block.get":    BlockGet,
+		"block.find":   BlockFind,
+		"block.Media":  BlockMedia,
+		"block.export": BlockExport,
 
 		"component.get":  ComponentGet,
 		"component.find": ComponentFind,
@@ -47,6 +51,16 @@ func init() {
 		"build.all":  BuildAll,
 		"build.page": BuildPage,
 	})
+}
+
+// Setting handle the get Template request
+func Setting(process *process.Process) interface{} {
+	sui := get(process)
+	setting, err := sui.Setting()
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+	return setting
 }
 
 // TemplateGet handle the get Template request
@@ -137,6 +151,49 @@ func BlockGet(process *process.Process) interface{} {
 		exception.New(err.Error(), 500).Throw()
 	}
 	return blocks
+}
+
+// BlockExport handle the find Template request
+func BlockExport(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+
+	sui := get(process)
+	templateID := process.ArgsString(1)
+
+	tmpl, err := sui.GetTemplate(templateID)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	items, err := tmpl.BlockLayoutItems()
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+	return items
+}
+
+// BlockMedia handle the find Template request
+func BlockMedia(process *process.Process) interface{} {
+	process.ValidateArgNums(3)
+
+	sui := get(process)
+	templateID := process.ArgsString(1)
+	blockID := strings.TrimRight(process.ArgsString(2), ".js")
+
+	tmpl, err := sui.GetTemplate(templateID)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	asset, err := tmpl.BlockMedia(blockID)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	return map[string]interface{}{
+		"content": asset.Content,
+		"type":    asset.Type,
+	}
 }
 
 // BlockFind handle the find Template request
