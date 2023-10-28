@@ -69,10 +69,21 @@ type Optional struct {
 
 // Context the context
 type Context struct {
-	Sid             string `json:"sid" yaml:"-"`
-	Stack           string `json:"stack,omitempty"`
-	Path            string `json:"pathname,omitempty"`
+	Sid             string                 `json:"sid" yaml:"-"`
+	Stack           string                 `json:"stack,omitempty"`
+	Path            string                 `json:"pathname,omitempty"`
+	FormData        map[string]interface{} `json:"formdata,omitempty"`
+	Field           *ContextField          `json:"field,omitempty"`
+	Namespace       string                 `json:"namespace,omitempty"`
+	Config          map[string]interface{} `json:"config,omitempty"`
+	Signal          interface{}            `json:"signal,omitempty"`
 	context.Context `json:"-" yaml:"-"`
+}
+
+// ContextField the context field
+type ContextField struct {
+	Name string `json:"name,omitempty"`
+	Bind string `json:"bind,omitempty"`
 }
 
 // Store the command driver

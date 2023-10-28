@@ -83,7 +83,10 @@ func (neo *DSL) API(router *gin.Engine, path string) error {
 			return
 		}
 
-		c.JSON(200, history)
+		c.JSON(200, map[string]interface{}{
+			"data":    history,
+			"command": nil,
+		})
 		c.Done()
 	})
 	router.GET(path+"/history", handlers...)
@@ -177,6 +180,7 @@ func (neo *DSL) Answer(ctx command.Context, question string, answer Answer) erro
 				return
 			}
 
+			log.Trace("Command with AI: question: %s messages:%v", question, messages)
 			err = req.Run(messages, func(msg *message.JSON) int {
 				chanStream <- msg
 				return 1
@@ -190,6 +194,7 @@ func (neo *DSL) Answer(ctx command.Context, question string, answer Answer) erro
 		}
 
 		// chat with AI
+		log.Trace("Chat with AI: question:%s messages:%v", question, messages)
 		_, ex := neo.AI.ChatCompletionsWith(ctx, messages, neo.Option, func(data []byte) int {
 			chanStream <- message.NewOpenAI(data)
 			return 1
@@ -243,8 +248,13 @@ func (neo *DSL) Answer(ctx command.Context, question string, answer Answer) erro
 				return true
 			}
 
-			msg.Write(w)
 			content = msg.Append(content)
+			err := neo.write(msg, w, ctx, messages, content)
+			if err != nil {
+				log.Warn("Neo write process msg: %v error: %s", msg, err.Error())
+				msg.Write(w)
+			}
+
 			return !msg.IsDone()
 
 		case <-ctx.Done():
@@ -297,6 +307,42 @@ func (neo *DSL) prompts() []map[string]interface{} {
 	}
 
 	return prompts
+}
+
+// after the after hook
+func (neo *DSL) write(msg *message.JSON, w io.Writer, ctx command.Context, messages []map[string]interface{}, content []byte) error {
+
+	if neo.Write == "" {
+		msg.Write(w)
+		return nil
+	}
+
+	args := []interface{}{ctx, messages, msg, string(content)}
+	p, err := process.Of(neo.Write, args...)
+	if err != nil {
+		return err
+	}
+
+	res, err := p.WithSID(ctx.Sid).Exec()
+	if err != nil {
+		return err
+	}
+
+	if res == nil {
+		return fmt.Errorf("Neo custom write return null")
+	}
+
+	if messages, ok := res.([]interface{}); ok {
+		for _, new := range messages {
+			if v, ok := new.(map[string]interface{}); ok {
+				newMsg := message.New().Map(v)
+				newMsg.Write(w)
+			}
+		}
+		return nil
+	}
+
+	return fmt.Errorf("Neo custom write return not map")
 }
 
 // prepare the messages
