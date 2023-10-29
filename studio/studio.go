@@ -48,14 +48,23 @@ func Start(cfg config.Config) (err error) {
 	}
 
 	// Listen
-	network := "tcp4"
-	if cfg.Host != "" {
-		ip := net.ParseIP(cfg.Host)
-		if ip != nil && ip.To4() == nil {
-			network = "tcp6"
+	//0.0.0.0会默认绑定到ipv4上
+	getIPType := func(addr string) string {
+		ip := net.ParseIP(addr)
+		if ip != nil {
+			if ip.To4() != nil {
+				return "tcp4"
+			}
+			if ip.To16() != nil {
+				return "tcp6"
+			}
 		}
+		if addr == "[::]" {
+			return "tcp6"
+		}
+		return "tcp"
 	}
-	l, err := net.Listen(network, addr)
+	l, err := net.Listen(getIPType(cfg.Host), addr)
 	if err != nil {
 		return err
 	}
