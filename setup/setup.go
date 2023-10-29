@@ -81,10 +81,10 @@ func Start() (err error) {
 	addr := fmt.Sprintf(":%s", SetupPort)
 
 	// Listen
-	l, err := net.Listen("tcp4", addr)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		addr = ":0"
-		l, err = net.Listen("tcp4", addr)
+		l, err = net.Listen("tcp", addr)
 		if err != nil {
 			return err
 		}

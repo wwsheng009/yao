@@ -1,12 +1,15 @@
 package service
 
 import (
+	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/server/http"
+	"github.com/yaoapp/xun"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/neo"
 	"github.com/yaoapp/yao/share"
@@ -44,6 +47,14 @@ func Start(cfg config.Config) (*http.Server, error) {
 	// 增加内存分析，只能在/api请求下，要不然会拦截到前端页面请求
 	if cfg.Mode == "development" {
 		pprof.Register(router, "/api/__debug/pprof")
+		router.GET("/api/__debug/freememory", func(ctx *gin.Context) {
+			debug.FreeOSMemory()
+			ctx.JSON(200, xun.R{
+				"code":    200,
+				"message": fmt.Sprintf("FreeOSMemory finised:%s", time.Now().Format("2006-01-02 15:04:05")),
+			})
+		})
+
 	}
 
 	go func() {

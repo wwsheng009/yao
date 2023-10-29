@@ -9,7 +9,7 @@ type Config struct {
 	TimeZone      string   `json:"timezone,omitempty" env:"YAO_TIMEZONE"`                           // Default TimeZone
 	DataRoot      string   `json:"data_root,omitempty" env:"YAO_DATA_ROOT" envDefault:""`           // The data root path
 	ExtensionRoot string   `json:"extension_root,omitempty" env:"YAO_EXTENSION_ROOT" envDefault:""` // Plugin, Wasm root PATH, Default is <YAO_ROOT> (<YAO_ROOT>/plugins <YAO_ROOT>/wasms)
-	Host          string   `json:"host,omitempty" env:"YAO_HOST" envDefault:"0.0.0.0"`              // The server host
+	Host          string   `json:"host,omitempty" env:"YAO_HOST" envDefault:""`                     // The server host
 	Port          int      `json:"port,omitempty" env:"YAO_PORT" envDefault:"5099"`                 // The server port
 	Cert          string   `json:"cert,omitempty" env:"YAO_CERT"`                                   // The HTTPS certificate path
 	Key           string   `json:"key,omitempty" env:"YAO_KEY"`                                     // The HTTPS certificate key path
