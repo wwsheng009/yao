@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/server/http"
@@ -39,6 +40,10 @@ func Start(cfg config.Config) (*http.Server, error) {
 	// Neo API
 	if neo.Neo != nil {
 		neo.Neo.API(router, "/api/__yao/neo")
+	}
+	// 增加内存分析，只能在/api请求下，要不然会拦截到前端页面请求
+	if cfg.Mode == "development" {
+		pprof.Register(router, "/api/__debug/pprof")
 	}
 
 	go func() {

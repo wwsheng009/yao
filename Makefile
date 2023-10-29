@@ -245,7 +245,6 @@ debug1: clean
 # git clone https://github.com/YaoApp/xgen.git ../xgen-v1.0
 # export NODE_ENV=production
 # echo "BASE=__yao_admin_root" > ../xgen-v1.0/packages/xgen/.env
-# rm -f ../xgen-v1.0/pnpm-lock.yaml
 # cd ../xgen-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
@@ -277,7 +276,7 @@ debug1: clean
 #   Making artifacts
 	mkdir -p dist
 	rm -f dist/release/yao-debug
-	CGO_ENABLED=1 go build -v -o dist/release/yao-debug
+	CGO_ENABLED=1 GOARCH=amd64 GOOS=linux go build -v -o dist/release/yao-debug
 	chmod +x  dist/release/yao-debug
 	mv dist/release/yao-debug "${GOPATH}/bin/yao"
 	

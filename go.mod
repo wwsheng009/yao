@@ -3,14 +3,18 @@ module github.com/yaoapp/yao
 go 1.20
 
 require (
+	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/dchest/captcha v1.0.0
 	github.com/elazarl/go-bindata-assetfs v1.0.1
+	github.com/evanw/esbuild v0.19.3
 	github.com/fatih/color v1.15.0
 	github.com/fsnotify/fsnotify v1.6.0
+	github.com/gin-contrib/pprof v1.4.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
 	github.com/pkoukk/tiktoken-go v0.1.6
@@ -29,18 +33,15 @@ require (
 require github.com/SAP/go-hdb v1.2.1 // indirect
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/bytedance/sonic v1.10.1 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
 	github.com/chenzhuoyu/iasm v0.9.0 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
-	github.com/evanw/esbuild v0.19.3 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
@@ -117,11 +118,10 @@ require (
 	golang.org/x/net v0.15.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/text v0.13.0
 	golang.org/x/tools v0.13.0 // indirect
 	google.golang.org/grpc v1.58.1 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )
 
 // go env -w GOPRIVATE=github.com/yaoapp/*
