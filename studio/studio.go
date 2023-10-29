@@ -48,7 +48,14 @@ func Start(cfg config.Config) (err error) {
 	}
 
 	// Listen
-	l, err := net.Listen("tcp", addr)
+	network := "tcp4"
+	if cfg.Host != "" {
+		ip := net.ParseIP(cfg.Host)
+		if ip != nil && ip.To4() == nil {
+			network = "tcp6"
+		}
+	}
+	l, err := net.Listen(network, addr)
 	if err != nil {
 		return err
 	}

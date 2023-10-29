@@ -101,7 +101,7 @@ var startCmd = &cobra.Command{
 
 		root, _ := adminRoot()
 		urls := []string{fmt.Sprintf("http://%s:%s", host, port)}
-		if host == "0.0.0.0" || host == "" {
+		if host == "0.0.0.0" || host == "" || host == "[::]" {
 			urls, _ = setup.URLs(config.Conf)
 		}
 
