@@ -135,8 +135,15 @@ func ProcessJwtMake(process *process.Process) interface{} {
 	id := process.ArgsInt(0)
 	data := process.ArgsMap(1)
 	option := map[string]interface{}{}
-	if process.NumOfArgsIs(3) {
+	if process.NumOfArgs() > 2 {
 		option = process.ArgsMap(2)
+	}
+	secret := ""
+	if process.NumOfArgs() > 3 {
+		secret = process.ArgsString(3)
+	}
+	if secret != "" {
+		return JwtMake(id, data, option, []byte(secret))
 	}
 	return JwtMake(id, data, option)
 }
