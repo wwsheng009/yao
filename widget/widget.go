@@ -177,13 +177,22 @@ func (widget *DSL) Save(file string, source map[string]interface{}) error {
 
 // Remove the widget source file
 func (widget *DSL) Remove(file string) error {
+	id := share.ID("", file)
 
+	if widget.Remote != nil {
+		old, ok := widget.Instances.Load(id)
+		if ok {
+			err := old.(*Instance).Unload()
+			if err != nil {
+				return err
+			}
+		}
+	}
 	err := widget.FS.Remove(file)
 	if err != nil {
 		return err
 	}
 
-	id := share.ID("", file)
 	widget.Instances.Delete(id)
 	return nil
 }
