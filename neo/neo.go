@@ -1,6 +1,7 @@
 package neo
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -72,6 +73,11 @@ func (neo *DSL) API(router *gin.Engine, path string) error {
 		sid := c.GetString("__sid")
 		if sid == "" {
 			c.JSON(400, gin.H{"message": "sid is required", "code": 400})
+			c.Done()
+			return
+		}
+		if neo.Conversation == nil {
+			c.JSON(500, gin.H{"message": errors.New("neo error config, please check neo config and error log"), "code": 500})
 			c.Done()
 			return
 		}
@@ -394,7 +400,9 @@ func (neo *DSL) prepare(ctx command.Context, messages []map[string]interface{}) 
 
 // chatMessages get the chat messages
 func (neo *DSL) chatMessages(ctx command.Context, content string) ([]map[string]interface{}, error) {
-
+	if neo.Conversation == nil {
+		return nil, errors.New("neo error config, please check neo config and error log")
+	}
 	history, err := neo.Conversation.GetHistory(ctx.Sid)
 	if err != nil {
 		return nil, err
@@ -439,6 +447,10 @@ func (neo *DSL) matchCommand(ctx command.Context, messages []map[string]interfac
 func (neo *DSL) saveHistory(sid string, content []byte, messages []map[string]interface{}) {
 
 	if len(content) > 0 && sid != "" && len(messages) > 0 {
+		if neo.Conversation == nil {
+			log.Error("neo error config, please check neo config and error log")
+			return
+		}
 		err := neo.Conversation.SaveHistory(
 			sid,
 			[]map[string]interface{}{
