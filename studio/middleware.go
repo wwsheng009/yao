@@ -12,6 +12,7 @@ import (
 	"github.com/yaoapp/xun"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/helper"
+	"github.com/yaoapp/yao/utils"
 )
 
 // hdRecovered custom recovered
@@ -49,7 +50,7 @@ func hdRecovered(c *gin.Context, recovered interface{}) {
 // CORS Cross-origin
 func hdCORS(c *gin.Context) {
 	//当前端配置withCredentials=true时, 后端配置Access-Control-Allow-Origin不能为*, 必须是相应地址
-	referer := c.Request.Referer()
+	referer := utils.GetOrigin(c) //c.Request.Referer()
 	if referer != "" {
 		url, _ := url.Parse(referer)
 		referer = fmt.Sprintf("%s://%s", url.Scheme, url.Host)

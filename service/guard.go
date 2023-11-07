@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/yao/helper"
+	"github.com/yaoapp/yao/utils"
 
 	"github.com/yaoapp/yao/widgets/chart"
 	"github.com/yaoapp/yao/widgets/dashboard"
@@ -57,7 +58,7 @@ func guardQueryJWT(c *gin.Context) {
 // CORS Cross Origin
 func guardCrossOrigin(c *gin.Context) {
 	//当前端配置withCredentials=true时, 后端配置Access-Control-Allow-Origin不能为*, 必须是相应地址
-	referer := c.Request.Referer()
+	referer := utils.GetOrigin(c) //c.Request.Referer()
 	if referer != "" {
 		url, _ := url.Parse(referer)
 		referer = fmt.Sprintf("%s://%s", url.Scheme, url.Host)

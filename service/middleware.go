@@ -22,7 +22,7 @@ func withStaticFileServer(c *gin.Context) {
 		return
 
 	}
-
+	// c.Header("Access-Control-Allow-Origin", "*")
 	// Xgen 1.0
 	if length >= AdminRootLen && c.Request.URL.Path[0:AdminRootLen] == AdminRoot {
 		c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, c.Request.URL.Path[0:AdminRootLen-1])

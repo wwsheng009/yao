@@ -21,6 +21,7 @@ import (
 	"github.com/yaoapp/yao/neo/conversation"
 	"github.com/yaoapp/yao/neo/message"
 	"github.com/yaoapp/yao/openai"
+	"github.com/yaoapp/yao/utils"
 )
 
 // API is a method on the Neo type
@@ -483,7 +484,7 @@ func (neo *DSL) getCorsHandlers(router *gin.Engine, path string) ([]gin.HandlerF
 	router.OPTIONS(path+"/history", func(c *gin.Context) { c.AbortWithStatus(204) })
 	return []gin.HandlerFunc{
 		func(c *gin.Context) {
-			referer := c.Request.Referer()
+			referer := utils.GetOrigin(c) //c.Request.Referer()
 			if referer != "" {
 
 				if !api.IsAllowed(c, allowsMap) {

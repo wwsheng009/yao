@@ -74,7 +74,7 @@ func Stop(srv *http.Server) error {
 	return nil
 }
 
-func prepare() error {
+func prepare(allows ...string) error {
 
 	// Session server
 	err := share.SessionStart()
@@ -82,7 +82,7 @@ func prepare() error {
 		return err
 	}
 
-	err = SetupStatic()
+	err = SetupStatic(allows...)
 	if err != nil {
 		return err
 	}

@@ -133,4 +133,4 @@ replace github.com/yaoapp/xun => ../xun // xun local
 
 replace github.com/yaoapp/gou => ../gou // gou local
 
-replace rogchap.com/v8go => ../v8go
+replace rogchap.com/v8go => ../v8go_windows
