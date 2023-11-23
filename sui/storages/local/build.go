@@ -84,24 +84,13 @@ func (page *Page) Build(option *core.BuildOption) error {
 		option.AssetRoot = filepath.Join(page.tmpl.local.DSL.Public.Root, "assets")
 	}
 
-	doc, _, err := page.Page.Build(option)
-	if err != nil {
-		return err
-	}
-
-	html, err := doc.Html()
+	html, err := page.Page.Compile(option)
 	if err != nil {
 		return err
 	}
 
 	// Save the html
-	err = page.writeHTML([]byte(html))
-	if err != nil {
-		return err
-	}
-
-	// Save the data
-	return page.writeData()
+	return page.writeHTML([]byte(html))
 }
 
 func (page *Page) publicFile() string {
@@ -115,7 +104,7 @@ func (page *Page) publicFile() string {
 
 // writeHTMLTo write the html to file
 func (page *Page) writeHTML(html []byte) error {
-	htmlFile := fmt.Sprintf("%s.html", page.publicFile())
+	htmlFile := fmt.Sprintf("%s.sui", page.publicFile())
 	dir := filepath.Dir(htmlFile)
 	if exist, _ := os.Stat(dir); exist == nil {
 		os.MkdirAll(dir, os.ModePerm)

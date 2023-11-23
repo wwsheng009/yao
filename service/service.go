@@ -28,17 +28,16 @@ func Start(cfg config.Config) (*http.Server, error) {
 	}
 
 	router := gin.New()
-	router.Use(gin.Logger())
+	router.Use(Middlewares...)
 	api.SetGuards(Guards)
 	api.SetRoutes(router, "/api", cfg.AllowFrom...)
-
 	srv := http.New(router, http.Option{
 		Host:    cfg.Host,
 		Port:    cfg.Port,
 		Root:    "/api",
 		Allows:  cfg.AllowFrom,
 		Timeout: 5 * time.Second,
-	}).With(Middlewares...)
+	})
 
 	// Neo API
 	if neo.Neo != nil {
@@ -62,6 +61,16 @@ func Start(cfg config.Config) (*http.Server, error) {
 	}()
 
 	return srv, nil
+}
+
+// Restart the yao service
+func Restart(srv *http.Server, cfg config.Config) error {
+	router := gin.New()
+	router.Use(Middlewares...)
+	api.SetGuards(Guards)
+	api.SetRoutes(router, "/api", cfg.AllowFrom...)
+	srv.Reset(router)
+	return srv.Restart()
 }
 
 // Stop the yao service

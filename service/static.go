@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/data"
 	"github.com/yaoapp/yao/service/fs"
 	"github.com/yaoapp/yao/share"
@@ -14,12 +15,6 @@ import (
 
 // AppFileServer static file server
 var AppFileServer http.Handler
-
-// spaFileServers spa static file server
-var spaFileServers map[string]http.Handler = map[string]http.Handler{}
-
-// SpaRoots SPA static file server
-var SpaRoots map[string]int = map[string]int{}
 
 // XGenFileServerV1 XGen v1.0
 var XGenFileServerV1 http.Handler = http.FileServer(data.XgenV1())
@@ -30,25 +25,63 @@ var AdminRoot = ""
 // AdminRootLen cache
 var AdminRootLen = 0
 
+var rewriteRules = []rewriteRule{}
+
+type rewriteRule struct {
+	Pattern     *regexp.Regexp
+	Replacement string
+}
+
 // SetupStatic setup static file server
 func SetupStatic(allows ...string) error {
-
-	// SetAdmin Root
-	adminRoot()
-
-	if isPWA() {
-		AppFileServer = addCorsHeader(http.FileServer(fs.DirPWA("public")), allows...)
-		return nil
-	}
-
-	for _, root := range spaApps() {
-		spaFileServers[root] = addCorsHeader(http.FileServer(fs.DirPWA(filepath.Join("public", root))), allows...)
-		SpaRoots[root] = len(root)
-	}
-
+	setupAdminRoot()
+	setupRewrite()
 	AppFileServer = addCorsHeader(http.FileServer(fs.Dir("public")), allows...)
-
 	return nil
+}
+
+func setupRewrite() {
+	if share.App.Static.Rewrite != nil {
+		for _, rule := range share.App.Static.Rewrite {
+
+			pattern := ""
+			replacement := ""
+			for key, value := range rule {
+				pattern = key
+				replacement = value
+				break
+			}
+
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				log.Error("Invalid rewrite rule: %s", pattern)
+				continue
+			}
+
+			rewriteRules = append(rewriteRules, rewriteRule{
+				Pattern:     re,
+				Replacement: replacement,
+			})
+		}
+	}
+}
+
+// rewrite path
+func setupAdminRoot() (string, int) {
+	if AdminRoot != "" {
+		return AdminRoot, AdminRootLen
+	}
+
+	adminRoot := "/yao/"
+	if share.App.AdminRoot != "" {
+		root := strings.TrimPrefix(share.App.AdminRoot, "/")
+		root = strings.TrimSuffix(root, "/")
+		adminRoot = fmt.Sprintf("/%s/", root)
+	}
+	adminRootLen := len(adminRoot)
+	AdminRoot = adminRoot
+	AdminRootLen = adminRootLen
+	return AdminRoot, AdminRootLen
 }
 
 // get the origin
@@ -108,36 +141,4 @@ func addCorsHeader(h http.Handler, allows ...string) http.HandlerFunc {
 		}
 		h.ServeHTTP(w, r)
 	}
-}
-
-// rewrite path
-func isPWA() bool {
-
-	return share.App.Static.PWA
-}
-
-// rewrite path
-func spaApps() []string {
-	if share.App.Static.Apps == nil {
-		return []string{}
-	}
-	return share.App.Static.Apps
-}
-
-// SetupAdmin setup admin static root
-func adminRoot() (string, int) {
-	if AdminRoot != "" {
-		return AdminRoot, AdminRootLen
-	}
-
-	adminRoot := "/yao/"
-	if share.App.AdminRoot != "" {
-		root := strings.TrimPrefix(share.App.AdminRoot, "/")
-		root = strings.TrimSuffix(root, "/")
-		adminRoot = fmt.Sprintf("/%s/", root)
-	}
-	adminRootLen := len(adminRoot)
-	AdminRoot = adminRoot
-	AdminRootLen = adminRootLen
-	return AdminRoot, AdminRootLen
 }
