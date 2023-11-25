@@ -24,6 +24,7 @@ func New(dsl *sui.DSL) (*Local, error) {
 	root := "/"
 	host := "/"
 	index := "/index"
+	matcher := ""
 	if dsl.Public != nil {
 		if dsl.Public.Root != "" {
 			root = dsl.Public.Root
@@ -36,6 +37,10 @@ func New(dsl *sui.DSL) (*Local, error) {
 		if dsl.Public.Index != "" {
 			index = dsl.Public.Index
 		}
+
+		if dsl.Public.Matcher != "" {
+			matcher = dsl.Public.Matcher
+		}
 	}
 
 	dataFS, err := fs.Get("system")
@@ -44,9 +49,10 @@ func New(dsl *sui.DSL) (*Local, error) {
 	}
 
 	dsl.Public = &sui.Public{
-		Host:  host,
-		Root:  root,
-		Index: index,
+		Host:    host,
+		Root:    root,
+		Index:   index,
+		Matcher: matcher,
 	}
 
 	return &Local{
@@ -138,6 +144,16 @@ func (local *Local) getTemplate(id string, path string) (*Template, error) {
 			return nil, err
 		}
 		tmpl.Document = documentBytes
+	}
+
+	// load the __data.json
+	dataFile := filepath.Join(path, "__data.json")
+	if local.fs.IsFile(dataFile) {
+		dataBytes, err := local.fs.ReadFile(dataFile)
+		if err != nil {
+			return nil, err
+		}
+		tmpl.GlobalData = dataBytes
 	}
 
 	return &tmpl, nil

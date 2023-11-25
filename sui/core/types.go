@@ -1,5 +1,10 @@
 package core
 
+import (
+	"net/url"
+	"regexp"
+)
+
 // DSL the struct for the DSL
 type DSL struct {
 	ID         string   `json:"-"`
@@ -28,6 +33,7 @@ type Page struct {
 	Path       string      `json:"-"`
 	Codes      SourceCodes `json:"-"`
 	Document   []byte      `json:"-"`
+	GlobalData []byte      `json:"-"`
 }
 
 // PageTreeNode is the struct for the page tree node
@@ -81,6 +87,7 @@ type Template struct {
 	Screenshots []string       `json:"screenshots"`
 	Themes      []SelectOption `json:"themes"`
 	Document    []byte         `json:"-"`
+	GlobalData  []byte         `json:"-"`
 }
 
 // Theme is the struct for the theme
@@ -128,10 +135,11 @@ type MediaSearchResult struct {
 
 // BuildOption is the struct for the option option
 type BuildOption struct {
-	SSR       bool   `json:"ssr"`
-	CDN       bool   `json:"cdn"`
-	UpdateAll bool   `json:"update_all"`
-	AssetRoot string `json:"asset_root,omitempty"`
+	SSR             bool   `json:"ssr"`
+	CDN             bool   `json:"cdn"`
+	UpdateAll       bool   `json:"update_all"`
+	AssetRoot       string `json:"asset_root,omitempty"`
+	IgnoreAssetRoot bool   `json:"ignore_asset_root,omitempty"`
 }
 
 // Request is the struct for the request
@@ -140,10 +148,11 @@ type Request struct {
 	AssetRoot string                 `json:"asset_root,omitempty"`
 	Referer   string                 `json:"referer,omitempty"`
 	Payload   map[string]interface{} `json:"payload,omitempty"`
-	Query     map[string][]string    `json:"query,omitempty"`
+	Query     url.Values             `json:"query,omitempty"`
 	Params    map[string]string      `json:"params,omitempty"`
-	Headers   map[string][]string    `json:"headers,omitempty"`
+	Headers   url.Values             `json:"headers,omitempty"`
 	Body      interface{}            `json:"body,omitempty"`
+	Sid       string                 `json:"sid,omitempty"`
 	Theme     string                 `json:"theme,omitempty"`
 	Locale    string                 `json:"locale,omitempty"`
 }
@@ -196,17 +205,21 @@ type BoardSourceData struct {
 
 // PageMock is the struct for the request
 type PageMock struct {
-	Method  string              `json:"method,omitempty"`
-	Params  map[string]string   `json:"params,omitempty"`
-	Query   map[string][]string `json:"query,omitempty"`
-	Headers map[string][]string `json:"headers,omitempty"`
-	Body    interface{}         `json:"body,omitempty"`
+	Method  string                 `json:"method,omitempty"`
+	Referer string                 `json:"referer,omitempty"`
+	Payload map[string]interface{} `json:"payload,omitempty"`
+	Query   url.Values             `json:"query,omitempty"`
+	Params  map[string]string      `json:"params,omitempty"`
+	Headers url.Values             `json:"headers,omitempty"`
+	Body    interface{}            `json:"body,omitempty"`
+	Sid     string                 `json:"sid,omitempty"`
 }
 
 // PageConfig is the struct for the page config
 type PageConfig struct {
 	PageSetting `json:",omitempty"`
-	Mock        *PageMock `json:"mock,omitempty"`
+	Mock        *PageMock           `json:"mock,omitempty"`
+	Rendered    *PageConfigRendered `json:"rendered,omitempty"`
 }
 
 // PageSetting is the struct for the page setting
@@ -214,6 +227,12 @@ type PageSetting struct {
 	Title       string   `json:"title,omitempty"`
 	Description string   `json:"description,omitempty"`
 	SEO         *PageSEO `json:"seo,omitempty"`
+}
+
+// PageConfigRendered is the struct for the page config rendered
+type PageConfigRendered struct {
+	Title string `json:"title,omitempty"`
+	Link  string `json:"link,omitempty"`
 }
 
 // PageSEO is the struct for the page seo
@@ -244,15 +263,24 @@ type Source struct {
 
 // Public is the struct for the static
 type Public struct {
-	Host  string `json:"host,omitempty"`
-	Root  string `json:"root,omitempty"`
-	Index string `json:"index,omitempty"`
+	Host    string `json:"host,omitempty"`
+	Root    string `json:"root,omitempty"`
+	Index   string `json:"index,omitempty"`
+	Matcher string `json:"matcher,omitempty"`
 }
 
 // Storage is the struct for the storage
 type Storage struct {
 	Driver string                 `json:"driver"`
 	Option map[string]interface{} `json:"option,omitempty"`
+}
+
+// Matcher the struct for the matcher
+type Matcher struct {
+	Regex  *regexp.Regexp `json:"regex,omitempty"`
+	Exact  string         `json:"exact,omitempty"`
+	Parent string         `json:"-"`
+	Ref    string         `json:"-"`
 }
 
 // DocumentDefault is the default document
