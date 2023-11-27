@@ -6,7 +6,10 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/google/uuid"
 	"github.com/yaoapp/gou/application"
+	"github.com/yaoapp/gou/process"
+	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/yao/aigc"
 	"github.com/yaoapp/yao/api"
@@ -35,6 +38,7 @@ import (
 	"github.com/yaoapp/yao/websocket"
 	"github.com/yaoapp/yao/widget"
 	"github.com/yaoapp/yao/widgets"
+	"github.com/yaoapp/yao/widgets/app"
 )
 
 // Load application engine
@@ -183,7 +187,7 @@ func Load(cfg config.Config) (err error) {
 	// Load Neo
 	err = neo.Load(cfg)
 	if err != nil {
-		printErr(cfg.Mode, "AIGC", err)
+		printErr(cfg.Mode, "Neo", err)
 	}
 
 	// Load Custom Widget
@@ -209,7 +213,6 @@ func Load(cfg config.Config) (err error) {
 	if err != nil {
 		printErr(cfg.Mode, "Moapi", err)
 	}
-
 	return nil
 }
 
@@ -390,9 +393,25 @@ func Reload(cfg config.Config) (err error) {
 	// Load Neo
 	err = neo.Load(cfg)
 	if err != nil {
-		printErr(cfg.Mode, "AIGC", err)
+		printErr(cfg.Mode, "Neo", err)
 	}
 
+	// Load SUI
+	err = sui.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "SUI", err)
+	}
+
+	// Load Moapi
+	err = moapi.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "Moapi", err)
+	}
+	//custom startup
+	err = CustomStartUp(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "Starup", err)
+	}
 	return err
 }
 
@@ -492,4 +511,48 @@ func printErr(mode, widget string, err error) {
 	if !strings.Contains(message, "does not exists") && !strings.Contains(message, "no such file or directory") && mode == "development" {
 		color.Red(message)
 	}
+}
+
+// 自定义启动
+func CustomStartUp(cfg config.Config) error {
+
+	if app.Setting != nil && app.Setting.Startup != "" {
+
+		// studio只有在开发环境才能生效
+		if strings.HasPrefix(app.Setting.Startup, "studio.") {
+			names := strings.Split(app.Setting.Startup, ".")
+			if len(names) < 3 {
+				return fmt.Errorf("startup studio script %s error", app.Setting.Startup)
+			}
+
+			service := strings.Join(names[1:len(names)-1], ".")
+			method := names[len(names)-1]
+
+			script, err := v8.SelectRoot(service)
+			if err != nil {
+				return err
+			}
+
+			sid := uuid.NewString()
+			ctx, err := script.NewContext(fmt.Sprintf("%v", sid), nil)
+			if err != nil {
+				return err
+			}
+			defer ctx.Close()
+
+			_, err = ctx.Call(method)
+			return err
+		}
+
+		p, err := process.Of(app.Setting.Startup, cfg)
+		if err != nil {
+			return err
+		}
+		_, err = p.Exec()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

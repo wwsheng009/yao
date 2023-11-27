@@ -127,7 +127,11 @@ var startCmd = &cobra.Command{
 					log.Error("Studio Load: %s", err.Error())
 					return
 				}
-
+				//custom startup
+				err = engine.CustomStartUp(config.Conf)
+				if err != nil {
+					log.Error("Custom Startup: %s", err.Error())
+				}
 				err := studio.Start(config.Conf)
 				if err != nil {
 					log.Error("Studio Start: %s", err.Error())
@@ -142,6 +146,12 @@ var startCmd = &cobra.Command{
 			printConnectors(false)
 			printStores(false)
 			printStudio(false, host)
+		} else {
+			//custom startup
+			err = engine.CustomStartUp(config.Conf)
+			if err != nil {
+				log.Error("Custom Startup: %s", err.Error())
+			}
 		}
 
 		// Start Tasks
