@@ -118,15 +118,15 @@ jobs:
         run: |
           echo VERSION=$(cat share/const.go  |grep 'const VERSION' | awk '{print $4}' | sed "s/\"//g")  >> $GITHUB_ENV
 
-      - name: mod-tidy-action
-        uses: evantorrie/mott-the-tidier@v1-beta
-        with:
-          gomods: |
-            go.mod
-            **/go.mod
-            -tools/go.mod
-          gomodsum_only: true
-          gosum_only: false
+      # - name: mod-tidy-action
+      #   uses: evantorrie/mott-the-tidier@v1-beta
+      #   with:
+      #     gomods: |
+      #       go.mod
+      #       **/go.mod
+      #       -tools/go.mod
+      #     gomodsum_only: true
+      #     gosum_only: false
 
       - name: Make Artifacts Linux
         run: |
