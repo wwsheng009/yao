@@ -124,7 +124,7 @@ func parserPath(c *gin.Context) (string, map[string]string, error) {
 	fileParts := []string{string(os.PathSeparator), "public"}
 
 	// Match the sui
-	matchers := core.RouteExactMatchers[parts[0]]
+	matchers := core.RouteExactMatchers["/"+parts[0]]
 	if matchers == nil {
 		for matcher, reMatchers := range core.RouteMatchers {
 			matched := matcher.FindStringSubmatch(parts[0])
@@ -134,6 +134,8 @@ func parserPath(c *gin.Context) (string, map[string]string, error) {
 				break
 			}
 		}
+	} else {
+		fileParts = append(fileParts, parts[0])
 	}
 
 	if matchers == nil {

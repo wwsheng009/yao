@@ -87,6 +87,14 @@ func (parser *TemplateParser) parseNode(node *html.Node) {
 			skipChildren = true
 		}
 
+		// replace the attributes
+		for idx, A := range node.Attr {
+			if !strings.HasPrefix(A.Key, "s:") && stmtRe.Match([]byte(A.Val)) {
+				replace, _ := parser.data.Replace(A.Val)
+				node.Attr[idx].Val = replace
+			}
+		}
+
 	case html.TextNode:
 		parser.parseTextNode(node)
 	}
@@ -110,6 +118,17 @@ func (parser *TemplateParser) parseElementNode(sel *goquery.Selection) {
 	}
 }
 
+// check if has the s:html command ,ouput the raw data
+func checkIsHtml(node *html.Node) bool {
+	if node.Parent != nil && len(node.Parent.Attr) > 0 {
+		for _, attr := range node.Parent.Attr {
+			if attr.Key == "s:html" && attr.Val == "true" {
+				return true
+			}
+		}
+	}
+	return false
+}
 func (parser *TemplateParser) parseTextNode(node *html.Node) {
 	parser.sequence = parser.sequence + 1
 	res, hasStmt := parser.data.Replace(node.Data)
@@ -118,6 +137,9 @@ func (parser *TemplateParser) parseTextNode(node *html.Node) {
 		bindings := strings.TrimSpace(node.Data)
 		key := fmt.Sprintf("%v", parser.sequence)
 		if bindings != "" {
+			if checkIsHtml(node) {
+				node.Type = html.RawNode
+			}
 			node.Parent.Attr = append(node.Parent.Attr, []html.Attribute{
 				{Key: "s:bind", Val: bindings},
 				{Key: "s:key-text", Val: key},

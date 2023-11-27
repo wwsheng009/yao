@@ -3,6 +3,7 @@ package local
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
@@ -295,7 +296,12 @@ func (tmpl *Template) getPage(route, file string) (core.IPage, error) {
 }
 
 func (tmpl *Template) getPageRoute(file string) string {
-	return filepath.Dir(file[len(tmpl.Root):])
+	route := filepath.Dir(file[len(tmpl.Root):])
+	if runtime.GOOS == "windows" {
+		route = strings.ReplaceAll(route, "\\", "/")
+	}
+
+	return route
 }
 
 func (tmpl *Template) getPagePath(route string) string {

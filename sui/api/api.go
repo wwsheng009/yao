@@ -14,6 +14,7 @@ var dsl = []byte(`
 			"path": "/:id/setting",
 			"method": "GET",
 			"process": "sui.Setting",
+			"guard": "-",
 			"in": ["$param.id"],
 			"out": { "status": 200, "type": "application/json" }
 		},

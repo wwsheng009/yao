@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/yaoapp/gou/application"
@@ -82,6 +84,9 @@ func (page *Page) Build(option *core.BuildOption) error {
 
 	if option.AssetRoot == "" {
 		option.AssetRoot = filepath.Join(page.tmpl.local.DSL.Public.Root, "assets")
+		if runtime.GOOS == "windows" {
+			option.AssetRoot = strings.ReplaceAll(option.AssetRoot, "\\", "/")
+		}
 	}
 
 	html, err := page.Page.Compile(option)
