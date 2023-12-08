@@ -35,6 +35,11 @@ func (page *Page) EditorRender() (*ResponseEditorRender, error) {
 	// Render the page
 	request := NewRequestMock(page.Config.Mock)
 
+	// Set Default Sid
+	if request.Sid == "" {
+		request.Sid, _ = page.Sid()
+	}
+
 	// Render tools
 	// res.Scripts = append(res.Scripts, filepath.Join("@assets", "__render.js"))
 	// res.Styles = append(res.Styles, filepath.Join("@assets", "__render.css"))
@@ -42,6 +47,7 @@ func (page *Page) EditorRender() (*ResponseEditorRender, error) {
 	doc, warnings, err := page.Build(&BuildOption{
 		SSR:             true,
 		IgnoreAssetRoot: true,
+		IgnoreDocument:  true,
 	})
 
 	if err != nil {

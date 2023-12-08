@@ -25,6 +25,7 @@ type SUI interface {
 	GetTemplate(name string) (ITemplate, error)
 	UploadTemplate(src string, dst string) (ITemplate, error)
 	WithSid(sid string)
+	GetSid() string
 	PublicRootMatcher() *Matcher
 	GetPublic() *Public
 	PublicRootWithSid(sid string) (string, error)
@@ -59,11 +60,16 @@ type ITemplate interface {
 
 	Build(option *BuildOption) error
 	SyncAssets(option *BuildOption) error
+
+	GetRoot() string
 }
 
 // IPage is the interface for the page
 type IPage interface {
 	Load() error
+
+	SUI() (SUI, error)
+	Sid() (string, error)
 
 	Get() *Page
 	GetConfig() *PageConfig
