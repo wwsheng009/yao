@@ -269,7 +269,12 @@ debug1: clean
 	rm -rf .tmp/yao-init/LICENSE
 	rm -rf .tmp/yao-init/README.md
 	
-
+#   Yao Builder
+	mkdir -p .tmp/data/builder
+	curl -o .tmp/yao-builder-latest.tar.gz https://release-sv.yaoapps.com/archives/yao-builder-latest.tar.gz
+	tar -zxvf .tmp/yao-builder-latest.tar.gz -C .tmp/data/builder
+	rm -rf .tmp/yao-builder-latest.tar.gz
+	
 #	Packing
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
