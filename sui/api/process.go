@@ -35,14 +35,16 @@ func init() {
 		"component.get":  ComponentGet,
 		"component.find": ComponentFind,
 
-		"page.tree":     PageTree,
-		"page.get":      PageGet,
-		"page.save":     PageSave,
-		"page.savetemp": PageSaveTemp,
-		"page.create":   PageCreate,
-		"page.remove":   PageRemove,
-		"page.exist":    PageExist,
-		"page.asset":    PageAsset,
+		"page.tree":      PageTree,
+		"page.get":       PageGet,
+		"page.save":      PageSave,
+		"page.savetemp":  PageSaveTemp,
+		"page.create":    PageCreate,
+		"page.duplicate": PageDuplicate,
+		"page.rename":    PageRename,
+		"page.remove":    PageRemove,
+		"page.exist":     PageExist,
+		"page.asset":     PageAsset,
 
 		"editor.render":              EditorRender,
 		"editor.source":              EditorSource,
@@ -457,7 +459,7 @@ func PageSave(process *process.Process) interface{} {
 			exception.New(err.Error(), 500).Throw()
 		}
 	} else {
-		page, err = tmpl.CreatePage(route)
+		page, err = tmpl.CreateEmptyPage(route, nil)
 		if err != nil {
 			exception.New(err.Error(), 500).Throw()
 		}
@@ -499,7 +501,7 @@ func PageSaveTemp(process *process.Process) interface{} {
 			exception.New(err.Error(), 500).Throw()
 		}
 	} else {
-		page, err = tmpl.CreatePage(route)
+		page, err = tmpl.CreateEmptyPage(route, nil)
 		if err != nil {
 			exception.New(err.Error(), 500).Throw()
 		}
@@ -530,14 +532,25 @@ func PageCreate(process *process.Process) interface{} {
 	process.ValidateArgNums(3)
 	sui := get(process)
 	templateID := process.ArgsString(1)
-	route := route(process, 2)
+	route := process.ArgsString(2)
+	payload := process.ArgsMap(4, map[string]interface{}{})
 
 	tmpl, err := sui.GetTemplate(templateID)
 	if err != nil {
 		exception.New(err.Error(), 500).Throw()
 	}
 
-	page, err := tmpl.CreatePage(route)
+	// Get the route from payload
+	if v, ok := payload["route"].(string); ok {
+		route = v
+	}
+
+	title := route
+	if v, ok := payload["title"].(string); ok {
+		title = v
+	}
+	setting := &core.PageSetting{Title: title}
+	page, err := tmpl.CreateEmptyPage(route, setting)
 	if err != nil {
 		exception.New(err.Error(), 500).Throw()
 	}
@@ -548,7 +561,7 @@ func PageCreate(process *process.Process) interface{} {
 
 	source, err := getSource(process)
 	if err != nil {
-		exception.New(err.Error(), 500).Throw()
+		return nil
 	}
 
 	if source == nil {
@@ -559,6 +572,88 @@ func PageCreate(process *process.Process) interface{} {
 	if err != nil {
 		exception.New(err.Error(), 500).Throw()
 	}
+
+	Reload()
+	return nil
+}
+
+// PageRename handle the find Template request
+func PageRename(process *process.Process) interface{} {
+	process.ValidateArgNums(3)
+	sui := get(process)
+	templateID := process.ArgsString(1)
+	copyfrom := process.ArgsString(2)
+	payload := process.ArgsMap(3, map[string]interface{}{})
+
+	tmpl, err := sui.GetTemplate(templateID)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	page, err := tmpl.Page(copyfrom)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	// Get the route from payload
+	route, ok := payload["route"].(string)
+	if !ok {
+		exception.New("the route is required", 400).Throw()
+	}
+
+	// Rename
+	_, err = page.SaveAs(route, nil)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	// delete the old page
+	err = tmpl.RemovePage(copyfrom)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	Reload()
+	return nil
+}
+
+// PageDuplicate handle the find Template request
+func PageDuplicate(process *process.Process) interface{} {
+	process.ValidateArgNums(3)
+	sui := get(process)
+	templateID := process.ArgsString(1)
+	copyfrom := process.ArgsString(2)
+	payload := process.ArgsMap(3, map[string]interface{}{})
+
+	tmpl, err := sui.GetTemplate(templateID)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	page, err := tmpl.Page(copyfrom)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	// Get the route from payload
+	route, ok := payload["route"].(string)
+	if !ok {
+		exception.New("the route is required", 400).Throw()
+	}
+
+	title := route
+	if v, ok := payload["title"].(string); ok {
+		title = v
+	}
+
+	// Page Save as
+	setting := &core.PageSetting{Title: title}
+	_, err = page.SaveAs(route, setting)
+	if err != nil {
+		exception.New(err.Error(), 500).Throw()
+	}
+
+	Reload()
 	return nil
 }
 
@@ -574,10 +669,16 @@ func PageRemove(process *process.Process) interface{} {
 		exception.New(err.Error(), 500).Throw()
 	}
 
+	if !tmpl.PageExist(route) {
+		exception.New("page does not exists!", 400).Throw()
+	}
+
 	err = tmpl.RemovePage(route)
 	if err != nil {
 		exception.New(err.Error(), 500).Throw()
 	}
+
+	Reload()
 	return nil
 }
 

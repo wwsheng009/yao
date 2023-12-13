@@ -187,6 +187,8 @@ func (tmpl *Template) RemovePage(route string) error {
 
 	path := filepath.Join(tmpl.Root, route)
 	name := filepath.Base(path) + ".*"
+	name = strings.ReplaceAll(name, "[", "\\[")
+	name = strings.ReplaceAll(name, "]", "\\]")
 	err := tmpl.local.fs.Walk(path, func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
@@ -198,28 +200,84 @@ func (tmpl *Template) RemovePage(route string) error {
 		return err
 	}
 
+	// Remove .tmp directory
+	tmpPath := filepath.Join(tmpl.Root, route, ".tmp")
+	if exist, _ := tmpl.local.fs.Exists(tmpPath); exist {
+		err = tmpl.local.fs.RemoveAll(tmpPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tmpl.removeEmptyPath(path)
+}
+
+func (tmpl *Template) removeEmptyPath(path string) error {
 	dirs, err := tmpl.local.fs.ReadDir(path, false)
 	if err != nil {
 		return err
 	}
 
 	if len(dirs) == 0 {
-		return tmpl.local.fs.Remove(path)
+		err = tmpl.local.fs.RemoveAll(path)
+		if err != nil {
+			return err
+		}
+		parent := filepath.Dir(path)
+		if parent == tmpl.Root {
+			return nil
+		}
+		return tmpl.removeEmptyPath(parent)
 	}
-
 	return nil
-
 }
 
-// CreatePage create a new page
-func (tmpl *Template) CreatePage(route string) (core.IPage, error) {
+// SaveAs save the page as
+func (page *Page) SaveAs(route string, setting *core.PageSetting) (core.IPage, error) {
+
+	if page.tmpl.PageExist(route) {
+		return nil, fmt.Errorf("Page %s already exist", route)
+	}
+
+	root := page.tmpl.Root
+	target := filepath.Join(root, route)
+	targetBaseName := filepath.Base(target)
+	baseName := filepath.Base(page.Path)
+	patterns := []string{"*.js", "*.ts", "*.html", "*.css", "*.config", "*.json"}
+	err := page.tmpl.local.fs.Walk(page.Path, func(root, file string, isdir bool) error {
+		if isdir {
+			return nil
+		}
+
+		if filepath.Base(filepath.Dir(file)) != baseName {
+			return nil
+		}
+
+		fileName := filepath.Base(file)
+		targetFileName := strings.Replace(fileName, baseName, targetBaseName, 1)
+		targetFile := filepath.Join(target, targetFileName)
+
+		// Copy the file
+		return page.tmpl.local.fs.Copy(file, targetFile)
+
+	}, patterns...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return page.tmpl.Page(route)
+}
+
+// CreateEmptyPage create a new empty
+func (tmpl *Template) CreateEmptyPage(route string, setting *core.PageSetting) (core.IPage, error) {
 	if tmpl.PageExist(route) {
 		return nil, fmt.Errorf("Page %s already exist", route)
 	}
 
 	// Create the page directory
 	name := tmpl.getPageBase(route)
-	return &Page{
+	page := &Page{
 		tmpl: tmpl,
 		Page: &core.Page{
 			Route:      route,
@@ -236,7 +294,22 @@ func (tmpl *Template) CreatePage(route string) (core.IPage, error) {
 				CONF: core.Source{File: fmt.Sprintf("%s.config", name)},
 			},
 		},
-	}, nil
+	}
+
+	title := route
+	if setting != nil {
+		title = setting.Title
+	}
+
+	err := page.Save(&core.RequestSource{
+		Page:       &core.SourceData{Source: fmt.Sprintf("<div>%s</div>", title), Language: "html"},
+		Setting:    setting,
+		NeedToSave: core.ReqeustSourceNeedToSave{Page: true, Setting: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return page, nil
 }
 
 // Remove remove the page

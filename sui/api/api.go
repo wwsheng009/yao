@@ -122,7 +122,19 @@ var dsl = []byte(`
 			"path": "/:id/page/create/:template_id/*route",
 			"method": "POST",
 			"process": "sui.Page.Create",
-			"in": ["$param.id", "$param.template_id", "$param.route", ":context"],
+			"in": ["$param.id", "$param.template_id", "$param.route", ":context", ":payload"],
+			"out": { "status": 200, "type": "application/json" }
+		},{
+			"path": "/:id/page/duplicate/:template_id/*route",
+			"method": "POST",
+			"process": "sui.Page.Duplicate",
+			"in": ["$param.id", "$param.template_id", "$param.route", ":payload"],
+			"out": { "status": 200, "type": "application/json" }
+		},{
+			"path": "/:id/page/rename/:template_id/*route",
+			"method": "POST",
+			"process": "sui.Page.Rename",
+			"in": ["$param.id", "$param.template_id", "$param.route", ":payload"],
 			"out": { "status": 200, "type": "application/json" }
 		},{
 			"path": "/:id/page/exist/:template_id/*route",
