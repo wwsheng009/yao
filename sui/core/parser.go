@@ -185,10 +185,10 @@ func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection) {
 }
 
 // check if has the s:html command ,ouput the raw data
-func checkIsHtml(node *html.Node) bool {
+func checkIsRaw(node *html.Node) bool {
 	if node.Parent != nil && len(node.Parent.Attr) > 0 {
 		for _, attr := range node.Parent.Attr {
-			if attr.Key == "s:html" && attr.Val == "true" {
+			if attr.Key == "s:raw" && attr.Val == "true" {
 				return true
 			}
 		}
@@ -203,7 +203,7 @@ func (parser *TemplateParser) parseTextNode(node *html.Node) {
 		bindings := strings.TrimSpace(node.Data)
 		key := fmt.Sprintf("%v", parser.sequence)
 		if bindings != "" {
-			if checkIsHtml(node) {
+			if checkIsRaw(node) {
 				node.Type = html.RawNode
 			}
 			node.Parent.Attr = append(node.Parent.Attr, []html.Attribute{
