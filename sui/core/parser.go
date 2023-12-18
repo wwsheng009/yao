@@ -123,12 +123,12 @@ func (parser *TemplateParser) parseNode(node *html.Node) {
 		}
 
 		// replace the attributes
-		for idx, A := range node.Attr {
-			if !strings.HasPrefix(A.Key, "s:") && stmtRe.Match([]byte(A.Val)) {
-				replace, _ := parser.data.Replace(A.Val)
-				node.Attr[idx].Val = replace
-			}
-		}
+		// for idx, A := range node.Attr {
+		// 	if !strings.HasPrefix(A.Key, "s:") && stmtRe.Match([]byte(A.Val)) {
+		// 		replace, _ := parser.data.Replace(A.Val)
+		// 		node.Attr[idx].Val = replace
+		// 	}
+		// }
 
 	case html.TextNode:
 		parser.parseTextNode(node)
@@ -157,13 +157,13 @@ func (parser *TemplateParser) parseElementNode(sel *goquery.Selection) {
 }
 
 func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection) {
-	if len(sel.Nodes) < 0 {
+	if len(sel.Nodes) == 0 {
 		return
 	}
-
-	if sel.AttrOr("parsed", "false") == "true" {
-		return
-	}
+	// if the attributes has if statement,it will cause the attributes not be processed
+	// if sel.AttrOr("parsed", "false") == "true" {
+	// 	return
+	// }
 
 	attrs := sel.Nodes[0].Attr
 	for _, attr := range attrs {
