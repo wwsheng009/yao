@@ -40,6 +40,11 @@ func (page *Page) EditorRender() (*ResponseEditorRender, error) {
 		request.Sid, _ = page.Sid()
 	}
 
+	link := page.Link(request)
+	if request.URL.Path == "" {
+		request.URL.Path = link
+	}
+
 	// Render tools
 	// res.Scripts = append(res.Scripts, filepath.Join("@assets", "__render.js"))
 	// res.Styles = append(res.Styles, filepath.Join("@assets", "__render.css"))
@@ -84,13 +89,12 @@ func (page *Page) EditorRender() (*ResponseEditorRender, error) {
 			res.Warnings = append(res.Warnings, err.Error())
 		}
 	}
-
 	res.Render(data)
 
 	// Set the title
 	res.Config.Rendered = &PageConfigRendered{
 		Title: page.RenderTitle(data),
-		Link:  page.Link(request),
+		Link:  link,
 	}
 
 	return res, nil
@@ -107,7 +111,7 @@ func (res *ResponseEditorRender) Render(data map[string]interface{}) error {
 	}
 
 	var err error
-	parser := NewTemplateParser(data, &ParserOption{Editor: true})
+	parser := NewTemplateParser(data, &ParserOption{Editor: true, PrintData: true})
 
 	res.HTML, err = parser.Render(res.HTML)
 	if err != nil {
