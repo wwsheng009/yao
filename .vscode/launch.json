@@ -13,7 +13,7 @@
       "args": [
         "start"
       ],
-      "cwd": "D:/projects/go/yao/wwsheng009/yao-amis-admin"
+      "cwd": "D:/projects/go/yao/wwsheng009/yao-bench"
     },
     {
       "name": "test run",

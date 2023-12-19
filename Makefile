@@ -245,7 +245,7 @@ artifacts-macos: clean
 debug1: clean
 	rm -rf dist/release
 	mkdir -p dist/release
-	rm -rf ./tmp
+# rm -rf .tmp/data
 
 #	Building XGEN v0.9
 	mkdir -p .tmp/xgen/v0.9/dist
@@ -262,7 +262,8 @@ debug1: clean
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
 #	Checkout init
-	# git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
+# git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
+	rm -rf .tmp/yao-init
 	cp -r ../yao-init-0.10.3 .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
 	rm -rf .tmp/yao-init/.gitignore
@@ -270,15 +271,17 @@ debug1: clean
 	rm -rf .tmp/yao-init/README.md
 	
 #   Yao Builder
-	mkdir -p .tmp/data/builder
-	curl -o .tmp/yao-builder-latest.tar.gz https://release-sv.yaoapps.com/archives/yao-builder-latest.tar.gz
-	tar -zxvf .tmp/yao-builder-latest.tar.gz -C .tmp/data/builder
-	rm -rf .tmp/yao-builder-latest.tar.gz
+# mkdir -p ../yao-builder
+# curl -o ../yao-builder-latest.tar.gz https://release-sv.yaoapps.com/archives/yao-builder-latest.tar.gz
+# tar -zxvf ../yao-builder-latest.tar.gz -C ../yao-builder
+# rm -rf ../yao-builder-latest.tar.gz
 	
 #	Packing
+	
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
-	cp -r ./yao .tmp/data/
+	cp -r ./yao .tmp/data/yao
+	cp -r ../yao-builder .tmp/data/builder
 	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
