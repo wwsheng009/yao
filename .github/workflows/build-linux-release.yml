@@ -132,8 +132,8 @@ jobs:
       - name: Make Artifacts Linux
         run: |
           make artifacts-linux
-          mv dist/release/yao-$VERSION-dev-linux-arm64 dist/release/yao-$VERSION-unstable-linux-arm64
-          mv dist/release/yao-$VERSION-dev-linux-amd64 dist/release/yao-$VERSION-unstable-linux-amd64
+          mv dist/release/yao-$VERSION-dev-linux-arm64 dist/release/yao-$VERSION-linux-arm64
+          mv dist/release/yao-$VERSION-dev-linux-amd64 dist/release/yao-$VERSION-linux-amd64
 
       # - name: Configure COS For Silicon Valley
       #   env:
