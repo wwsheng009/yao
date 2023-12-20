@@ -25,7 +25,7 @@ RUN curl -fSL "https://github.com/wwsheng009/yao/releases/download/yao-${VERSION
     --output "yao-linux-release.tar.gz"
 
 RUN tar -xzf "yao-linux-release.tar.gz" && \
-    mv "yao*-linux-${ARCH}" /usr/local/bin/yao && \
+    mv yao*-linux-"${ARCH}" /usr/local/bin/yao && \
     chmod +x /usr/local/bin/yao && \
     mkdir -p /data/app
 # Clean up
