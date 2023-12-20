@@ -20,12 +20,12 @@ ARG ARCH
 RUN groupadd -r yao && useradd -r -g yao yao && \
     apt-get update && \
     apt-get install -y curl sudo procps net-tools
-# https://github.com/wwsheng009/yao/releases/download/yao-0.10.4/yao-linux-0.10.4-release.tar.gz
-RUN curl -fsSL "https://github.com/wwsheng009/yao/releases/download/yao-${VERSION}/yao-linux-${VERSION}-release.tar.gz" \
+# curl -fSL https://github.com/wwsheng009/yao/releases/download/yao-0.10.4/yao-linux-0.10.4-release.tar.gz --output "yao-linux-release.tar.gz"
+RUN curl -fSL "https://github.com/wwsheng009/yao/releases/download/yao-${VERSION}/yao-linux-${VERSION}-release.tar.gz" \
     --output "yao-linux-release.tar.gz"
 
 RUN tar -xzf "yao-linux-release.tar.gz" && \
-    mv "yao*-linux-${ARCH}" > /usr/local/bin/yao && \
+    mv "yao*-linux-${ARCH}" /usr/local/bin/yao && \
     chmod +x /usr/local/bin/yao && \
     mkdir -p /data/app
 # Clean up
