@@ -1,4 +1,4 @@
-name: Build and push docker images
+name: Build and push Build Linux Release docker images
 
 on:
   # push:
@@ -6,7 +6,7 @@ on:
   #   paths:
   #     - ".github/workflows/docker.yml"
   workflow_run:
-    workflows: ["Build Linux Dev"]
+    workflows: ["Build Linux Release"]
     types:
       - completed
 
@@ -42,7 +42,7 @@ jobs:
       - name: Build Development
         uses: docker/build-push-action@v2
         with:
-          context: ./docker/development
+          context: ./docker/custom
           platforms: linux/amd64
           build-args: |
             VERSION=${{ env.VERSION }}
@@ -53,32 +53,10 @@ jobs:
       - name: Build Development Arm64
         uses: docker/build-push-action@v2
         with:
-          context: ./docker/development
+          context: ./docker/custom
           platforms: linux/arm64
           build-args: |
             VERSION=${{ env.VERSION }} 
             ARCH=arm64
           push: true
           tags: wwsheng009/yao:${{ env.VERSION }}-arm64-dev
-
-      - name: Build Production
-        uses: docker/build-push-action@v2
-        with:
-          context: ./docker/production
-          platforms: linux/amd64
-          build-args: |
-            VERSION=${{ env.VERSION }} 
-            ARCH=amd64
-          push: true
-          tags: wwsheng009/yao:${{ env.VERSION }}-amd64
-
-      - name: Build Production Arm64
-        uses: docker/build-push-action@v2
-        with:
-          context: ./docker/production
-          platforms: linux/arm64
-          build-args: |
-            VERSION=${{ env.VERSION }} 
-            ARCH=arm64
-          push: true
-          tags: wwsheng009/yao:${{ env.VERSION }}-arm64

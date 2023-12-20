@@ -149,7 +149,7 @@ jobs:
       #     for file in ./dist/release/*; do coscmd upload $file /archives/; done;
 
       - name: Tar files
-        run: tar -czvf yao-${{ env.VERSION }}-release.tar.gz dist/release
+        run: tar -czvf yao-${{ env.VERSION }}-release.tar.gz -C dist/release .
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v3
@@ -157,6 +157,7 @@ jobs:
           name: yao-linux
           path: |
             yao-${{ env.VERSION }}-release.tar.gz
+            dist/release/*
 
       - name: Create Draft Release
         id: create_release
