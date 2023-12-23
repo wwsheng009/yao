@@ -113,6 +113,9 @@ func (parser *TemplateParser) parseNode(node *html.Node) {
 	case html.ElementNode:
 		sel := goquery.NewDocumentFromNode(node).Selection
 		if parser.hasParsed(sel) {
+			//s:for="quicklinks.links" s:for-item="item" s:for-index="idx" href="{{item.url}}"
+			//fix the attributes not parsed in for loop;
+			parser.parseElementAttrs(sel)
 			break
 		}
 		parser.parseElementNode(sel)
