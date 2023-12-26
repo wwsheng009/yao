@@ -13,7 +13,8 @@
       "args": [
         "start"
       ],
-      "cwd": "D:/projects/go/yao/wwsheng009/yao-bench"
+      // "cwd": "/mnt/d/projects/go/yao/wwsheng009/yao-bench",
+      "cwd": "D:/projects/go/yao/wwsheng009/yao-amis-admin"
     },
     {
       "name": "test run",
@@ -43,7 +44,7 @@
         "-n",
         "admin.user"
       ],
-      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
+      "cwd": "D:/projects/go/yao/wwsheng009/yao-bench"
     },
     {
       "name": "Launch search",

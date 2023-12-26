@@ -50,7 +50,7 @@ jobs:
             VERSION=${{ env.VERSION }}
             ARCH=amd64
           push: true
-          tags: wwsheng009/yao4:latest
+          tags: wwsheng009/yao:latest
 
       - name: Build Development Arm64
         uses: docker/build-push-action@v2
