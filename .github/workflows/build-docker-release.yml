@@ -45,20 +45,8 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: ./docker/custom
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ env.VERSION }}
-            ARCH=amd64
-          push: true
-          tags: wwsheng009/yao:latest
-
-      - name: Build Development Arm64
-        uses: docker/build-push-action@v2
-        with:
-          context: ./docker/custom
-          platforms: linux/arm64
-          build-args: |
-            VERSION=${{ env.VERSION }} 
-            ARCH=arm64
           push: true
           tags: wwsheng009/yao:latest
