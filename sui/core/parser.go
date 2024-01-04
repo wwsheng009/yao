@@ -253,6 +253,13 @@ func (parser *TemplateParser) forStatementNode(sel *goquery.Selection) {
 
 		// Create a new node
 		new := sel.Clone()
+		parser.removeParsed(new)
+		parser.data[itemVarName] = item
+		parser.data[indexVarName] = idx
+
+		// parser attributes
+		parser.parseElementAttrs(new)
+		parser.parsed(new)
 
 		// Set the key
 		parser.sequence = parser.sequence + 1
@@ -261,8 +268,6 @@ func (parser *TemplateParser) forStatementNode(sel *goquery.Selection) {
 
 		// Show the node
 		parser.show(new)
-		parser.data[itemVarName] = item
-		parser.data[indexVarName] = idx
 
 		if parser.option.Editor {
 			parser.setSuiAttr(new, "generate", "true")
@@ -423,6 +428,10 @@ func (parser *TemplateParser) setKey(prefix string, sel *goquery.Selection, key 
 
 func (parser *TemplateParser) parsed(sel *goquery.Selection) {
 	sel.SetAttr("parsed", "true")
+}
+
+func (parser *TemplateParser) removeParsed(sel *goquery.Selection) {
+	sel.RemoveAttr("parsed")
 }
 
 func (parser *TemplateParser) hasParsed(sel *goquery.Selection) bool {
