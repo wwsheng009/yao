@@ -32,7 +32,8 @@
     "JSONB": "json",
     "uuid": "default",
     "ipAddress": "default",
-    "macAddress": "default"
+    "macAddress": "default",
+    "vector": "text"
   },
 
   "fields": {
