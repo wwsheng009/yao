@@ -33,7 +33,7 @@ var WatchCmd = &cobra.Command{
 	Long:  L("Auto-build when the template file changes"),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, color.RedString(L("yao cui watch <sui> <template>")))
+			fmt.Fprintln(os.Stderr, color.RedString(L("yao cui watch <sui> <template> [data]")))
 			return
 		}
 
@@ -68,16 +68,16 @@ var WatchCmd = &cobra.Command{
 		}
 		sui.WithSid(sid)
 
-		tmpl, err := sui.GetTemplate(template)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
-			return
-		}
 		exitSignal := make(chan os.Signal, 1)
 		signal.Notify(exitSignal, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 		watchDone := make(chan uint8, 1)
 
 		// -
+		tmpl, err := sui.GetTemplate(template)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
+			return
+		}
 		root := filepath.Join(cfg.DataRoot, tmpl.GetRoot())
 		publicRoot, err := sui.PublicRootWithSid(sid)
 		assetRoot := filepath.Join(publicRoot, "assets")
@@ -89,9 +89,15 @@ var WatchCmd = &cobra.Command{
 		go watch(root, func(event, name string) {
 			if event == "WRITE" || event == "CREATE" || event == "RENAME" {
 				// @Todo build single page and sync single asset file to public
-
 				fmt.Printf(color.WhiteString("Building...  "))
-				err := tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot})
+
+				tmpl, err := sui.GetTemplate(template)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
+					return
+				}
+
+				err = tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot})
 				if err != nil {
 					fmt.Fprint(os.Stderr, color.RedString(fmt.Sprintf("Failed: %s\n", err.Error())))
 					return
@@ -119,10 +125,6 @@ var WatchCmd = &cobra.Command{
 			return
 		}
 	},
-}
-
-func init() {
-	WatchCmd.PersistentFlags().StringVarP(&data, "data", "d", "::{}", L("Session Data"))
 }
 
 func watch(root string, handler func(event string, name string), interrupt chan uint8) error {

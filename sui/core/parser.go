@@ -1,12 +1,12 @@
 package core
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/yaoapp/kun/log"
 	"golang.org/x/net/html"
 )
 
@@ -57,8 +57,7 @@ func (parser *TemplateParser) Render(html string) (string, error) {
 		html = fmt.Sprintf(`<!DOCTYPE html><html lang="en">%s</html>`, html)
 	}
 
-	reader := bytes.NewReader([]byte(html))
-	doc, err := goquery.NewDocumentFromReader(reader)
+	doc, err := NewDocumentString(html)
 	if err != nil {
 		return "", err
 	}
@@ -152,8 +151,36 @@ func (parser *TemplateParser) parseElementNode(sel *goquery.Selection) {
 		parser.forStatementNode(sel)
 	}
 
+	if _, exist := sel.Attr("s:set"); exist || sel.Get(0).Data == "s:set" {
+		parser.setStatementNode(sel)
+	}
+
 	// Parse the attributes
 	parser.parseElementAttrs(sel)
+}
+
+func (parser *TemplateParser) setStatementNode(sel *goquery.Selection) {
+
+	sel.SetAttr("parsed", "true")
+
+	name := sel.AttrOr("name", "")
+	if name == "" {
+		return
+	}
+
+	valueExp := sel.AttrOr("value", "")
+	if stmtRe.MatchString(valueExp) {
+		val, err := parser.data.Exec(valueExp)
+		if err != nil {
+			log.Warn("Set %s: %s", valueExp, err)
+			parser.data[name] = valueExp
+			return
+		}
+		parser.data[name] = val
+		return
+	}
+
+	parser.data[name] = valueExp
 }
 
 func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection) {
@@ -312,6 +339,9 @@ func (parser *TemplateParser) ifStatementNode(sel *goquery.Selection) {
 	}
 
 	if res == true {
+		parser.removeParsed(sel)
+		parser.parseElementAttrs(sel)
+		parser.parsed(sel)
 		parser.show(sel)
 		return
 	}
@@ -326,6 +356,9 @@ func (parser *TemplateParser) ifStatementNode(sel *goquery.Selection) {
 		}
 
 		if res == true {
+			parser.removeParsed(elifNode)
+			parser.parseElementAttrs(elifNode)
+			parser.parsed(elifNode)
 			parser.show(elifNode)
 			return
 		}
@@ -333,6 +366,9 @@ func (parser *TemplateParser) ifStatementNode(sel *goquery.Selection) {
 
 	// else
 	if elseNode != nil {
+		parser.removeParsed(elseNode)
+		parser.parseElementAttrs(elseNode)
+		parser.parsed(elseNode)
 		parser.show(elseNode)
 	}
 }

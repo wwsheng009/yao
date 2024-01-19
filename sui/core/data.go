@@ -5,20 +5,18 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/antonmedv/expr"
-	"github.com/antonmedv/expr/ast"
-	"github.com/antonmedv/expr/vm"
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
 )
 
-var stmtRe = regexp.MustCompile(`\{\{([^}]+)\}\}`)
-var propRe = regexp.MustCompile(`\[\{([^}]+)\}\]`)
+// If set the map value, should keep the space at the end of the statement
+var stmtRe = regexp.MustCompile(`\{\{([\s\S]*?)\}\}`)
+var propRe = regexp.MustCompile(`\[\{([\s\S]*?)\}\]`)
 
 // Data data for the template
 type Data map[string]interface{}
-
-var functions = map[string]*ast.Function{}
 
 var options = []expr.Option{
 	expr.Function("P_", _process),

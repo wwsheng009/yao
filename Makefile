@@ -176,15 +176,14 @@ artifacts-linux: clean
 
 #   Making artifacts
 	mkdir -p dist
-	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=amd64 go build -v -o dist/yao-${VERSION}-dev-linux-amd64
-#	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ go build -v -o dist/yao-${VERSION}-dev-linux-arm64
-	CGO_ENABLED=1 CGO_LDFLAGS="-static" LD_LIBRARY_PATH=/usr/lib/gcc-cross/aarch64-linux-gnu/13 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc-13 CXX=aarch64-linux-gnu-g++-13 go build -v -o dist/yao-${VERSION}-dev-linux-arm64
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" GOOS=linux GOARCH=amd64 go build -v -o dist/yao-${VERSION}-unstable-linux-amd64
+	CGO_ENABLED=1 CGO_LDFLAGS="-static" LD_LIBRARY_PATH=/usr/lib/gcc-cross/aarch64-linux-gnu/13 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc-13 CXX=aarch64-linux-gnu-g++-13 go build -v -o dist/yao-${VERSION}-unstable-linux-arm64
 
 	mkdir -p dist/release
 	mv dist/yao-*-* dist/release/
 	chmod +x dist/release/yao-*-*
 	ls -l dist/release/
-	dist/release/yao-${VERSION}-dev-linux-amd64 version
+	dist/release/yao-${VERSION}-unstable-linux-amd64 version
 
 # 	Reset const 
 #	cp -f share/const.goe share/const.go
@@ -264,7 +263,7 @@ debug1: clean
 #	Checkout init
 # git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
 	rm -rf .tmp/yao-init
-	cp -r ../yao-init-0.10.3 .tmp/yao-init
+	cp -r ../yao-init .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
 	rm -rf .tmp/yao-init/.gitignore
 	rm -rf .tmp/yao-init/LICENSE

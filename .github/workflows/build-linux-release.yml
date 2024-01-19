@@ -6,9 +6,6 @@ on:
       tags:
         description: "Version tags"
 
-env:
-  VERSION: 0.9.0
-
 jobs:
   build:
     strategy:
