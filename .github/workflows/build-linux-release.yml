@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         go: [1.21.1]
-    runs-on: "ubuntu-23.04"
+    runs-on: ubuntu-latest
     steps:
       - name: Arm Build
         run: |
@@ -35,7 +35,7 @@ jobs:
           curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
           apt-get install -y git-lfs
           git lfs install
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
