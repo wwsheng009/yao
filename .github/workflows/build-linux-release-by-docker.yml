@@ -1,0 +1,69 @@
+name: Build Linux Release Using docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Version tags"
+
+jobs:
+  build:
+    runs-on: "ubuntu-22.04"
+    container:
+      # DockerFile
+      # https://github.com/wwsheng009/yao/blob/main/docker/build-custom/Dockerfile
+      image: wwsheng009/yao-build:latest
+
+    steps:
+      - name: Build
+        run: |
+          export PATH=$PATH:/github/home/go/bin
+          /app/build.sh
+          ls -l /data
+
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Get Version
+        run: |
+          echo VERSION=$(cat share/const.go  |grep 'const VERSION' | awk '{print $4}' | sed "s/\"//g")  >> $GITHUB_ENV
+
+      - name: Tar files
+        run: |
+          mv /data/yao-$VERSION-unstable-linux-arm64 /data/yao-$VERSION-linux-arm64
+          mv /data/yao-$VERSION-unstable-linux-amd64 /data/yao-$VERSION-linux-amd64
+          tar -czvf yao-${{ env.VERSION }}-release.tar.gz -C /data/ .
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: yao-linux
+          path: |
+            yao-${{ env.VERSION }}-release.tar.gz
+            /data/*
+
+      - name: Create Draft Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: yao-${{ env.VERSION }}
+          release_name: yao-${{ env.VERSION }}
+          draft: true
+          prerelease: false
+
+      - uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: yao-${{ env.VERSION }}-release.tar.gz
+          asset_name: yao-linux-${{ env.VERSION }}-release.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: eregon/publish-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ steps.create_release.outputs.id }}
