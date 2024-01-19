@@ -6,15 +6,14 @@ on:
   #   paths:
   #     - ".github/workflows/docker.yml"
   workflow_run:
-    workflows: ["Build Linux Release"]
+    workflows: ["Build Linux Release Using docker"]
     types:
       - completed
   workflow_dispatch:
     inputs:
       tags:
         description: "Version tags"
-env:
-  VERSION: 0.9.0
+
 jobs:
   build:
     runs-on: ubuntu-latest
