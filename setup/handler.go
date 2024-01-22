@@ -100,7 +100,7 @@ func runSetup(c *gin.Context) {
 	}
 
 	adminRoot := "yao"
-	if app.Setting.AdminRoot != "" {
+	if app.Setting != nil && app.Setting.AdminRoot != "" {
 		adminRoot = app.Setting.AdminRoot
 	}
 	adminRoot = strings.Trim(adminRoot, "/")
