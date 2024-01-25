@@ -11,10 +11,16 @@
 #
 #  Tests:
 #  docker run --rm wwsheng009/yao:0.10.4-amd64-dev yao version
-#  docker run -d -p 5099:5099 wwsheng009/yao:0.10.4-amd64-release
+#  docker run -d -p 5099:5099 wwsheng009/yao:0.10.4-amd64-dev
 #
 # ===========================================
 FROM alpine:latest
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+# if the env tz do not work
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+
 ARG VERSION
 ARG ARCH
 RUN apk --no-cache add curl 
