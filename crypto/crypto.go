@@ -12,17 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"golang.org/x/crypto/md4"
 )
-
-func init() {
-	crypto.RegisterHash(crypto.MD4, md4.New)
-}
 
 // HashTypes string
 var HashTypes = map[string]crypto.Hash{
-	"MD4":         crypto.MD4,
+	"MD4":         crypto.MD5, // MD4 is not supported | replaced with MD5
 	"MD5":         crypto.MD5,
 	"SHA1":        crypto.SHA1,
 	"SHA224":      crypto.SHA224,
@@ -153,8 +147,29 @@ func parsePrivateKey(privateKeyStr string) (*rsa.PrivateKey, error) {
 func parsePublicKey(publicKeyStr string) (*rsa.PublicKey, error) {
 
 	publicKeyStr = strings.TrimSpace(publicKeyStr)
-	if !strings.HasPrefix(publicKeyStr, "-----BEGIN RSA PUBLIC KEY-----") {
+	if !strings.HasPrefix(publicKeyStr, "-----BEGIN RSA PUBLIC KEY-----") && !strings.HasPrefix(publicKeyStr, "-----BEGIN CERTIFICATE-----") {
 		publicKeyStr = fmt.Sprintf("-----BEGIN RSA PUBLIC KEY-----\n%s\n-----END RSA PUBLIC KEY-----\n", publicKeyStr)
+	}
+
+	// if it is a certificate, get the public key from the certificate
+	if strings.HasPrefix(publicKeyStr, "-----BEGIN CERTIFICATE-----") {
+
+		block, _ := pem.Decode([]byte(publicKeyStr))
+		if block == nil {
+			return nil, fmt.Errorf("cannot decode PEM block")
+		}
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+
+		pub, ok := cert.PublicKey.(*rsa.PublicKey)
+		if !ok {
+			return nil, errors.New("public key error")
+		}
+
+		return pub, nil
 	}
 
 	block, _ := pem.Decode([]byte(publicKeyStr))
