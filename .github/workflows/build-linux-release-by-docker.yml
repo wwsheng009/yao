@@ -32,14 +32,14 @@ jobs:
         run: |
           mv /data/yao-$VERSION-unstable-linux-arm64 /data/yao-$VERSION-linux-arm64
           mv /data/yao-$VERSION-unstable-linux-amd64 /data/yao-$VERSION-linux-amd64
-          tar -czvf yao-${{ env.VERSION }}-release.tar.gz -C /data/ .
+          tar -czvf yao-linux-${{ env.VERSION }}-release.tar.gz -C /data/ .
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v3
         with:
           name: yao-linux
           path: |
-            yao-${{ env.VERSION }}-release.tar.gz
+            yao-linux-${{ env.VERSION }}-release.tar.gz
             /data/*
 
       # - name: Create Draft Release
@@ -58,7 +58,7 @@ jobs:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       #   with:
       #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-      #     asset_path: yao-${{ env.VERSION }}-release.tar.gz
+      #     asset_path: yao-linux-${{ env.VERSION }}-release.tar.gz
       #     asset_name: yao-linux-${{ env.VERSION }}-release.tar.gz
       #     asset_content_type: application/gzip
 
@@ -67,14 +67,14 @@ jobs:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       #   with:
       #     release_id: ${{ steps.create_release.outputs.id }}
-      
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: yao-${{ env.VERSION }}
           files: |
-            yao-${{ env.VERSION }}-release.tar.gz
+            yao-linux-${{ env.VERSION }}-release.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
