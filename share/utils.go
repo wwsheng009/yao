@@ -33,7 +33,7 @@ func Walk(root string, typeName string, cb func(root, filename string)) error {
 
 // ID parse unique name root: "/tests/apis"  file: "/tests/apis/foo/bar.http.json"
 func ID(root string, file string) string {
-	return SpecName(root, file)
+	return strings.ToLower(SpecName(root, file))
 }
 
 // File ID to file
