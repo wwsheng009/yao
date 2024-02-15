@@ -240,6 +240,30 @@ artifacts-macos: clean
 	ls -l dist/release/
 	dist/release/yao-${VERSION}-dev-darwin-amd64 version
 
+.PHONY: empty-bindata
+empty-bindata: clean
+# make bindata without the xgen
+	rm -rf .tmp/data
+	mkdir -p .tmp/data/init
+	mkdir -p .tmp/data/xgen/v0.9
+	mkdir -p .tmp/data/xgen/v1.0
+	mkdir -p .tmp/data/xgen/setup
+
+	echo "XGEN v0.9" > .tmp/data/xgen/v0.9/index.html
+	echo "XGEN v1.0" > .tmp/data/xgen/v1.0/index.html
+	echo "" > .tmp/data/xgen/v1.0/umi.js
+	echo "" > .tmp/data/xgen/v1.0/layouts__index.async.js
+
+	echo "XGEN Setup v1.0" > .tmp/data/xgen/setup/index.html
+	
+	cp -r ui .tmp/data/
+	cp -r ui .tmp/data/public
+	cp -r yao .tmp/data/
+	cp -r builder .tmp/data/
+	
+	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
+	rm -rf .tmp/data
+
 .PHONY: debug1
 debug1: clean
 	rm -rf dist/release
@@ -286,7 +310,7 @@ debug1: clean
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r .tmp/yao-init .tmp/data/init
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
-#	rm -rf .tmp/data
+	rm -rf .tmp/data
 #	rm -rf .tmp/xgen
 
 
