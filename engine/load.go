@@ -145,7 +145,7 @@ func Load(cfg config.Config) (err error) {
 	// Load Importers
 	err = importer.Load(cfg)
 	if err != nil {
-		printErr(cfg.Mode, "Plugin", err)
+		printErr(cfg.Mode, "Importer", err)
 	}
 
 	// Load Apis
@@ -340,7 +340,7 @@ func Reload(cfg config.Config) (err error) {
 	// Load Importers
 	err = importer.Load(cfg)
 	if err != nil {
-		printErr(cfg.Mode, "Plugin", err)
+		printErr(cfg.Mode, "Importer", err)
 	}
 
 	// Load Apis
