@@ -68,7 +68,7 @@ func (act *ActionDSL) SetDefaultProcess() {
 		SetHandler(processHandler)
 
 	act.Get = action.ProcessOf(act.Get).
-		WithBefore(act.BeforeSave).WithAfter(act.AfterSave).
+		WithBefore(act.BeforeGet).WithAfter(act.AfterGet).
 		Merge(processActionDefaults["Get"]).
 		SetHandler(processHandler)
 }

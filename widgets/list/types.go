@@ -32,8 +32,8 @@ type ActionDSL struct {
 	Download   *action.Process `json:"download,omitempty"`
 	Get        *action.Process `json:"get,omitempty"`
 	Save       *action.Process `json:"save,omitempty"`
-	BeforeGet  *hook.Before    `json:"before:find,omitempty"`
-	AfterGet   *hook.After     `json:"after:find,omitempty"`
+	BeforeGet  *hook.Before    `json:"before:get,omitempty"`
+	AfterGet   *hook.After     `json:"after:get,omitempty"`
 	BeforeSave *hook.Before    `json:"before:save,omitempty"`
 	AfterSave  *hook.After     `json:"after:save,omitempty"`
 }
