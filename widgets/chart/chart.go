@@ -197,7 +197,10 @@ func (dsl *DSL) Xgen(data map[string]interface{}, excludes map[string]bool) (map
 			return nil, err
 		}
 	}
-
+	// fix the compat with the xgen setting
+	if dsl.Layout != nil &&  dsl.Layout.Operation != nil {
+		setting["actions"] = dsl.Layout.Operation.Actions;
+	}
 	return setting, nil
 }
 
