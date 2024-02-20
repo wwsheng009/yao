@@ -49,13 +49,13 @@ func guardCookieTrace(c *gin.Context) {
 func guardCookieJWT(c *gin.Context) {
 	tokenString, err := c.Cookie("__tk")
 	if err != nil {
-		c.JSON(403, gin.H{"code": 403, "message": "No permission"})
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
 		c.Abort()
 		return
 	}
 
 	if tokenString == "" {
-		c.JSON(403, gin.H{"code": 403, "message": "No permission"})
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
 		c.Abort()
 		return
 	}
@@ -70,7 +70,7 @@ func guardBearerJWT(c *gin.Context) {
 	tokenString := c.Request.Header.Get("Authorization")
 	tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
 	if tokenString == "" {
-		c.JSON(403, gin.H{"code": 403, "message": "No permission"})
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
 		c.Abort()
 		return
 	}
@@ -83,7 +83,7 @@ func guardBearerJWT(c *gin.Context) {
 func guardQueryJWT(c *gin.Context) {
 	tokenString := c.Query("__tk")
 	if tokenString == "" {
-		c.JSON(403, gin.H{"code": 403, "message": "No permission"})
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
 		c.Abort()
 		return
 	}
