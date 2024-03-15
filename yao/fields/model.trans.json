@@ -501,8 +501,8 @@
           "type": "RadioGroup",
           "props": {
             "options": [
-              { "label": "::Enable", "value": true },
-              { "label": "::Disable", "value": false }
+              { "label": "::Enable", "value": 1 },
+              { "label": "::Disable", "value": 0 }
             ]
           }
         }
@@ -514,8 +514,8 @@
           "type": "RadioGroup",
           "props": {
             "options": [
-              { "label": "::Enable", "value": true },
-              { "label": "::Disable", "value": false }
+              { "label": "::Enable", "value": 1 },
+              { "label": "::Disable", "value": 0 }
             ]
           }
         }
@@ -526,8 +526,8 @@
         "view": {
           "type": "Switch",
           "props": {
-            "checkedValue": true,
-            "unCheckedValue": false,
+            "checkedValue": 1,
+            "unCheckedValue": 0,
             "checkedChildren": "::Enable",
             "unCheckedChildren": "::Disable"
           }
