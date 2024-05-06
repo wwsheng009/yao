@@ -42,8 +42,15 @@ import (
 	"github.com/yaoapp/yao/widgets/app"
 )
 
+// LoadOption the load option
+type LoadOption struct {
+	Action           string `json:"action"`
+	IgnoredAfterLoad bool   `json:"ignoredAfterLoad"`
+	IsReload         bool   `json:"reload"`
+}
+
 // Load application engine
-func Load(cfg config.Config) (err error) {
+func Load(cfg config.Config, options LoadOption) (err error) {
 
 	defer func() { err = exception.Catch(recover()) }()
 	exception.Mode = cfg.Mode
@@ -221,6 +228,21 @@ func Load(cfg config.Config) (err error) {
 		printErr(cfg.Mode, "Pipe", err)
 	}
 
+	// Execute AfterLoad Process if exists
+	if share.App.AfterLoad != "" && !options.IgnoredAfterLoad {
+		p, err := process.Of(share.App.AfterLoad, options)
+		if err != nil {
+			printErr(cfg.Mode, "AfterLoad", err)
+			return err
+		}
+
+		_, err = p.Exec()
+		if err != nil {
+			printErr(cfg.Mode, "AfterLoad", err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -263,7 +285,7 @@ func Unload() (err error) {
 }
 
 // Reload the application engine
-func Reload(cfg config.Config) (err error) {
+func Reload(cfg config.Config, options LoadOption) (err error) {
 
 	defer func() { err = exception.Catch(recover()) }()
 	exception.Mode = cfg.Mode
@@ -404,6 +426,22 @@ func Reload(cfg config.Config) (err error) {
 		printErr(cfg.Mode, "Neo", err)
 	}
 
+	// Execute AfterLoad Process if exists
+	if share.App.AfterLoad != "" && !options.IgnoredAfterLoad {
+		options.IsReload = true
+		p, err := process.Of(share.App.AfterLoad, options)
+		if err != nil {
+			printErr(cfg.Mode, "AfterLoad", err)
+			return err
+		}
+
+		_, err = p.Exec()
+		if err != nil {
+			printErr(cfg.Mode, "AfterLoad", err)
+			return err
+		}
+	}
+
 	// Load SUI
 	err = sui.Load(cfg)
 	if err != nil {
@@ -424,12 +462,12 @@ func Reload(cfg config.Config) (err error) {
 }
 
 // Restart the application engine
-func Restart(cfg config.Config) error {
+func Restart(cfg config.Config, options LoadOption) error {
 	err := Unload()
 	if err != nil {
 		return err
 	}
-	return Load(cfg)
+	return Load(cfg, options)
 }
 
 // loadApp load the application from bindata / pkg / disk
