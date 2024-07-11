@@ -1,4 +1,4 @@
-name: UnitTest
+name: Unit Test
 
 on:
   workflow_dispatch:
@@ -56,9 +56,9 @@ env:
   # Application Setting
 
   ## Path
-  YAO_TEST_APPLICATION: ${{ github.WORKSPACE }}/../app
   YAO_EXTENSION_ROOT: ${{ github.WORKSPACE }}/../extension
-  YAO_TEST_BUILDER_APPLICATION: ${{ github.WORKSPACE }}/../page-builder-app
+  YAO_TEST_APPLICATION: ${{ github.WORKSPACE }}/../app
+  YAO_SUI_TEST_APPLICATION: ${{ github.WORKSPACE }}/../yao-startup-webapp
 
   ## Runtime
   YAO_RUNTIME_MIN: 3
@@ -78,57 +78,49 @@ jobs:
         redis: [4, 5, 6]
         mongo: ["6.0"]
     steps:
-      - name: Setup Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Checkout Kun
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO_KUN }}
           path: kun
 
       - name: Checkout Xun
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO_XUN }}
           path: xun
 
       - name: Checkout Gou
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.REPO_GOU }}
           path: gou
 
       - name: Checkout V8Go
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/v8go
           lfs: true
           path: v8go
 
       - name: Checkout Demo App
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/yao-dev-app
           ref: fef08943afc6ff91ed7a9a44559118ad40074e6b
           path: app
 
-      - name: Checkout Page Builder App
-        uses: actions/checkout@v3
+      - name: Checkout Yao Startup Webapp
+        uses: actions/checkout@v4
         with:
-          repository: yaoapp/page-builder-app
+          repository: yaoapp/yao-startup-webapp
+          submodules: true
           token: ${{ secrets.YAO_TEST_TOKEN }}
-          path: page-builder-app
+          path: yao-startup-webapp
 
       - name: Checkout Extension
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/yao-extensions-dev
           path: extension
@@ -141,12 +133,17 @@ jobs:
           mv v8go ../
           mv app ../
           mv extension ../
-          mv page-builder-app ../
+          mv yao-startup-webapp ../
           ls -l .
           ls -l ../
 
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Setup Go ${{ matrix.go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
 
       - name: Start Redis
         uses: supercharge/redis-github-action@1.4.0
@@ -177,11 +174,6 @@ jobs:
           db: "xiang"
           user: "xiang"
           password: ${{ secrets.UNIT_PASS }}
-
-      - name: Setup Go ${{ matrix.go }}
-        uses: actions/setup-go@v3
-        with:
-          go-version: ${{ matrix.go }}
 
       - name: Setup Go Tools
         run: |
@@ -225,6 +217,6 @@ jobs:
           make test
 
       - name: Codecov Report
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos

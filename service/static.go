@@ -39,7 +39,7 @@ type rewriteRule struct {
 func SetupStatic(allows ...string) error {
 	setupAdminRoot()
 	setupRewrite()
-	AppFileServer = addCorsHeader(http.FileServer(fs.Dir("public")), allows...)
+	AppFileServer = gzipHandler(http.FileServer(fs.Dir("public")), allows...)
 	return nil
 }
 

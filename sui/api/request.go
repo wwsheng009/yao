@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/fatih/color"
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/application"
@@ -76,157 +78,239 @@ func NewRequestContext(c *gin.Context) (*Request, int, error) {
 // Render is the response for the page API.
 func (r *Request) Render() (string, int, error) {
 
-	c := core.GetCache(r.File)
-	c = nil // disable cache @todo disable cache on development
-	// if c == nil {
-	if true {
-		// Read the file
-		content, err := application.App.Read(r.File)
+	// Read content from cache
+	var c *core.Cache = nil
+	if !r.Request.DisableCache() {
+		c = core.GetCache(r.File)
+	}
+
+	if c == nil {
+
+		message := fmt.Sprintf("[SUI] The page %s is not cached. file=%s DisableCache=%v", r.Request.URL.Path, r.File, r.Request.DisableCache())
+		go fmt.Println(color.YellowString(message))
+		go log.Warn(message)
+
+		var status int
+		var err error
+		c, status, err = r.MakeCache()
 		if err != nil {
-			return "", 404, err
+			return "", status, err
 		}
-
-		doc, err := core.NewDocument(content)
-		if err != nil {
-			return "", 500, err
-		}
-
-		guard := ""
-		guardRedirect := ""
-		configText := ""
-		configSel := doc.Find("script[name=config]")
-		if configSel != nil && configSel.Length() > 0 {
-			configText = configSel.Text()
-			configSel.Remove()
-
-			var conf core.PageConfig
-			err := jsoniter.UnmarshalFromString(configText, &conf)
-			if err != nil {
-				return "", 500, fmt.Errorf("config error, please re-complie the page %s", err.Error())
-			}
-
-			// Redirect the page (should refector before release)
-			// guard=cookie-jwt:redirect-url redirect to the url if not authorized
-			// guard=cookie-jwt return {code: 403, message: "Not Authorized"}
-			guard = conf.Guard
-			if strings.Contains(conf.Guard, ":") {
-				parts := strings.Split(conf.Guard, ":")
-				guard = parts[0]
-				guardRedirect = parts[1]
-			}
-		}
-
-		dataText := ""
-		dataSel := doc.Find("script[name=data]")
-		if dataSel != nil && dataSel.Length() > 0 {
-			dataText = dataSel.Text()
-			dataSel.Remove()
-		}
-
-		globalDataText := ""
-		globalDataSel := doc.Find("script[name=global]")
-		if globalDataSel != nil && globalDataSel.Length() > 0 {
-			globalDataText = globalDataSel.Text()
-			globalDataSel.Remove()
-		}
-
-		html, err := doc.Html()
-		if err != nil {
-			return "", 500, fmt.Errorf("parse error, please re-complie the page %s", err.Error())
-		}
-
-		// Save to The Cache
-		// c = core.SetCache(r.File, html, dataText, globalDataText)
-		c = &core.Cache{
-			Data:          dataText,
-			Global:        globalDataText,
-			HTML:          html,
-			Guard:         guard,
-			GuardRedirect: guardRedirect,
-			Config:        configText,
-		}
-		log.Trace("The page %s is cached", r.File)
+		go log.Trace("[SUI] The page %s is cached file=%s", r.Request.URL.Path, r.File)
 	}
 
 	// Guard the page
-	if c.Guard != "" && r.context != nil {
-
-		if guard, has := Guards[c.Guard]; has {
-			err := guard(r)
-			if err != nil {
-
-				// Redirect the page (should refector before release)
-				if c.GuardRedirect != "" {
-					redirect := c.GuardRedirect
-					data := core.Data{}
-					if c.Data != "" {
-						data, err = r.Request.ExecString(c.Data)
-						if err != nil {
-							return "", 500, fmt.Errorf("data error, please re-complie the page %s", err.Error())
-						}
-					}
-
-					if c.Global != "" {
-						global, err := r.Request.ExecString(c.Global)
-						if err != nil {
-							return "", 500, fmt.Errorf("global data error, please re-complie the page %s", err.Error())
-						}
-						data["$global"] = global
-					}
-
-					redirect, _ = data.Replace(redirect)
-					return "", 302, fmt.Errorf("%s", redirect)
-				}
-
-				// Return the error
-				ex := exception.Err(err, 403)
-				return "", ex.Code, fmt.Errorf("%s", ex.Message)
-			}
-		} else {
-			// Process the guard
-			err := r.processGuard(c.Guard)
-			if err != nil {
-				ex := exception.Err(err, 403)
-				return "", ex.Code, fmt.Errorf("%s", ex.Message)
-			}
-		}
+	code, err := r.Guard(c)
+	if err != nil {
+		return "", code, err
 	}
 
-	var err error
+	requestHash := r.Hash()
 	data := core.Data{}
-	if c.Data != "" {
-		data, err = r.Request.ExecString(c.Data)
-		if err != nil {
-			return "", 500, fmt.Errorf("data error, please re-complie the page %s", err.Error())
+	dataCacheKey := fmt.Sprintf("data:%s", requestHash)
+	dataHitCache := false
+
+	// Read from data cache directly
+	if !r.Request.DisableCache() && c.DataCacheTime > 0 && c.CacheStore != "" {
+		data, dataHitCache = c.GetData(dataCacheKey)
+		if dataHitCache {
+			log.Trace("[SUI] The page %s data is cached %v file=%s key=%s", r.Request.URL.Path, c.DataCacheTime, r.File, dataCacheKey)
 		}
 	}
 
-	if c.Global != "" {
-		global, err := r.Request.ExecString(c.Global)
-		if err != nil {
-			return "", 500, fmt.Errorf("global data error, please re-complie the page %s", err.Error())
+	if !dataHitCache {
+		// Request the data
+		data = r.Request.NewData()
+		if c.Data != "" {
+			err = r.Request.ExecStringMerge(data, c.Data)
+			if err != nil {
+				return "", 500, fmt.Errorf("data error, please re-complie the page %s", err.Error())
+			}
 		}
-		data["$global"] = global
+
+		if c.Global != "" {
+			global, err := r.Request.ExecString(c.Global)
+			if err != nil {
+				return "", 500, fmt.Errorf("global data error, please re-complie the page %s", err.Error())
+			}
+			data["$global"] = global
+		}
+
+		// Save to The Cache
+		if c.DataCacheTime > 0 && c.CacheStore != "" {
+			go c.SetData(dataCacheKey, data, c.DataCacheTime)
+		}
+	}
+
+	// Read from cache directly
+	key := fmt.Sprintf("page:%s:%s", requestHash, data.Hash())
+	if !r.Request.DisableCache() && c.CacheTime > 0 && c.CacheStore != "" {
+		html, exists := c.GetHTML(key)
+		if exists {
+			log.Trace("[SUI] The page %s is cached %v file=%s key=%s", r.Request.URL.Path, c.CacheTime, r.File, key)
+			return html, 200, nil
+		}
 	}
 
 	// Set the page request data
-	data["$payload"] = r.Request.Payload
-	data["$query"] = r.Request.Query
-	data["$param"] = r.Request.Params
-	data["$url"] = r.Request.URL
-
-	printData := false
-	if r.Query != nil && r.Query.Has("__sui_print_data") {
-		printData = true
+	option := core.ParserOption{
+		Theme:        r.Request.Theme,
+		Locale:       r.Request.Locale,
+		Debug:        r.Request.DebugMode(),
+		DisableCache: r.Request.DisableCache(),
+		Route:        r.Request.URL.Path,
+		Request:      true,
 	}
 
-	parser := core.NewTemplateParser(data, &core.ParserOption{PrintData: printData, Request: true})
+	// Parse the template
+	parser := core.NewTemplateParser(data, &option)
 	html, err := parser.Render(c.HTML)
 	if err != nil {
 		return "", 500, fmt.Errorf("render error, please re-complie the page %s", err.Error())
 	}
 
+	// Save to The Cache
+	if c.CacheTime > 0 && c.CacheStore != "" {
+		go c.SetHTML(key, html, c.CacheTime)
+	}
+
 	return html, 200, nil
+}
+
+// MakeCache is the cache for the page API.
+func (r *Request) MakeCache() (*core.Cache, int, error) {
+
+	// Read the file
+	content, err := application.App.Read(r.File)
+	if err != nil {
+		return nil, 404, err
+	}
+
+	doc, err := core.NewDocument(content)
+	if err != nil {
+		return nil, 500, err
+	}
+
+	guard := ""
+	guardRedirect := ""
+	configText := ""
+	cacheStore := ""
+	cacheTime := 0
+	dateCacheTime := 0
+
+	configSel := doc.Find("script[name=config]")
+	if configSel != nil && configSel.Length() > 0 {
+		configText = configSel.Text()
+		configSel.Remove()
+
+		var conf core.PageConfig
+		err := jsoniter.UnmarshalFromString(configText, &conf)
+		if err != nil {
+			return nil, 500, fmt.Errorf("config error, please re-complie the page %s", err.Error())
+		}
+
+		// Redirect the page (should refector before release)
+		// guard=cookie-jwt:redirect-url redirect to the url if not authorized
+		// guard=cookie-jwt return {code: 403, message: "Not Authorized"}
+		guard = conf.Guard
+		if strings.Contains(conf.Guard, ":") {
+			parts := strings.Split(conf.Guard, ":")
+			guard = parts[0]
+			guardRedirect = parts[1]
+		}
+
+		// Cache store
+		cacheStore = conf.CacheStore
+		cacheTime = conf.Cache
+		dateCacheTime = conf.DataCache
+	}
+
+	dataText := ""
+	dataSel := doc.Find("script[name=data]")
+	if dataSel != nil && dataSel.Length() > 0 {
+		dataText = dataSel.Text()
+		dataSel.Remove()
+	}
+
+	globalDataText := ""
+	globalDataSel := doc.Find("script[name=global]")
+	if globalDataSel != nil && globalDataSel.Length() > 0 {
+		globalDataText = globalDataSel.Text()
+		globalDataSel.Remove()
+	}
+
+	html, err := doc.Html()
+	if err != nil {
+		return nil, 500, fmt.Errorf("parse error, please re-complie the page %s", err.Error())
+	}
+
+	// Save to The Cache
+	cache := &core.Cache{
+		Data:          dataText,
+		Global:        globalDataText,
+		HTML:          html,
+		Guard:         guard,
+		GuardRedirect: guardRedirect,
+		Config:        configText,
+		CacheStore:    cacheStore,
+		CacheTime:     time.Duration(cacheTime) * time.Second,
+		DataCacheTime: time.Duration(dateCacheTime) * time.Second,
+	}
+
+	go core.SetCache(r.File, cache)
+	return cache, 200, nil
+}
+
+// Guard the page
+func (r *Request) Guard(c *core.Cache) (int, error) {
+
+	// Guard not set
+	if c.Guard == "" || r.context == nil {
+		return 200, nil
+	}
+
+	// Built-in guard
+	if guard, has := Guards[c.Guard]; has {
+		err := guard(r)
+		if err != nil {
+			// Redirect the page (should refector before release)
+			if c.GuardRedirect != "" {
+				redirect := c.GuardRedirect
+				data := core.Data{}
+				if c.Data != "" {
+					data, err = r.Request.ExecString(c.Data)
+					if err != nil {
+						return 500, fmt.Errorf("data error, please re-complie the page %s", err.Error())
+					}
+				}
+
+				if c.Global != "" {
+					global, err := r.Request.ExecString(c.Global)
+					if err != nil {
+						return 500, fmt.Errorf("global data error, please re-complie the page %s", err.Error())
+					}
+					data["$global"] = global
+				}
+
+				redirect, _ = data.Replace(redirect)
+				return 302, fmt.Errorf("%s", redirect)
+			}
+
+			// Return the error
+			ex := exception.Err(err, 403)
+			return ex.Code, fmt.Errorf("%s", ex.Message)
+		}
+		return 200, nil
+	}
+
+	// Developer custom guard
+	err := r.processGuard(c.Guard)
+	if err != nil {
+		ex := exception.Err(err, 403)
+		return ex.Code, fmt.Errorf("%s", ex.Message)
+	}
+
+	return 200, nil
 }
 
 func parserPath(c *gin.Context) (string, map[string]string, error) {
@@ -264,74 +348,6 @@ func parserPath(c *gin.Context) (string, map[string]string, error) {
 		}
 	}
 	return filename, params, nil
-
-	// // Match the sui
-	// matchers := core.RouteExactMatchers[parts[0]]
-	// if matchers == nil {
-	// 	for matcher, reMatchers := range core.RouteMatchers {
-	// 		matched := matcher.FindStringSubmatch(parts[0])
-	// 		if len(matched) > 0 {
-	// 			matchers = reMatchers
-	// 			fileParts = append(fileParts, matched[0])
-	// 			break
-	// 		}
-	// 	}
-	// }
-
-	// // No matchers
-	// if matchers == nil {
-	// 	if len(parts) < 1 {
-	// 		return "", nil, fmt.Errorf("path parts error: %s", strings.Join(parts, "/"))
-	// 	}
-
-	// 	fileParts = append(fileParts, parts...)
-	// 	return filepath.Join(fileParts...) + ".sui", params, nil
-	// }
-
-	// // Match the page parts
-	// for i, part := range parts[1:] {
-	// 	if len(matchers) < i+1 {
-	// 		return "", nil, fmt.Errorf("matchers length error %d < %d", len(matchers), i+1)
-	// 	}
-
-	// 	parent := ""
-	// 	if i > 0 {
-	// 		parent = parts[i]
-	// 	}
-	// 	matched := false
-	// 	for _, matcher := range matchers[i] {
-
-	// 		// Filter the parent
-	// 		if matcher.Parent != "" && matcher.Parent != parent {
-	// 			continue
-	// 		}
-
-	// 		if matcher.Exact == part {
-	// 			fileParts = append(fileParts, matcher.Exact)
-	// 			matched = true
-	// 			break
-
-	// 		} else if matcher.Regex != nil {
-	// 			if matcher.Regex.MatchString(part) {
-	// 				file := matcher.Ref
-	// 				key := strings.TrimRight(strings.TrimLeft(file, "["), "]")
-	// 				params[key] = part
-	// 				fileParts = append(fileParts, file)
-	// 				matched = true
-	// 				break
-	// 			}
-	// 		}
-	// 	}
-
-	// 	if !matched {
-	// 		return "", nil, fmt.Errorf("route does not match")
-	// 	}
-	// }
-	// return filepath.Join(fileParts...) + ".sui", params, nil
-}
-
-func params(c *gin.Context) map[string]string {
-	return nil
 }
 
 func payload(c *gin.Context) (map[string]interface{}, interface{}, error) {

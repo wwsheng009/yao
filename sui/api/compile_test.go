@@ -10,26 +10,24 @@ import (
 func TestCompile(t *testing.T) {
 	prepare(t)
 	defer clean()
-	loadTestSui(t)
 
 	page := testPage(t)
-	html, err := page.Compile(&core.BuildOption{KeepPageTag: false})
+	html, warnings, err := page.Compile(nil, &core.BuildOption{KeepPageTag: false})
 	if err != nil {
 		t.Fatalf("Compile error: %v", err)
 	}
-	assert.Contains(t, html, `<a href="Link2">Link2</a>`)
-	assert.Contains(t, html, `<a href="Link">Link</a>`)
-	assert.Contains(t, html, "input.data")
+	assert.Contains(t, html, `The basic test cases`)
+	assert.Len(t, warnings, 0)
 }
 
 func testPage(t *testing.T) *core.Page {
 
-	sui := core.SUIs["demo"]
+	sui := core.SUIs["test"]
 	if sui == nil {
-		t.Fatal("SUI demo not found")
+		t.Fatal("SUI test not found")
 	}
 
-	tmpl, err := sui.GetTemplate("tech-blue")
+	tmpl, err := sui.GetTemplate("basic")
 	if err != nil {
 		t.Fatal(err)
 	}

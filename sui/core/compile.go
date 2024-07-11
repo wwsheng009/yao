@@ -1,9 +1,12 @@
 package core
 
 import (
+	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/runtime/transform"
 	"github.com/yaoapp/kun/log"
 )
@@ -16,11 +19,11 @@ var importAssetsRe = regexp.MustCompile(`import\s*\t*\n*\s*['"]@assets\/([^'"]+)
 var AssetsRe = regexp.MustCompile(`[` + quoteRe + `]@assets\/([^` + quoteRe + `]+)[` + quoteRe + `]`) // '@assets/foo.js' or "@assets/foo.js" or `@assets/foo`
 
 // Compile the page
-func (page *Page) Compile(option *BuildOption) (string, error) {
+func (page *Page) Compile(ctx *BuildContext, option *BuildOption) (string, []string, error) {
 
-	doc, warnings, err := page.Build(option)
+	doc, warnings, err := page.Build(ctx, option)
 	if err != nil {
-		return "", err
+		return "", warnings, err
 	}
 
 	if warnings != nil && len(warnings) > 0 {
@@ -29,12 +32,38 @@ func (page *Page) Compile(option *BuildOption) (string, error) {
 		}
 	}
 
+	body := doc.Find("body")
+	head := doc.Find("head")
+
+	// Scripts
+	if ctx != nil && ctx.scripts != nil {
+		for _, script := range ctx.scripts {
+			if script.Parent == "head" {
+				head.AppendHtml(script.HTML() + "\n")
+				continue
+			}
+			body.AppendHtml(script.HTML() + "\n")
+		}
+	}
+
+	// Styles
+	if ctx != nil && ctx.styles != nil {
+		for _, style := range ctx.styles {
+			if style.Parent == "head" {
+				head.AppendHtml(style.HTML() + "\n")
+				continue
+			}
+			body.AppendHtml(style.HTML() + "\n")
+		}
+
+	}
+
 	// Page Config
 	page.Config = page.GetConfig()
 
 	// Config Data
 	if page.Config != nil {
-		doc.Find("body").AppendHtml("\n\n" + `<script name="config" type="json">` + "\n" +
+		body.AppendHtml("\n\n" + `<script name="config" type="json">` + "\n" +
 			page.ExportConfig() +
 			"\n</script>\n\n",
 		)
@@ -42,7 +71,7 @@ func (page *Page) Compile(option *BuildOption) (string, error) {
 
 	// Page Data
 	if page.Codes.DATA.Code != "" {
-		doc.Find("body").AppendHtml("\n\n" + `<script name="data" type="json">` + "\n" +
+		body.AppendHtml("\n\n" + `<script name="data" type="json">` + "\n" +
 			page.Codes.DATA.Code +
 			"\n</script>\n\n",
 		)
@@ -50,7 +79,7 @@ func (page *Page) Compile(option *BuildOption) (string, error) {
 
 	// Page Global Data
 	if page.GlobalData != nil && len(page.GlobalData) > 0 {
-		doc.Find("body").AppendHtml("\n\n" + `<script name="global" type="json">` + "\n" +
+		body.AppendHtml("\n\n" + `<script name="global" type="json">` + "\n" +
 			string(page.GlobalData) +
 			"\n</script>\n\n",
 		)
@@ -59,11 +88,60 @@ func (page *Page) Compile(option *BuildOption) (string, error) {
 	page.ReplaceDocument(doc)
 	html, err := doc.Html()
 	if err != nil {
-		return "", err
+		return "", warnings, err
 	}
 
 	// @todo: Minify the html
-	return html, nil
+	return html, warnings, nil
+}
+
+// CompileAsComponent compile the page as component
+func (page *Page) CompileAsComponent(ctx *BuildContext, option *BuildOption) (string, []string, error) {
+
+	opt := *option
+	opt.IgnoreDocument = true
+	opt.WithWrapper = true
+	doc, warnings, err := page.Build(ctx, &opt)
+	if err != nil {
+		return "", warnings, err
+	}
+
+	if warnings != nil && len(warnings) > 0 {
+		for _, warning := range warnings {
+			log.Warn("Compile page %s/%s/%s: %s", page.SuiID, page.TemplateID, page.Route, warning)
+		}
+	}
+
+	body := doc.Find("body")
+	rawScripts, err := jsoniter.MarshalToString(ctx.scripts)
+	if err != nil {
+		return "", warnings, err
+	}
+
+	rawStyles, err := jsoniter.MarshalToString(ctx.styles)
+	if err != nil {
+		return "", warnings, err
+	}
+
+	rawOption, err := jsoniter.MarshalToString(option)
+	if err != nil {
+		return "", warnings, err
+	}
+
+	if body.Children().Length() == 0 {
+		return "", warnings, fmt.Errorf("page %s as component should have one root element", page.Route)
+	}
+
+	if body.Children().Length() > 1 {
+		return "", warnings, fmt.Errorf("page %s as component should have only one root element", page.Route)
+	}
+
+	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="scripts" type="json">%s</script>`+"\n", rawScripts))
+	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="styles" type="json">%s</script>`+"\n", rawStyles))
+	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="option" type="json">%s</script>`+"\n", rawOption))
+
+	html, err := body.Html()
+	return html, warnings, err
 }
 
 // CompileJS compile the javascript
@@ -78,10 +156,12 @@ func (page *Page) CompileJS(source []byte, minify bool) ([]byte, []string, error
 	}
 	jsCode := importRe.ReplaceAllString(string(source), "")
 	if minify {
-		minified, err := transform.MinifyJS(jsCode)
+		minified, err := transform.MinifyJS(jsCode, api.ES2015)
 		return []byte(minified), scripts, err
 	}
-	return []byte(jsCode), scripts, nil
+
+	jsCode, err := transform.JavaScript(string(jsCode), api.TransformOptions{Target: api.ES2015})
+	return []byte(jsCode), scripts, err
 }
 
 // CompileTS compile the typescript
@@ -99,7 +179,7 @@ func (page *Page) CompileTS(source []byte, minify bool) ([]byte, []string, error
 	tsCode := importRe.ReplaceAllString(string(source), "")
 	if minify {
 		jsCode, err := transform.TypeScript(string(tsCode), api.TransformOptions{
-			Target:            api.ESNext,
+			Target:            api.ES2015,
 			MinifyWhitespace:  true,
 			MinifyIdentifiers: true,
 			MinifySyntax:      true,
@@ -107,7 +187,7 @@ func (page *Page) CompileTS(source []byte, minify bool) ([]byte, []string, error
 		return []byte(jsCode), scripts, err
 	}
 
-	jsCode, err := transform.TypeScript(string(tsCode), api.TransformOptions{Target: api.ESNext})
+	jsCode, err := transform.TypeScript(string(tsCode), api.TransformOptions{Target: api.ES2015})
 	return []byte(jsCode), scripts, err
 }
 
@@ -123,4 +203,63 @@ func (page *Page) CompileCSS(source []byte, minify bool) ([]byte, error) {
 // CompileHTML compile the html
 func (page *Page) CompileHTML(source []byte, minify bool) ([]byte, error) {
 	return source, nil
+}
+
+// HTML return the html of the script
+func (script ScriptNode) HTML() string {
+
+	attrs := []string{
+		"s:ns=\"" + script.Namespace + "\"",
+		"s:cn=\"" + script.Component + "\"",
+	}
+	if script.Attrs != nil {
+		for _, attr := range script.Attrs {
+			attrs = append(attrs, attr.Key+"=\""+attr.Val+"\"")
+		}
+	}
+	// Inline Script
+	if script.Source == "" {
+		return "<script " + strings.Join(attrs, " ") + "></script>"
+	}
+	return "<script " + strings.Join(attrs, " ") + ">\n" + script.Source + "\n</script>"
+}
+
+// ComponentHTML return the html of the script
+func (script ScriptNode) ComponentHTML(ns string) string {
+
+	attrs := []string{
+		"s:ns=\"" + ns + "\"",
+		"s:cn=\"" + script.Component + "\"",
+	}
+	if script.Attrs != nil {
+		for _, attr := range script.Attrs {
+			attrs = append(attrs, attr.Key+"=\""+attr.Val+"\"")
+		}
+	}
+	// Inline Script
+	if script.Source == "" {
+		return "<script " + strings.Join(attrs, " ") + "></script>"
+	}
+
+	source := fmt.Sprintf(`function %s(){%s};`, script.Component, script.Source)
+	return "<script " + strings.Join(attrs, " ") + ">\n" + source + "\n</script>"
+}
+
+// HTML return the html of the style node
+func (style StyleNode) HTML() string {
+	attrs := []string{
+		"s:ns=\"" + style.Namespace + "\"",
+		"s:cn=\"" + style.Component + "\"",
+	}
+	if style.Attrs != nil {
+		for _, attr := range style.Attrs {
+			attrs = append(attrs, attr.Key+"=\""+attr.Val+"\"")
+		}
+	}
+	// Inline Style
+	if style.Source == "" {
+		return "<link " + strings.Join(attrs, " ") + "></link>"
+	}
+	return "<style " + strings.Join(attrs, " ") + ">\n" + style.Source + "\n</style>"
+
 }

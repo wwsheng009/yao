@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/fsnotify/fsnotify"
@@ -21,8 +22,6 @@ import (
 	"github.com/yaoapp/yao/engine"
 	"github.com/yaoapp/yao/sui/core"
 )
-
-var data string
 
 var watched sync.Map
 
@@ -97,12 +96,22 @@ var WatchCmd = &cobra.Command{
 					return
 				}
 
-				err = tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot})
+				// Timecost
+				start := time.Now()
+				warnings, err := tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot})
 				if err != nil {
 					fmt.Fprint(os.Stderr, color.RedString(fmt.Sprintf("Failed: %s\n", err.Error())))
 					return
 				}
-				fmt.Print(color.GreenString("Success\n"))
+
+				if len(warnings) > 0 {
+					for _, warning := range warnings {
+						fmt.Fprintln(os.Stderr, color.YellowString(warning))
+					}
+				}
+				end := time.Now()
+				timecost := end.Sub(start).Truncate(time.Millisecond)
+				fmt.Printf(color.GreenString("Success (%s)\n"), timecost.String())
 			}
 		}, watchDone)
 

@@ -1,4 +1,4 @@
-name: Comment on the pull request
+name: PR Unit Test
 
 # read-write repo token
 # access to secrets
@@ -52,9 +52,9 @@ env:
   # Application Setting
 
   ## Path
-  YAO_TEST_APPLICATION: ${{ github.WORKSPACE }}/../app
   YAO_EXTENSION_ROOT: ${{ github.WORKSPACE }}/../extension
-  YAO_TEST_BUILDER_APPLICATION: ${{ github.WORKSPACE }}/../page-builder-app
+  YAO_TEST_APPLICATION: ${{ github.WORKSPACE }}/../app
+  YAO_SUI_TEST_APPLICATION: ${{ github.WORKSPACE }}/../yao-startup-webapp
 
   ## Runtime
   YAO_RUNTIME_MIN: 3
@@ -78,7 +78,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: "Download artifact"
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             var artifacts = await github.rest.actions.listWorkflowRunArtifacts({
@@ -107,7 +107,7 @@ jobs:
           echo NR=$(cat NR) >> $GITHUB_ENV
 
       - name: "Comment on PR"
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -121,56 +121,47 @@ jobs:
               body: 'Thank you for the PR! The db: ${{ matrix.db }}  redis: ${{ matrix.redis }}  mongo: ${{ matrix.mongo }} test workflow is running, the results of the run will be commented later.'
             });
 
-      - name: Setup Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
       - name: Checkout Kun
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/kun
           path: kun
 
       - name: Checkout Xun
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/xun
           path: xun
 
       - name: Checkout Gou
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/gou
           path: gou
 
       - name: Checkout V8Go
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/v8go
           lfs: true
           path: v8go
 
       - name: Checkout Demo App
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/yao-dev-app
           path: app
 
-      - name: Checkout Page Builder App
-        uses: actions/checkout@v3
+      - name: Checkout Yao Startup Webapp
+        uses: actions/checkout@v4
         with:
-          repository: yaoapp/page-builder-app
+          repository: yaoapp/yao-startup-webapp
+          submodules: true
           token: ${{ secrets.YAO_TEST_TOKEN }}
-          path: page-builder-app
+          path: yao-startup-webapp
 
       - name: Checkout Extension
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: yaoapp/yao-extensions-dev
           path: extension
@@ -183,12 +174,12 @@ jobs:
           mv v8go ../
           mv app ../
           mv extension ../
-          mv page-builder-app ../
+          mv yao-startup-webapp ../
           ls -l .
           ls -l ../
 
       - name: Checkout pull request HEAD commit
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.HEAD }}
 
@@ -197,6 +188,11 @@ jobs:
         with:
           redis-version: ${{ matrix.redis }}
 
+      - name: Setup Go ${{ matrix.go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          
       - name: Start MongoDB
         uses: supercharge/mongodb-github-action@1.8.0
         with:
@@ -221,11 +217,6 @@ jobs:
           db: "xiang"
           user: "xiang"
           password: ${{ secrets.UNIT_PASS }}
-
-      - name: Setup Go ${{ matrix.go }}
-        uses: actions/setup-go@v3
-        with:
-          go-version: ${{ matrix.go }}
 
       - name: Setup Go Tools
         run: |
@@ -262,12 +253,12 @@ jobs:
           make test
 
       - name: Codecov Report
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
 
       - name: "Comment on PR"
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

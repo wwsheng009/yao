@@ -1,6 +1,9 @@
 package service
 
 import (
+	"bytes"
+	"compress/gzip"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -42,32 +45,21 @@ func withStaticFileServer(c *gin.Context) {
 		return
 	}
 
-	// Yao Builder
-	// URL /yao/builder
-	if length >= 12 && c.Request.URL.Path[0:12] == "/yao/builder" {
-		c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/yao/builder")
-		BuilderFileServer.ServeHTTP(c.Writer, c.Request)
-		c.Abort()
-		return
-	}
-
 	// Rewrite
 	for _, rewrite := range rewriteRules {
 		// log.Debug("Rewrite: %s => %s", c.Request.URL.Path, rewrite.Replacement)
 		if matches := rewrite.Pattern.FindStringSubmatch(c.Request.URL.Path); matches != nil {
-			rewriteOriginalPath := c.Request.URL.Path
 			c.Set("rewrite", true)
 			c.Set("matches", matches)
 			c.Request.URL.Path = rewrite.Pattern.ReplaceAllString(c.Request.URL.Path, rewrite.Replacement)
-			log.Trace("Rewrite FindStringSubmatch Matched: %s => %s", rewriteOriginalPath, rewrite.Replacement)
+			// rewriteOriginalPath := c.Request.URL.Path
+			// log.Trace("Rewrite FindStringSubmatch Matched: %s => %s", rewriteOriginalPath, rewrite.Replacement)
 			break
 		}
 	}
 
 	// Sui file server
 	if strings.HasSuffix(c.Request.URL.Path, ".sui") {
-
-		log.Debug("Sui File: %s", c.Request.URL.Path)
 
 		// Default index.sui
 		if filepath.Base(c.Request.URL.Path) == ".sui" {
@@ -96,9 +88,30 @@ func withStaticFileServer(c *gin.Context) {
 			return
 		}
 
+		// Gzip Compression
+		if strings.Contains(c.GetHeader("Accept-Encoding"), "gzip") {
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+			if _, err := gz.Write([]byte(html)); err != nil {
+				log.Error("GZIP Compression Error: %s", err.Error())
+				c.AbortWithStatus(http.StatusInternalServerError)
+				return
+			}
+			if err := gz.Close(); err != nil {
+				log.Error("GZIP Close Error: %s", err.Error())
+				c.AbortWithStatus(http.StatusInternalServerError)
+				return
+			}
+
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.Header("Content-Encoding", "gzip")
+			c.Data(http.StatusOK, "text/html", buf.Bytes())
+			c.Done()
+		}
+
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(200, html)
-		c.Done()
+		c.Next()
 		return
 	}
 

@@ -14,8 +14,10 @@ type Local struct {
 
 // Template is the struct for the local sui template
 type Template struct {
-	Root  string `json:"-"`
-	local *Local
+	Root    string `json:"-"`
+	local   *Local
+	locales []core.SelectOption
+	loaded  map[string]core.IPage
 	*core.Template
 }
 

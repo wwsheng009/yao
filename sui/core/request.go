@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
@@ -9,19 +10,6 @@ import (
 	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/kun/log"
 )
-
-// Cache the cache
-type Cache struct {
-	Data          string
-	Global        string
-	Config        string
-	Guard         string
-	GuardRedirect string
-	HTML          string
-}
-
-// Caches the caches
-var Caches = map[string]*Cache{}
 
 // NewRequestMock is the constructor for Request.
 func NewRequestMock(mock *PageMock) *Request {
@@ -38,6 +26,95 @@ func NewRequestMock(mock *PageMock) *Request {
 		Params:  mock.Params,
 		URL:     mock.URL,
 	}
+}
+
+// Cookies get the cookies
+func (r *Request) Cookies() map[string]string {
+	cookies := map[string]string{}
+	cookie := r.Headers.Get("Cookie")
+	parts := strings.Split(cookie, ";")
+	for _, part := range parts {
+		kv := strings.Split(strings.TrimSpace(part), "=")
+		if len(kv) == 2 {
+			cookies[kv[0]] = kv[1]
+		}
+	}
+	return cookies
+}
+
+// DebugMode get the debug mode
+func (r *Request) DebugMode() bool {
+	debug := false
+	if r.Query != nil && (r.Query.Has("__sui_print_data") || r.Query.Has("__debug")) {
+		debug = true
+	}
+	return debug
+}
+
+// DisableCache get the disable cache
+func (r *Request) DisableCache() bool {
+	disable := false
+	if (r.Query != nil && r.Query.Has("__debug") || r.Query.Has("__sui_disable_cache")) || (r.Headers != nil && r.Headers.Get("Cache-Control") == "no-cache") {
+		disable = true
+	}
+	return disable
+}
+
+// NewData create the new data
+func (r *Request) NewData() Data {
+	cookies := r.Cookies()
+	theme := GetTheme(cookies)
+	locale := GetLocale(cookies)
+	r.Theme = theme
+	r.Locale = locale
+
+	data := Data{}
+	data["$payload"] = r.Payload
+	data["$query"] = r.Query
+	data["$param"] = r.Params
+	data["$cookie"] = cookies
+	data["$url"] = r.URL
+	data["$theme"] = r.Theme
+	data["$locale"] = r.Locale
+	return data
+}
+
+// GetLocale get the locale
+func GetLocale(cookies map[string]string) interface{} {
+	if lang, has := cookies["locale"]; has {
+		return lang
+	}
+	return nil
+}
+
+// GetTheme get the theme
+func GetTheme(cookies map[string]string) interface{} {
+	if theme, has := cookies["color-theme"]; has {
+		return theme
+	}
+	return nil
+}
+
+// Hash get the hash
+func (r *Request) Hash() string {
+	h := fnv.New64a()
+	h.Write([]byte(fmt.Sprintf("%v", r)))
+	return fmt.Sprintf("%x", h.Sum64())
+}
+
+// ExecStringMerge exec the string and merge the data
+func (r *Request) ExecStringMerge(data Data, raw string) error {
+
+	res, err := r.ExecString(raw)
+	if err != nil {
+		return err
+	}
+
+	// Merge the data
+	for key, value := range res {
+		data[key] = value
+	}
+	return nil
 }
 
 // ExecString get the data
@@ -297,32 +374,4 @@ func (url ReqeustURL) Map() Data {
 		"host":   url.Host,
 		"path":   url.Path,
 	}
-}
-
-// SetCache set the cache
-func SetCache(file string, html string, data string, global string) *Cache {
-	Caches[file] = &Cache{
-		Data:   data,
-		HTML:   html,
-		Global: global,
-	}
-	return Caches[file]
-}
-
-// GetCache get the cache
-func GetCache(file string) *Cache {
-	if cache, has := Caches[file]; has {
-		return cache
-	}
-	return nil
-}
-
-// RemoveCache remove the cache
-func RemoveCache(file string) {
-	delete(Caches, file)
-}
-
-// CleanCache clean the cache
-func CleanCache() {
-	Caches = map[string]*Cache{}
 }

@@ -2,13 +2,16 @@ package core
 
 import (
 	"fmt"
+	"hash/fnv"
 	"regexp"
 	"strings"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
+	"golang.org/x/net/html"
 )
 
 // If set the map value, should keep the space at the end of the statement
@@ -21,6 +24,13 @@ type Data map[string]interface{}
 var options = []expr.Option{
 	expr.Function("P_", _process),
 	expr.AllowUndefinedVariables(),
+}
+
+// Hash get the hash of the data
+func (data Data) Hash() string {
+	h := fnv.New64a()
+	h.Write([]byte(fmt.Sprintf("%v", data)))
+	return fmt.Sprintf("%x", h.Sum64())
 }
 
 // New create a new expression
@@ -78,16 +88,7 @@ func (data Data) ExecString(stmt string) (string, error) {
 
 // Replace replace the statement
 func (data Data) Replace(value string) (string, bool) {
-	hasStmt := false
-	res := stmtRe.ReplaceAllStringFunc(value, func(stmt string) string {
-		hasStmt = true
-		res, err := data.ExecString(stmt)
-		if err != nil {
-			log.Warn("Replace %s: %s", stmt, err)
-		}
-		return res
-	})
-	return res, hasStmt
+	return data.ReplaceUse(stmtRe, value)
 }
 
 // ReplaceUse replace the statement use the regexp
@@ -102,6 +103,61 @@ func (data Data) ReplaceUse(re *regexp.Regexp, value string) (string, bool) {
 		return res
 	})
 	return res, hasStmt
+}
+
+// ReplaceSelection replace the statement in the selection
+func (data Data) ReplaceSelection(sel *goquery.Selection) bool {
+	return data.ReplaceSelectionUse(stmtRe, sel)
+}
+
+// ReplaceSelectionUse replace the statement in the selection use the regexp
+func (data Data) ReplaceSelectionUse(re *regexp.Regexp, sel *goquery.Selection) bool {
+	hasStmt := false
+	for _, node := range sel.Nodes {
+		ok := data.replaceNodeUse(re, node)
+		if ok {
+			hasStmt = true
+		}
+	}
+	return hasStmt
+}
+
+func (data Data) replaceNodeUse(re *regexp.Regexp, node *html.Node) bool {
+	hasStmt := false
+	switch node.Type {
+	case html.TextNode:
+		v, ok := data.ReplaceUse(re, node.Data)
+		node.Data = v
+		if ok {
+			hasStmt = true
+		}
+		break
+
+	case html.ElementNode:
+		for i := range node.Attr {
+
+			if (strings.HasPrefix(node.Attr[i].Key, "s:") || node.Attr[i].Key == "is") && !allowUsePropAttrs[node.Attr[i].Key] {
+				continue
+			}
+
+			v, ok := data.ReplaceUse(re, node.Attr[i].Val)
+			node.Attr[i].Val = v
+			if ok {
+				hasStmt = true
+			}
+		}
+
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			ok := data.replaceNodeUse(re, c)
+			if ok {
+				hasStmt = true
+			}
+		}
+		break
+	}
+
+	return hasStmt
+
 }
 
 func _process(args ...any) (interface{}, error) {

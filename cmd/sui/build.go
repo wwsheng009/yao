@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"
@@ -78,12 +79,32 @@ var BuildCmd = &cobra.Command{
 		fmt.Println(color.WhiteString("    Session: %s", strings.TrimLeft(data, "::")))
 		fmt.Println(color.WhiteString("-----------------------"))
 
-		err = tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot})
+		// Timecost
+		start := time.Now()
+		minify := true
+		mode := "production"
+		if debug {
+			minify = false
+			mode = "development"
+		}
+
+		warnings, err := tmpl.Build(&core.BuildOption{SSR: true, AssetRoot: assetRoot, ExecScripts: true, ScriptMinify: minify, StyleMinify: minify})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
 			return
 		}
+		end := time.Now()
+		timecost := end.Sub(start).Truncate(time.Millisecond)
+		if debug {
+			fmt.Println(color.YellowString("Build succeeded for %s in %s", mode, timecost))
+			return
+		}
+		if len(warnings) > 0 {
+			for _, warning := range warnings {
+				fmt.Println(color.YellowString("Warning: %s", warning))
+			}
+		}
 
-		fmt.Print(color.GreenString("Build Success\n"))
+		fmt.Println(color.GreenString("Build succeeded for %s in %s", mode, timecost))
 	},
 }

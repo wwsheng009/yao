@@ -39,5 +39,5 @@ xgen/v1.0/*
 !xgen/v1.0/layouts__index.async.js
 !pipe/ui
 *-unit-test
-__debug_bin
 docker/build/test
+db

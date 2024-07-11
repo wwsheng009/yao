@@ -48,8 +48,8 @@ func (page *Page) EditorRender() (*ResponseEditorRender, error) {
 	// Render tools
 	// res.Scripts = append(res.Scripts, filepath.Join("@assets", "__render.js"))
 	// res.Styles = append(res.Styles, filepath.Join("@assets", "__render.css"))
-
-	doc, warnings, err := page.Build(&BuildOption{
+	ctx := NewBuildContext(nil)
+	doc, warnings, err := page.Build(ctx, &BuildOption{
 		SSR:             true,
 		IgnoreAssetRoot: true,
 		IgnoreDocument:  true,
@@ -111,7 +111,7 @@ func (res *ResponseEditorRender) Render(data map[string]interface{}) error {
 	}
 
 	var err error
-	parser := NewTemplateParser(data, &ParserOption{Editor: true, PrintData: true})
+	parser := NewTemplateParser(data, &ParserOption{Editor: true, Debug: true})
 
 	res.HTML, err = parser.Render(res.HTML)
 	if err != nil {

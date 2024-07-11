@@ -5,11 +5,13 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/yao/sui/core"
 	"golang.org/x/text/language"
 )
@@ -24,8 +26,141 @@ func (tmpl *Template) GetRoot() string {
 	return tmpl.Root
 }
 
+// Glob the files
+func (tmpl *Template) Glob(pattern string) ([]string, error) {
+	path := filepath.Join(tmpl.Root, pattern)
+	paths, err := tmpl.local.fs.Glob(path)
+	if err != nil {
+		return nil, err
+	}
+
+	routes := []string{}
+	for _, p := range paths {
+		routes = append(routes, strings.TrimPrefix(p, tmpl.Root))
+	}
+	return routes, nil
+}
+
+// GlobRoutes the files
+func (tmpl *Template) GlobRoutes(patterns []string, unique ...bool) ([]string, error) {
+	routes := []string{}
+	for _, pattern := range patterns {
+		paths, err := tmpl.Glob(pattern)
+		if err != nil {
+			return nil, err
+		}
+		routes = append(routes, paths...)
+	}
+
+	// Unique
+	if len(unique) > 0 && unique[0] {
+		mapRoutes := map[string]bool{}
+		for _, route := range routes {
+			mapRoutes[route] = true
+		}
+
+		routes = []string{}
+		for route := range mapRoutes {
+			routes = append(routes, route)
+		}
+		return routes, nil
+	}
+
+	return routes, nil
+}
+
+// Reload the template
+func (tmpl *Template) Reload() error {
+	newTmpl, err := tmpl.local.getTemplateFrom(tmpl.Root)
+	if err != nil {
+		return err
+	}
+	*tmpl = *newTmpl
+	return nil
+}
+
+// ExecBuildCompleteScripts execute the build complete scripts
+func (tmpl *Template) ExecBuildCompleteScripts() []core.TemplateScirptResult {
+	if tmpl.Scripts == nil || len(tmpl.Scripts.BuildComplete) == 0 {
+		return nil
+	}
+	return tmpl.ExecScripts(tmpl.Scripts.BuildComplete)
+}
+
+// ExecBeforeBuildScripts execute the before build scripts
+func (tmpl *Template) ExecBeforeBuildScripts() []core.TemplateScirptResult {
+	if tmpl.Scripts == nil || len(tmpl.Scripts.BeforeBuild) == 0 {
+		return nil
+	}
+	return tmpl.ExecScripts(tmpl.Scripts.BeforeBuild)
+}
+
+// ExecAfterBuildScripts execute the after build scripts
+func (tmpl *Template) ExecAfterBuildScripts() []core.TemplateScirptResult {
+	if tmpl.Scripts == nil || len(tmpl.Scripts.AfterBuild) == 0 {
+		return nil
+	}
+	return tmpl.ExecScripts(tmpl.Scripts.AfterBuild)
+}
+
+// ExecScripts execute the scripts
+func (tmpl *Template) ExecScripts(scripts []*core.TemplateScript) []core.TemplateScirptResult {
+
+	results := []core.TemplateScirptResult{}
+	if scripts == nil {
+		return results
+	}
+
+	for _, script := range scripts {
+		switch script.Type {
+		case "command":
+			results = append(results, tmpl.execCommand(script))
+		case "process":
+			results = append(results, tmpl.execProcess(script))
+		}
+	}
+	return results
+}
+
+func (tmpl *Template) execProcess(script *core.TemplateScript) core.TemplateScirptResult {
+	result := core.TemplateScirptResult{Script: script, Message: "", Error: nil}
+	name := script.Content
+	p, err := process.Of(name, tmpl.Root)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+
+	output, err := p.Exec()
+	result.Error = err
+	result.Message = fmt.Sprintf("%v", output)
+	return result
+}
+
+func (tmpl *Template) execCommand(script *core.TemplateScript) core.TemplateScirptResult {
+	result := core.TemplateScirptResult{Script: script, Message: "", Error: nil}
+	root := filepath.Join(tmpl.local.fs.Root(), tmpl.Root)
+
+	// Parse the command
+	cmd := strings.Split(script.Content, " ")
+	if len(cmd) == 0 {
+		result.Error = fmt.Errorf("Command is empty")
+		return result
+	}
+
+	execCmd := exec.Command(cmd[0], cmd[1:]...)
+	execCmd.Dir = root
+	output, err := execCmd.CombinedOutput()
+	result.Error = err
+	result.Message = string(output)
+	return result
+}
+
 // Locales get the global locales
 func (tmpl *Template) Locales() []core.SelectOption {
+	if tmpl.locales != nil {
+		return tmpl.locales
+	}
 
 	supportLocales := []core.SelectOption{}
 	path := filepath.Join(tmpl.Root, "__locales")
@@ -47,7 +182,8 @@ func (tmpl *Template) Locales() []core.SelectOption {
 		})
 	}
 
-	return supportLocales
+	tmpl.locales = supportLocales
+	return tmpl.locales
 }
 
 // Themes get the global themes
@@ -175,8 +311,8 @@ func (tmpl *Template) Asset(file string, width, height uint) (*core.Asset, error
 
 	file = filepath.Join(tmpl.Root, "__assets", file)
 	if exist, _ := tmpl.local.fs.Exists(file); exist {
-
-		if width > 0 || height > 0 {
+		ext := strings.ToLower(filepath.Ext(file))
+		if (width > 0 || height > 0) && (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".bmp") {
 			return tmpl.assetThumb(file, width, height)
 		}
 
@@ -186,7 +322,7 @@ func (tmpl *Template) Asset(file string, width, height uint) (*core.Asset, error
 		}
 
 		typ := "text/plain"
-		switch filepath.Ext(file) {
+		switch ext {
 		case ".css":
 			typ = "text/css; charset=utf-8"
 			break
