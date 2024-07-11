@@ -2,13 +2,31 @@ package service
 
 import (
 	"compress/gzip"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 // gzipHandler
-func gzipHandler(h http.Handler) http.HandlerFunc {
+func gzipHandler(h http.Handler, allows ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// 跨域访问
+		if len(allows) > 0 {
+			allowsMap := map[string]bool{}
+			for _, allow := range allows {
+				allowsMap[allow] = true
+			}
+			origin := getOrigin(r)
+			if origin != "" {
+				if IsAllowed(r, allowsMap) {
+					// url parse
+					url, _ := url.Parse(origin)
+					origin = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
+			}
+		}
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			h.ServeHTTP(w, r)
 			return
