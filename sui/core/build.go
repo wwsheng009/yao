@@ -7,15 +7,15 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/fatih/color"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/yaoapp/kun/log"
 	"golang.org/x/net/html"
 )
 
 var slotRe = regexp.MustCompile(`\[\{([^\}]+)\}\]`)
 var cssRe = regexp.MustCompile(`([\.a-z0-9A-Z-:# ]+)\{`)
-var langFuncRe = regexp.MustCompile(`L\s*\(\s*["'](.*?)["']\s*\)`)
-var langAttrRe = regexp.MustCompile(`'::(.*?)'`)
+var transStmtReSingle = regexp.MustCompile(`'::([^:']+)'`)
+var transStmtReDouble = regexp.MustCompile(`"::([^:"]+)"`)
+var transFuncRe = regexp.MustCompile(`__m\s*\(\s*["'](.*?)["']\s*\)`)
 
 // Build build the page
 func (page *Page) Build(ctx *BuildContext, option *BuildOption) (*goquery.Document, []string, error) {
@@ -39,15 +39,16 @@ func (page *Page) Build(ctx *BuildContext, option *BuildOption) (*goquery.Docume
 
 	ctx.sequence++
 
+	page.transCtx = NewTranslateContext()
 	namespace := Namespace(page.Route, ctx.sequence, option.ScriptMinify)
 	page.namespace = namespace
 
-	html, err := page.BuildHTML(option)
+	source, err := page.BuildHTML(option)
 	if err != nil {
 		ctx.warnings = append(ctx.warnings, err.Error())
 	}
 
-	doc, err := NewDocumentString(html)
+	doc, err := NewDocumentString(source)
 	if err != nil {
 		return nil, ctx.warnings, err
 	}
@@ -73,10 +74,37 @@ func (page *Page) Build(ctx *BuildContext, option *BuildOption) (*goquery.Docume
 		return nil, ctx.warnings, err
 	}
 
+	// Add the translation marks
+	err = page.TranslateDocument(doc)
+	if err != nil {
+		return nil, warnings, err
+	}
+
+	// Translate the scripts
+	if (scripts != nil) && len(scripts) > 0 {
+		for i, script := range scripts {
+			if script.Source == "" {
+				continue
+			}
+			trans, keys, err := page.translateScript(script.Source)
+			if err != nil {
+				return nil, ctx.warnings, err
+			}
+			if len(keys) > 0 {
+				page.transCtx.translations = append(page.transCtx.translations, trans...)
+				scripts[i].Attrs = append(script.Attrs, html.Attribute{Key: "s:trans-script", Val: strings.Join(keys, ",")})
+			}
+		}
+	}
+
+	if ctx.translations == nil {
+		ctx.translations = []Translation{}
+	}
+	ctx.translations = append(ctx.translations, page.transCtx.translations...)
+
 	// Append the scripts and styles
 	ctx.scripts = append(ctx.scripts, scripts...)
 	ctx.styles = append(ctx.styles, styles...)
-
 	return doc, ctx.warnings, err
 }
 
@@ -85,6 +113,10 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 
 	if page.parent == nil {
 		return "", fmt.Errorf("The parent page is not set")
+	}
+
+	if ctx == nil {
+		ctx = NewBuildContext(nil)
 	}
 
 	// Push the current page onto the stack and increment the visit counter
@@ -107,6 +139,7 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 
 	namespace := Namespace(name, ctx.sequence, option.ScriptMinify)
 	component := ComponentName(name, option.ScriptMinify)
+	page.transCtx = NewTranslateContext()
 	page.namespace = namespace
 	attrs := []html.Attribute{
 		{Key: "s:ns", Val: namespace},
@@ -115,15 +148,20 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 		{Key: "s:parent", Val: page.parent.namespace},
 	}
 
-	ctx.sequence++
-	var opt = *option
-	opt.IgnoreDocument = true
-	html, err := page.BuildHTML(&opt)
+	err := page.parent.TranslateSelection(sel) // Translate the component instance
 	if err != nil {
 		return "", err
 	}
 
-	doc, err := NewDocumentStringWithWrapper(html)
+	ctx.sequence++
+	var opt = *option
+	opt.IgnoreDocument = true
+	source, err := page.BuildHTML(&opt)
+	if err != nil {
+		return "", err
+	}
+
+	doc, err := NewDocumentStringWithWrapper(source)
 	if err != nil {
 		return "", err
 	}
@@ -144,26 +182,56 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 		return "", err
 	}
 
-	// Append the scripts
-	ctx.scripts = append(ctx.scripts, scripts...)
-
-	// Pass the component props
-	first := body.Children().First()
-
-	page.copyProps(ctx, sel, first, attrs...)
-	page.copySlots(ctx, sel, first)
-	page.buildComponents(doc, ctx, &opt)
-	data := Data{"$props": page.Attrs}
-	data.ReplaceSelectionUse(slotRe, first)
-	html, err = body.Html()
+	styles, err := page.BuildStyles(ctx, &opt, component, namespace)
 	if err != nil {
 		return "", err
 	}
-	sel.ReplaceWithHtml(html)
-	return html, nil
+
+	// Pass the component props
+	first := body.Children().First()
+	// page.copyProps(ctx, sel, first, attrs...)
+	page.parseProps(sel, first, attrs...)
+	page.copySlots(sel, first)
+	page.copyChildren(sel, first)
+	page.buildComponents(doc, ctx, &opt)
+	page.replaceProps(first)
+
+	// data := Data{"$props": page.Attrs}
+	// data.ReplaceSelectionUse(slotRe, first)
+
+	// Add the translation marks
+	err = page.TranslateDocument(doc)
+	if err != nil {
+		return "", err
+	}
+
+	// Translate the scripts
+	if (scripts != nil) && len(scripts) > 0 {
+		for i, script := range scripts {
+			if script.Source == "" {
+				continue
+			}
+			trans, keys, err := page.translateScript(script.Source)
+			if err != nil {
+				return "", err
+			}
+			if len(keys) > 0 {
+				page.transCtx.translations = append(page.transCtx.translations, trans...)
+				scripts[i].Attrs = append(script.Attrs, html.Attribute{Key: "s:trans-script", Val: strings.Join(keys, ",")})
+			}
+		}
+	}
+
+	// Append the scripts
+	ctx.scripts = append(ctx.scripts, scripts...)
+	ctx.styles = append(ctx.styles, styles...)
+
+	sel.ReplaceWithSelection(body.Contents())
+	ctx.components[page.Route] = true
+	return source, nil
 }
 
-func (page *Page) copySlots(ctx *BuildContext, from *goquery.Selection, to *goquery.Selection) error {
+func (page *Page) copySlots(from *goquery.Selection, to *goquery.Selection) error {
 	slots := from.Find("slot")
 	if slots.Length() == 0 {
 		return nil
@@ -177,72 +245,165 @@ func (page *Page) copySlots(ctx *BuildContext, from *goquery.Selection, to *goqu
 		}
 
 		// Get the slot
-		slotSel := to.Find(fmt.Sprintf("slot[name='%s']", name))
-
+		slotSel := to.Find(name)
 		if slotSel.Length() == 0 {
 			continue
 		}
 
-		// Copy the slot
-		html, err := slot.Html()
-		if err != nil {
-			ctx.warnings = append(ctx.warnings, err.Error())
-			setError(slotSel, err)
-			continue
-		}
-		slotSel.SetHtml(html)
+		slotSel.ReplaceWithSelection(slot.Contents())
 	}
 
 	return nil
 }
 
-func (page *Page) copyProps(ctx *BuildContext, from *goquery.Selection, to *goquery.Selection, extra ...html.Attribute) error {
-	attrs := from.Get(0).Attr
-	prefix := "s:prop"
-	if page.Attrs == nil {
-		page.Attrs = map[string]string{}
+func (page *Page) copyChildren(from *goquery.Selection, to *goquery.Selection) error {
+	children := from.Contents()
+	if children.Length() == 0 {
+		return nil
 	}
+	children.Find("slot").Remove()
+	to.Find("children").ReplaceWithSelection(children)
+	return nil
+}
+
+func (page *Page) parseProps(from *goquery.Selection, to *goquery.Selection, extra ...html.Attribute) {
+	attrs := from.Get(0).Attr
+	if page.props == nil {
+		page.props = map[string]PageProp{}
+	}
+
+	if attrs == nil {
+		attrs = []html.Attribute{}
+	}
+
 	for _, attr := range attrs {
+
 		if strings.HasPrefix(attr.Key, "s:") || attr.Key == "is" || attr.Key == "parsed" {
 			continue
 		}
 
-		if strings.HasPrefix(attr.Key, "...$props") {
-			data := Data{"$props": page.parent.Attrs}
-			val, err := data.Exec(fmt.Sprintf("{{ %s }}", attr.Key[3:]))
-			if err != nil {
-				ctx.warnings = append(ctx.warnings, err.Error())
-				setError(to, err)
-				continue
-			}
-			switch value := val.(type) {
-			case map[string]string:
-				for key, value := range value {
-					page.Attrs[key] = value
-					key = fmt.Sprintf("%s:%s", prefix, key)
-					to.SetAttr(key, value)
+		if attr.Key == "...$props" && page.parent != nil {
+			if page.parent.props != nil {
+				for key, prop := range page.parent.props {
+					page.props[key] = prop
 				}
 			}
 			continue
 		}
 
-		val := attr.Val
-		if strings.HasPrefix(attr.Key, `...\$props`) {
-			val = fmt.Sprintf("{{ $props.%s }}", attr.Key[9:])
+		if strings.HasPrefix(attr.Key, "...") && page.parent != nil {
+			val := attr.Key[3:]
+			key := fmt.Sprintf("s:prop:%s", attr.Key)
+			to.SetAttr(key, val)
+			continue
 		}
 
-		if strings.HasPrefix(attr.Key, "...") {
-			val = attr.Key[3:]
-		}
-		page.Attrs[attr.Key] = val
-		key := fmt.Sprintf("%s:%s", prefix, attr.Key)
-		to.SetAttr(key, val)
+		trans := from.AttrOr(fmt.Sprintf("s:trans-attr-%s", attr.Key), "")
+		exp := stmtRe.Match([]byte(attr.Val))
+		prop := PageProp{Key: attr.Key, Val: attr.Val, Trans: trans, Exp: exp}
+		page.props[attr.Key] = prop
 	}
 
-	if len(extra) > 0 {
+	if extra != nil && len(extra) > 0 {
 		for _, attr := range extra {
+			attrs = append(attrs, attr)
 			to.SetAttr(attr.Key, attr.Val)
 		}
+	}
+}
+
+func (page *Page) replaceProps(sel *goquery.Selection) error {
+	if page.props == nil || len(page.props) == 0 {
+		return nil
+	}
+	data := Data{}
+	for key, prop := range page.props {
+		data[key] = prop.Val
+	}
+	data["$props"] = data
+	return page.replacePropsNode(data, sel.Nodes[0])
+}
+
+func (page *Page) replacePropsText(text string, data Data) (string, []string) {
+	trans := []string{}
+	matched := PropFindAllStringSubmatch(text)
+	for _, match := range matched {
+		stmt := match[1]
+		val, err := data.ExecString(stmt)
+		if err != nil {
+			log.Error("[replaceProps] Replace %s: %s", stmt, err)
+			continue
+		}
+
+		text = strings.ReplaceAll(text, match[0], val)
+		vars := PropGetVarNames(stmt)
+		for _, v := range vars {
+			if v == "" {
+				continue
+			}
+
+			if prop, has := page.props[v]; has {
+				if prop.Trans == "" {
+					continue
+				}
+				trans = append(trans, prop.Trans)
+			}
+		}
+	}
+
+	return text, trans
+}
+
+func (page *Page) replacePropsNode(data Data, node *html.Node) error {
+	switch node.Type {
+	case html.TextNode:
+		text := node.Data
+		if strings.TrimSpace(text) == "" {
+			break
+		}
+
+		text, trans := page.replacePropsText(text, data)
+		if len(trans) > 0 && node.Parent != nil {
+			node.Parent.Attr = append(node.Parent.Attr, html.Attribute{
+				Key: "s:trans-text",
+				Val: strings.Join(trans, ","),
+			})
+		}
+
+		node.Data = text
+		break
+
+	case html.ElementNode:
+
+		// Attrs
+		attrs := []html.Attribute{}
+		for i, attr := range node.Attr {
+
+			if (strings.HasPrefix(attr.Key, "s:") || attr.Key == "is") && !allowUsePropAttrs[attr.Key] {
+				continue
+			}
+
+			val, trans := page.replacePropsText(attr.Val, data)
+			node.Attr[i] = html.Attribute{Key: attr.Key, Val: val}
+			if len(trans) > 0 {
+				key := fmt.Sprintf("s:trans-attr-%s", attr.Key)
+				attrs = append(attrs, html.Attribute{Key: key, Val: strings.Join(trans, ",")})
+			}
+		}
+
+		for _, attr := range attrs {
+			node.Attr = append(node.Attr, attr)
+		}
+
+		// Children
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			err := page.replacePropsNode(data, c)
+			if err != nil {
+				return err
+			}
+		}
+
+		break
 	}
 
 	return nil
@@ -499,105 +660,4 @@ func addTabToEachLine(input string, prefix ...string) string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-func getScriptTranslation(code string, namespace string) []Translation {
-	translations := []Translation{}
-	matches := langFuncRe.FindAllStringSubmatch(code, -1)
-	for i, match := range matches {
-		translations = append(translations, Translation{
-			Key:     fmt.Sprintf("%s_script_%d", namespace, i),
-			Message: match[1],
-			Type:    "script",
-		})
-	}
-	return translations
-}
-
-func getNodeTranslation(sel *goquery.Selection, index int, namespace string) []Translation {
-
-	translations := []Translation{}
-	nodeType := sel.Get(0).Type
-	switch nodeType {
-	case html.ElementNode:
-
-		// Get the translation
-		if typ, has := sel.Attr("s:trans"); has {
-			typ = strings.TrimSpace(typ)
-			if typ == "" {
-				typ = "html"
-			}
-
-			key := fmt.Sprintf("%s_index_%d", namespace, index)
-			translations = append(translations, Translation{
-				Key:     key,
-				Message: strings.TrimSpace(sel.Text()),
-				Type:    typ,
-			})
-			sel.SetAttr("s:trans-node", key)
-			sel.RemoveAttr("s:trans")
-		}
-
-		// Attributes
-		keys := map[string][]string{}
-		has := false
-		for i, attr := range sel.Get(0).Attr {
-
-			keys[attr.Key] = []string{}
-
-			// value="::attr"
-			if strings.HasPrefix(attr.Val, "::") {
-				key := fmt.Sprintf("%s_index_attr_%d_%d", namespace, index, i)
-				translations = append(translations, Translation{
-					Key:     fmt.Sprintf("%s_index_attr_%d_%d", namespace, index, i),
-					Message: attr.Val[2:],
-					Name:    attr.Key,
-					Type:    "attr",
-				})
-				keys[attr.Key] = append(keys[attr.Key], key)
-				has = true
-			}
-
-			// value="{{ 'key': '::value' }}"
-			matches := langAttrRe.FindAllStringSubmatch(attr.Val, -1)
-			if len(matches) > 0 {
-				for j, match := range matches {
-					key := fmt.Sprintf("%s_index_attr_%d_%d_%d", namespace, index, i, j)
-					translations = append(translations, Translation{
-						Key:     fmt.Sprintf("%s_index_attr_%d_%d_%d", namespace, index, i, j),
-						Message: match[1],
-						Name:    attr.Key,
-						Type:    "attr",
-					})
-					keys[attr.Key] = append(keys[attr.Key], key)
-					has = true
-				}
-			}
-		}
-
-		if has {
-			raw, err := jsoniter.Marshal(keys)
-			if err != nil {
-				fmt.Println(color.RedString(err.Error()))
-				break
-			}
-			sel.SetAttr("s:trans-attrs", string(raw))
-			sel.RemoveAttr("s:trans")
-		}
-
-	case html.TextNode:
-		if strings.HasPrefix(sel.Text(), "::") {
-			key := fmt.Sprintf("%s_index_%d", namespace, index)
-			translations = append(translations, Translation{
-				Key:     fmt.Sprintf("%s_index_%d", namespace, index),
-				Message: strings.TrimSpace(sel.Text()[2:]),
-				Type:    "text",
-			})
-			sel.SetAttr("s:trans-node", key)
-			sel.RemoveAttr("s:trans")
-		}
-	}
-
-	return translations
-
 }

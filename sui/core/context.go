@@ -3,7 +3,7 @@ package core
 // NewBuildContext create a new build context
 func NewBuildContext(global *GlobalBuildContext) *BuildContext {
 	return &BuildContext{
-		components:    map[string]string{},
+		components:    map[string]bool{},
 		sequence:      1,
 		scripts:       []ScriptNode{},
 		scriptUnique:  map[string]bool{},
@@ -14,6 +14,14 @@ func NewBuildContext(global *GlobalBuildContext) *BuildContext {
 		warnings:      []string{},
 		visited:       map[string]int{},
 		stack:         []string{},
+	}
+}
+
+// NewTranslateContext create a new translate context
+func NewTranslateContext() *TranslateContext {
+	return &TranslateContext{
+		sequence:     1,
+		translations: []Translation{},
 	}
 }
 
@@ -34,6 +42,26 @@ func (ctx *BuildContext) GetJitComponents() []string {
 		jitComponents = append(jitComponents, name)
 	}
 	return jitComponents
+}
+
+// GetComponents get the components
+func (ctx *BuildContext) GetComponents() []string {
+	if ctx.components == nil {
+		return []string{}
+	}
+	components := []string{}
+	for name := range ctx.components {
+		components = append(components, name)
+	}
+	return components
+}
+
+// GetTranslations get the translations
+func (ctx *BuildContext) GetTranslations() []Translation {
+	if ctx.translations == nil {
+		return []Translation{}
+	}
+	return ctx.translations
 }
 
 // GetJitComponents get the just in time components

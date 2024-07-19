@@ -85,6 +85,16 @@ func (page *Page) Compile(ctx *BuildContext, option *BuildOption) (string, []str
 		)
 	}
 
+	// Page Components
+	components := []string{}
+	if ctx != nil && ctx.components != nil && len(ctx.components) > 0 {
+		for route := range ctx.components {
+			components = append(components, route)
+		}
+	}
+	rawComponents, _ := jsoniter.MarshalToString(components)
+	body.AppendHtml("\n\n" + `<script name="imports" type="json">` + "\n" + rawComponents + "\n</script>\n\n")
+
 	page.ReplaceDocument(doc)
 	html, err := doc.Html()
 	if err != nil {
@@ -128,6 +138,15 @@ func (page *Page) CompileAsComponent(ctx *BuildContext, option *BuildOption) (st
 		return "", warnings, err
 	}
 
+	// Page Components
+	components := []string{}
+	if ctx != nil && ctx.components != nil && len(ctx.components) > 0 {
+		for route := range ctx.components {
+			components = append(components, route)
+		}
+	}
+	rawComponents, _ := jsoniter.MarshalToString(components)
+
 	if body.Children().Length() == 0 {
 		return "", warnings, fmt.Errorf("page %s as component should have one root element", page.Route)
 	}
@@ -139,6 +158,7 @@ func (page *Page) CompileAsComponent(ctx *BuildContext, option *BuildOption) (st
 	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="scripts" type="json">%s</script>`+"\n", rawScripts))
 	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="styles" type="json">%s</script>`+"\n", rawStyles))
 	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="option" type="json">%s</script>`+"\n", rawOption))
+	body.Children().First().AppendHtml(fmt.Sprintf(`<script name="imports" type="json">%s</script>`+"\n", rawComponents))
 
 	html, err := body.Html()
 	return html, warnings, err

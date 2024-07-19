@@ -31,9 +31,9 @@ func TestGetTemplates(t *testing.T) {
 	assert.Equal(t, "advanced", testTmpls[0].(*Template).ID)
 	assert.Equal(t, "The advanced template", testTmpls[0].(*Template).Name)
 	assert.Len(t, testTmpls[0].Themes(), 2)
-	assert.Len(t, testTmpls[0].Locales(), 3)
+	assert.Len(t, testTmpls[0].Locales(), 5)
 	assert.Len(t, testTmpls[0].(*Template).Template.Themes, 2)
-	assert.Len(t, testTmpls[0].(*Template).Template.Locales, 4)
+	assert.Len(t, testTmpls[0].(*Template).Template.Locales, 5)
 
 	// Basic Template
 	assert.Equal(t, "basic", testTmpls[1].(*Template).ID)
@@ -57,9 +57,9 @@ func TestGetTemplates(t *testing.T) {
 	assert.Equal(t, "default", webTmpls[0].(*Template).ID)
 	assert.Equal(t, "Yao Startup Webapp", webTmpls[0].(*Template).Name)
 	assert.Len(t, webTmpls[0].Themes(), 2)
-	assert.Len(t, webTmpls[0].Locales(), 3)
+	assert.Len(t, webTmpls[0].Locales(), 5)
 	assert.Len(t, webTmpls[0].(*Template).Template.Themes, 2)
-	assert.Len(t, webTmpls[0].(*Template).Template.Locales, 2)
+	assert.Len(t, webTmpls[0].(*Template).Template.Locales, 5)
 }
 
 func TestGetTemplate(t *testing.T) {

@@ -29,26 +29,36 @@ type Setting struct {
 
 // Page is the struct for the page
 type Page struct {
-	Route        string            `json:"route"`
-	Name         string            `json:"name,omitempty"`
-	CacheStore   string            `json:"-"`
-	TemplateID   string            `json:"-"`
-	SuiID        string            `json:"-"`
-	Config       *PageConfig       `json:"-"`
-	Path         string            `json:"-"`
-	Codes        SourceCodes       `json:"-"`
-	Document     []byte            `json:"-"`
-	GlobalData   []byte            `json:"-"`
-	Attrs        map[string]string `json:"-"`
-	Attributes   []html.Attribute  `json:"-"`
-	Translations []Translation     `json:"-"` // will be deprecated
-	namespace    string            `json:"-"`
-	parent       *Page             `json:"-"`
+	Route      string              `json:"route"`
+	Name       string              `json:"name,omitempty"`
+	CacheStore string              `json:"-"`
+	TemplateID string              `json:"-"`
+	SuiID      string              `json:"-"`
+	Config     *PageConfig         `json:"-"`
+	Path       string              `json:"-"`
+	Root       string              `json:"-"`
+	Codes      SourceCodes         `json:"-"`
+	Document   []byte              `json:"-"`
+	GlobalData []byte              `json:"-"`
+	Attrs      map[string]string   `json:"-"`
+	Attributes []html.Attribute    `json:"-"`
+	namespace  string              `json:"-"`
+	transCtx   *TranslateContext   `json:"-"`
+	parent     *Page               `json:"-"`
+	props      map[string]PageProp `json:"-"`
+}
+
+// PageProp is the struct for the page prop
+type PageProp struct {
+	Key   string `json:"key"`
+	Val   string `json:"val"`
+	Exp   bool   `json:"exp"`
+	Trans string `json:"trans"`
 }
 
 // BuildContext is the struct for the build context
 type BuildContext struct {
-	components    map[string]string
+	components    map[string]bool
 	jitComponents map[string]bool
 	sequence      int
 	doc           *goquery.Document
@@ -61,6 +71,12 @@ type BuildContext struct {
 	warnings      []string
 	visited       map[string]int // Keep a counter for each page
 	stack         []string       // Stack to manage build states
+}
+
+// TranslateContext is the struct for the translate context
+type TranslateContext struct {
+	sequence     int
+	translations []Translation
 }
 
 // ScriptNode is the struct for the script node
@@ -97,40 +113,13 @@ type Translation struct {
 
 // Locale is the struct for the locale
 type Locale struct {
-	Keys     map[string]string `json:"keys,omitempty"`
-	Messages map[string]string `json:"messages,omitempty"`
-	Date     LocaleDate        `json:"date,omitempty"`
-	Currency LocaleCurrency    `json:"currency,omitempty"`
-	Number   LocaleNumber      `json:"number,omitempty"`
-}
-
-// LocaleDate the struct for the locale date format
-type LocaleDate struct {
-	Short string `json:"short,omitempty"`
-	Long  string `json:"long,omitempty"`
-	Full  string `json:"full,omitempty"`
-	Month string `json:"month,omitempty"`
-	Week  string `json:"week,omitempty"`
-	Year  string `json:"year,omitempty"`
-	Day   string `json:"day,omitempty"`
-	Human string `json:"human,omitempty"`
-}
-
-// LocaleCurrency the struct for the locale currency
-type LocaleCurrency struct {
-	Format    string `json:"format,omitempty"`
-	Unit      string `json:"unit,omitempty"`
-	Separator string `json:"separator,omitempty"`
-	Delimiter string `json:"delimiter,omitempty"`
-	Precision int    `json:"precision,omitempty"`
-}
-
-// LocaleNumber the struct for the locale number
-type LocaleNumber struct {
-	Format    string `json:"format,omitempty"`
-	Separator string `json:"separator,omitempty"`
-	Delimiter string `json:"delimiter,omitempty"`
-	Precision int    `json:"precision,omitempty"`
+	Name           string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Formatter      string            `json:"formatter,omitempty" yaml:"formatter,omitempty"`
+	Keys           map[string]string `json:"keys,omitempty" yaml:"keys,omitempty"`
+	Messages       map[string]string `json:"messages,omitempty" yaml:"messages,omitempty"`
+	ScriptMessages map[string]string `json:"script_messages,omitempty" yaml:"script_messages,omitempty"`
+	Direction      string            `json:"direction,omitempty" yaml:"direction,omitempty"`
+	Timezone       string            `json:"timezone,omitempty" yaml:"timezone,omitempty"`
 }
 
 // PageTreeNode is the struct for the page tree node
@@ -187,6 +176,7 @@ type Template struct {
 	Document    []byte           `json:"-"`
 	GlobalData  []byte           `json:"-"`
 	Scripts     *TemplateScirpts `json:"scripts,omitempty"`
+	Translator  string           `json:"translator,omitempty"`
 }
 
 // TemplateScirpts is the struct for the template scripts
@@ -218,8 +208,9 @@ type Theme struct {
 
 // SelectOption is the struct for the select option
 type SelectOption struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	Default bool   `json:"default"`
 }
 
 // Asset is the struct for the asset
@@ -258,6 +249,7 @@ type BuildOption struct {
 	SSR             bool                   `json:"ssr"`
 	CDN             bool                   `json:"cdn"`
 	UpdateAll       bool                   `json:"update_all"`
+	PublicRoot      string                 `json:"public_root,omitempty"`
 	AssetRoot       string                 `json:"asset_root,omitempty"`
 	IgnoreAssetRoot bool                   `json:"ignore_asset_root,omitempty"`
 	IgnoreDocument  bool                   `json:"ignore_document,omitempty"`
@@ -269,6 +261,7 @@ type BuildOption struct {
 	ScriptMinify    bool                   `json:"scriptminify,omitempty"`
 	StyleMinify     bool                   `json:"styleminify,omitempty"`
 	ExecScripts     bool                   `json:"exec_scripts,omitempty"`
+	Locales         []string               `json:"locales,omitempty"`
 }
 
 // Request is the struct for the request
@@ -371,6 +364,7 @@ type PageSetting struct {
 	Guard       string   `json:"guard,omitempty"`
 	CacheStore  string   `json:"cache_store,omitempty"`
 	Cache       int      `json:"cache,omitempty"`
+	Root        string   `json:"root,omitempty"`
 	DataCache   int      `json:"data_cache,omitempty"`
 	Description string   `json:"description,omitempty"`
 	SEO         *PageSEO `json:"seo,omitempty"`

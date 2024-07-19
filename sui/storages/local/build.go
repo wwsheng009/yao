@@ -9,8 +9,10 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/yaoapp/gou/application"
+	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/sui/core"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 )
 
@@ -67,12 +69,16 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 
 	// loaed pages
 	tmpl.loaded = map[string]core.IPage{}
+	publicRoot, err := tmpl.local.DSL.PublicRoot(option.Data)
+	if err != nil {
+		log.Error("Get the public root error: %s. use %s", err.Error(), publicRoot)
+	}
+	option.PublicRoot = publicRoot
 	for _, page := range pages {
 		err := page.Load()
 		if err != nil {
 			return warnings, err
 		}
-
 		messages, err := page.Build(ctx, option)
 		if err != nil {
 			return warnings, err
@@ -128,6 +134,37 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 	return warnings, err
 }
 
+// Trans the template
+func (tmpl *Template) Trans(option *core.BuildOption) ([]string, error) {
+	var err error
+	warnings := []string{}
+
+	ctx := core.NewGlobalBuildContext()
+	pages, err := tmpl.Pages()
+	if err != nil {
+		return warnings, err
+	}
+
+	// loaed pages
+	for _, page := range pages {
+		err := page.Load()
+		if err != nil {
+			return warnings, err
+		}
+
+		messages, err := page.Trans(ctx, option)
+		if err != nil {
+			return warnings, err
+		}
+
+		if len(messages) > 0 {
+			warnings = append(warnings, messages...)
+		}
+	}
+
+	return warnings, nil
+}
+
 // SyncAssetFile sync the assets
 func (tmpl *Template) SyncAssetFile(file string, option *core.BuildOption) error {
 
@@ -181,21 +218,113 @@ func (tmpl *Template) SyncAssets(option *core.BuildOption) error {
 	return copyDirectory(sourceRoot, targetRoot)
 }
 
+func (tmpl *Template) getLocaleGlobal(name string) core.Locale {
+	global := core.Locale{
+		Keys:     map[string]string{},
+		Messages: map[string]string{},
+	}
+	file := filepath.Join(tmpl.Root, "__locales", name, "__global.yml")
+	exist, err := tmpl.local.fs.Exists(file)
+	if err != nil {
+		log.Error(`[SUI] Check the global locale file error: %s`, err.Error())
+		return global
+	}
+
+	if !exist {
+		return global
+	}
+
+	raw, err := tmpl.local.fs.ReadFile(file)
+	if err != nil {
+		log.Error(`[SUI] Read the global locale file error: %s`, err.Error())
+		return global
+	}
+
+	err = yaml.Unmarshal(raw, &global)
+	if err != nil {
+		log.Error(`[SUI] Parse the global locale file error: %s`, err.Error())
+		return global
+	}
+
+	return global
+}
+
+func (tmpl *Template) getLocale(name string, route string, pageOnly ...bool) core.Locale {
+	file := filepath.Join(tmpl.Root, "__locales", name, fmt.Sprintf("%s.yml", route))
+	global := tmpl.getLocaleGlobal(name)
+
+	// Check the locale file
+	exist, err := tmpl.local.fs.Exists(file)
+	if err != nil {
+		return global
+	}
+
+	if !exist {
+		return global
+	}
+
+	locale := core.Locale{
+		Name:           name,
+		Keys:           map[string]string{},
+		Messages:       map[string]string{},
+		ScriptMessages: map[string]string{},
+		Direction:      global.Direction,
+		Timezone:       global.Timezone,
+		Formatter:      global.Formatter,
+	}
+
+	raw, err := tmpl.local.fs.ReadFile(file)
+	if err != nil {
+		log.Error(`[SUI] Read the locale file error: %s`, err.Error())
+		return global
+	}
+
+	err = yaml.Unmarshal(raw, &locale)
+	if err != nil {
+		log.Error(`[SUI] Parse the locale file error: %s`, err.Error())
+		return global
+	}
+
+	if len(pageOnly) == 0 || !pageOnly[0] {
+
+		// Merge the global
+		for key, message := range global.Keys {
+			if _, ok := locale.Keys[key]; !ok {
+				locale.Keys[key] = message
+			}
+		}
+
+		for key, message := range global.Messages {
+			if _, ok := locale.Messages[key]; !ok {
+				locale.Messages[key] = message
+			}
+		}
+	}
+
+	return locale
+}
+
 // Build is the struct for the public
 func (page *Page) Build(globalCtx *core.GlobalBuildContext, option *core.BuildOption) ([]string, error) {
 
 	ctx := core.NewBuildContext(globalCtx)
-	if option.AssetRoot == "" {
-		root, err := page.tmpl.local.DSL.PublicRoot(option.Data)
+
+	var err error = nil
+	root := option.PublicRoot
+	if root == "" {
+		root, err = page.tmpl.local.DSL.PublicRoot(option.Data)
 		if err != nil {
-			log.Error("SyncAssets: Get the public root error: %s. use %s", err.Error(), page.tmpl.local.DSL.Public.Root)
-			root = page.tmpl.local.DSL.Public.Root
+			log.Error("Get the public root error: %s. use %s", err.Error(), page.tmpl.local.DSL.Public.Root)
 		}
+	}
+
+	if option.AssetRoot == "" {
 		option.AssetRoot = filepath.Join(root, "assets")
 		if runtime.GOOS == "windows" {
 			option.AssetRoot = strings.ReplaceAll(option.AssetRoot, "\\", "/")
 		}
 	}
+	page.Root = root
 
 	html, warnings, err := page.Page.Compile(ctx, option)
 	if err != nil {
@@ -209,7 +338,7 @@ func (page *Page) Build(globalCtx *core.GlobalBuildContext, option *core.BuildOp
 	}
 
 	// Save the locale files
-	err = page.writeLocaleFiles(option.Data)
+	err = page.writeLocaleFiles(ctx, option.Data)
 	if err != nil {
 		return warnings, err
 	}
@@ -276,7 +405,7 @@ func (page *Page) BuildAsComponent(globalCtx *core.GlobalBuildContext, option *c
 	}
 
 	// Save the locale files
-	err = page.writeLocaleFiles(option.Data)
+	err = page.writeLocaleFiles(ctx, option.Data)
 	if err != nil {
 		return warnings, err
 	}
@@ -313,6 +442,25 @@ func (page *Page) BuildAsComponent(globalCtx *core.GlobalBuildContext, option *c
 	return warnings, err
 }
 
+// Trans the page
+func (page *Page) Trans(globalCtx *core.GlobalBuildContext, option *core.BuildOption) ([]string, error) {
+	warnings := []string{}
+	ctx := core.NewBuildContext(globalCtx)
+
+	_, messages, err := page.Page.Compile(ctx, option)
+	if err != nil {
+		return warnings, err
+	}
+
+	if len(messages) > 0 {
+		warnings = append(warnings, messages...)
+	}
+
+	// Tranlate the locale files
+	err = page.writeLocaleSource(ctx, option)
+	return warnings, err
+}
+
 func (page *Page) publicFile(data map[string]interface{}) string {
 	root, err := page.tmpl.local.DSL.PublicRoot(data)
 	if err != nil {
@@ -332,130 +480,109 @@ func (page *Page) localeFiles(data map[string]interface{}) map[string]string {
 	roots := map[string]string{}
 	locales := page.tmpl.Locales()
 	for _, locale := range locales {
+		if locale.Default {
+			continue
+		}
 		target := filepath.Join("/", "public", root, ".locales", locale.Value, fmt.Sprintf("%s.yml", page.Route))
 		roots[locale.Value] = target
 	}
 	return roots
 }
 
-func (page *Page) localeGlobal(name string) core.Locale {
-	global := core.Locale{
-		Keys:     map[string]string{},
-		Messages: map[string]string{},
-	}
-	file := filepath.Join(page.tmpl.Root, "__locales", name, "__global.yml")
-	exist, err := page.tmpl.local.fs.Exists(file)
-	if err != nil {
-		log.Error(`[SUI] Check the global locale file error: %s`, err.Error())
-		return global
-	}
+func (page *Page) writeLocaleSource(ctx *core.BuildContext, option *core.BuildOption) error {
 
-	if !exist {
-		return global
-	}
+	locales := page.tmpl.Locales()
+	translations := ctx.GetTranslations()
 
-	raw, err := page.tmpl.local.fs.ReadFile(file)
-	if err != nil {
-		log.Error(`[SUI] Read the global locale file error: %s`, err.Error())
-		return global
-	}
-
-	err = yaml.Unmarshal(raw, &global)
-	if err != nil {
-		log.Error(`[SUI] Parse the global locale file error: %s`, err.Error())
-		return global
-	}
-
-	return global
-}
-
-func (page *Page) locale(name string) core.Locale {
-	file := filepath.Join(page.tmpl.Root, "__locales", name, fmt.Sprintf("%s.yml", page.Route))
-	global := page.localeGlobal(name)
-
-	// Check the locale file
-	exist, err := page.tmpl.local.fs.Exists(file)
-	if err != nil {
-		log.Error(`[SUI] Check the locale file error: %s`, err.Error())
-		return global
-	}
-
-	if !exist {
-		return global
-	}
-
-	locale := core.Locale{
-		Keys:     map[string]string{},
-		Messages: map[string]string{},
-		Date:     global.Date,
-		Currency: global.Currency,
-		Number:   global.Number,
-	}
-	raw, err := page.tmpl.local.fs.ReadFile(file)
-	if err != nil {
-		log.Error(`[SUI] Read the locale file error: %s`, err.Error())
-		return global
-	}
-
-	err = yaml.Unmarshal(raw, &locale)
-	if err != nil {
-		log.Error(`[SUI] Parse the locale file error: %s`, err.Error())
-		return global
-	}
-
-	// Merge the global
-	for key, message := range global.Keys {
-		if _, ok := locale.Keys[key]; !ok {
-			locale.Keys[key] = message
+	if option.Locales != nil && len(option.Locales) > 0 {
+		locales = []core.SelectOption{}
+		for _, lc := range option.Locales {
+			label := language.Make(lc).String()
+			locales = append(locales, core.SelectOption{Value: lc, Label: label})
 		}
 	}
 
-	for key, message := range global.Messages {
-		if _, ok := locale.Messages[key]; !ok {
-			locale.Messages[key] = message
+	prefix := core.TranslationKeyPrefix(page.Route)
+	for _, lc := range locales {
+		if lc.Default {
+			continue
+		}
+
+		locale := page.tmpl.getLocale(lc.Value, page.Route, true)
+		locale.MergeTranslations(translations, prefix)
+
+		// Call the hook
+		var keys any = locale.Keys
+		var messages any = locale.Messages
+		if page.tmpl.Translator != "" {
+			p, err := process.Of(page.tmpl.Translator, lc.Value, locale, page.Route, page.TemplateID)
+			if err != nil {
+				return err
+			}
+
+			res, err := p.Exec()
+			if err != nil {
+				return err
+			}
+
+			pres, ok := res.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("The translator %s should return a locale", page.tmpl.Translator)
+			}
+
+			keys = pres["keys"]
+			messages = pres["messages"]
+		}
+
+		if keys == nil && messages == nil {
+			return nil
+		}
+
+		// Save to file
+		file := filepath.Join(page.tmpl.Root, "__locales", lc.Value, fmt.Sprintf("%s.yml", page.Route))
+		content, err := yaml.Marshal(map[string]interface{}{
+			"keys":     keys,
+			"messages": messages,
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = page.tmpl.local.fs.WriteFile(file, content, 0644)
+		if err != nil {
+			return err
 		}
 	}
 
-	return locale
+	return nil
 }
 
-func (page *Page) writeLocaleFiles(data map[string]interface{}) error {
+func (page *Page) writeLocaleFiles(ctx *core.BuildContext, data map[string]interface{}) error {
 
-	//  No translations
-	if len(page.Page.Translations) == 0 {
+	if ctx == nil {
 		return nil
 	}
 
+	components := ctx.GetComponents()
+	translations := ctx.GetTranslations()
+	if len(translations) == 0 && len(components) == 0 {
+		return nil
+	}
+	prefix := core.TranslationKeyPrefix(page.Route)
 	files := page.localeFiles(data)
 	for name, file := range files {
+		locale := page.tmpl.getLocale(name, page.Route)
+		locale.MergeTranslations(translations, prefix)
 
-		// Init Data
-		keys := map[string]string{}
-		messages := map[string]string{}
-		for _, t := range page.Page.Translations {
-			keys[t.Key] = t.Message
-			messages[t.Message] = t.Message
+		// Merge the components locale
+		for _, route := range components {
+			compLocale := page.tmpl.getLocale(name, route, true)
+			compLocale.ParseKeys()
+			locale.Merge(compLocale)
 		}
 
-		locale := page.locale(name)
-		for key := range keys {
-			if _, has := locale.Keys[key]; has {
-				keys[key] = locale.Keys[key]
-			}
-
-			if msgValue, has := locale.Messages[keys[key]]; has {
-				keys[key] = msgValue
-			}
-		}
-
-		for message := range messages {
-			if _, has := locale.Messages[message]; has {
-				messages[message] = locale.Messages[message]
-			}
-		}
-
-		locale.Keys = keys
-		locale.Messages = messages
+		// Remove messages
+		locale.Messages = map[string]string{}
 		raw, err := yaml.Marshal(locale)
 		if err != nil {
 			log.Error(`[SUI] Marshal the locale file error: %s`, err.Error())

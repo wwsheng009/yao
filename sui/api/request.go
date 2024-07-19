@@ -114,6 +114,13 @@ func (r *Request) Render() (string, int, error) {
 	if !r.Request.DisableCache() && c.DataCacheTime > 0 && c.CacheStore != "" {
 		data, dataHitCache = c.GetData(dataCacheKey)
 		if dataHitCache {
+			if locale, ok := data["$locale"].(string); ok {
+				r.Request.Locale = locale
+			}
+
+			if theme, ok := data["$theme"].(string); ok {
+				r.Request.Theme = theme
+			}
 			log.Trace("[SUI] The page %s data is cached %v file=%s key=%s", r.Request.URL.Path, c.DataCacheTime, r.File, dataCacheKey)
 		}
 	}
@@ -159,6 +166,7 @@ func (r *Request) Render() (string, int, error) {
 		Debug:        r.Request.DebugMode(),
 		DisableCache: r.Request.DisableCache(),
 		Route:        r.Request.URL.Path,
+		Root:         c.Root,
 		Request:      true,
 	}
 
@@ -196,7 +204,8 @@ func (r *Request) MakeCache() (*core.Cache, int, error) {
 	configText := ""
 	cacheStore := ""
 	cacheTime := 0
-	dateCacheTime := 0
+	dataCacheTime := 0
+	root := ""
 
 	configSel := doc.Find("script[name=config]")
 	if configSel != nil && configSel.Length() > 0 {
@@ -222,7 +231,8 @@ func (r *Request) MakeCache() (*core.Cache, int, error) {
 		// Cache store
 		cacheStore = conf.CacheStore
 		cacheTime = conf.Cache
-		dateCacheTime = conf.DataCache
+		dataCacheTime = conf.DataCache
+		root = conf.Root
 	}
 
 	dataText := ""
@@ -253,8 +263,9 @@ func (r *Request) MakeCache() (*core.Cache, int, error) {
 		GuardRedirect: guardRedirect,
 		Config:        configText,
 		CacheStore:    cacheStore,
+		Root:          root,
 		CacheTime:     time.Duration(cacheTime) * time.Second,
-		DataCacheTime: time.Duration(dateCacheTime) * time.Second,
+		DataCacheTime: time.Duration(dataCacheTime) * time.Second,
 	}
 
 	go core.SetCache(r.File, cache)
