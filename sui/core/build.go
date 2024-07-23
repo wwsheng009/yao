@@ -54,6 +54,11 @@ func (page *Page) Build(ctx *BuildContext, option *BuildOption) (*goquery.Docume
 	}
 	doc.Find("body").SetAttr("s:ns", namespace)
 
+	// Bind the Page events
+	if !option.JitMode {
+		page.BindEvent(ctx, doc.Selection, "__page", true)
+	}
+
 	warnings, err := page.buildComponents(doc, ctx, option)
 	if err != nil {
 		return nil, ctx.warnings, err
@@ -105,6 +110,7 @@ func (page *Page) Build(ctx *BuildContext, option *BuildOption) (*goquery.Docume
 	// Append the scripts and styles
 	ctx.scripts = append(ctx.scripts, scripts...)
 	ctx.styles = append(ctx.styles, styles...)
+
 	return doc, ctx.warnings, err
 }
 
@@ -165,6 +171,9 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 	if err != nil {
 		return "", err
 	}
+
+	// Bind the component events
+	page.BindEvent(ctx, doc.Selection, component, false)
 
 	body := doc.Selection.Find("body")
 
@@ -262,6 +271,20 @@ func (page *Page) copyChildren(from *goquery.Selection, to *goquery.Selection) e
 		return nil
 	}
 	children.Find("slot").Remove()
+
+	// copy trans-node and trans-text properties
+	transNode, hasTransNode := from.Attr("s:trans-node")
+	transText, hasTransText := from.Attr("s:trans-text")
+	if hasTransNode || hasTransText {
+		parent := to.Find("children").Parent()
+		if hasTransNode {
+			parent.SetAttr("s:trans-node", transNode)
+		}
+		if hasTransText {
+			parent.SetAttr("s:trans-text", transText)
+		}
+	}
+
 	to.Find("children").ReplaceWithSelection(children)
 	return nil
 }
@@ -277,6 +300,22 @@ func (page *Page) parseProps(from *goquery.Selection, to *goquery.Selection, ext
 	}
 
 	for _, attr := range attrs {
+
+		// Copy Event
+		if strings.HasPrefix(attr.Key, "s:event") || strings.HasPrefix(attr.Key, "data:") || strings.HasPrefix(attr.Key, "json:") {
+			to.SetAttr(attr.Key, attr.Val)
+			continue
+		}
+
+		// Copy for and if statements
+		if strings.HasPrefix(attr.Key, "s:for") || attr.Key == "s:if" || attr.Key == "s:else" || attr.Key == "s:elif" {
+			to.SetAttr(attr.Key, attr.Val)
+			transKey := fmt.Sprintf("s:trans-attr-%s", attr.Key)
+			if trans, has := from.Attr(transKey); has {
+				to.SetAttr(transKey, trans)
+			}
+			continue
+		}
 
 		if strings.HasPrefix(attr.Key, "s:") || attr.Key == "is" || attr.Key == "parsed" {
 			continue
@@ -318,6 +357,7 @@ func (page *Page) replaceProps(sel *goquery.Selection) error {
 	}
 	data := Data{}
 	for key, prop := range page.props {
+		key = ToCamelCase(key)
 		data[key] = prop.Val
 	}
 	data["$props"] = data
@@ -543,6 +583,12 @@ func (page *Page) BuildScripts(ctx *BuildContext, option *BuildOption, component
 		component = ComponentName(page.Route, option.ScriptMinify)
 	}
 
+	arguments := "document.body"
+	if !ispage {
+		arguments = "arguments[0]"
+	}
+	injectScript := componentInitScript(arguments)
+
 	scripts := []ScriptNode{}
 	if page.Codes.JS.Code == "" && page.Codes.TS.Code == "" {
 		return scripts, nil
@@ -552,21 +598,23 @@ func (page *Page) BuildScripts(ctx *BuildContext, option *BuildOption, component
 	}
 
 	ctx.scriptUnique[component] = true
+
 	var err error = nil
 	var imports []string = nil
 	var source []byte = nil
 	if page.Codes.TS.Code != "" {
-		source, imports, err = page.CompileTS([]byte(page.Codes.TS.Code), option.ScriptMinify)
+		code := fmt.Sprintf("%s\n%s", injectScript, page.Codes.TS.Code)
+		source, imports, err = page.CompileTS([]byte(code), option.ScriptMinify)
 		if err != nil {
 			return nil, err
 		}
 
 	} else if page.Codes.JS.Code != "" {
-		source, imports, err = page.CompileJS([]byte(page.Codes.JS.Code), option.ScriptMinify)
+		code := fmt.Sprintf("%s\n%s", injectScript, page.Codes.JS.Code)
+		source, imports, err = page.CompileJS([]byte(code), option.ScriptMinify)
 		if err != nil {
 			return nil, err
 		}
-
 	}
 
 	// Add the script

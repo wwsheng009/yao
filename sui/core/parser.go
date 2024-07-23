@@ -67,14 +67,14 @@ var allowUsePropAttrs = map[string]bool{
 	"s:if":    true,
 	"s:elif":  true,
 	"s:for":   true,
-	"s:click": true,
+	"s:event": true,
 }
 
 var keepAttrs = map[string]bool{
 	"s:ns":    true,
 	"s:cn":    true,
 	"s:ready": true,
-	"s:click": true,
+	"s:event": true,
 }
 
 // NewTemplateParser create a new template parser
@@ -134,7 +134,7 @@ func (parser *TemplateParser) Render(html string) (string, error) {
 		}
 
 		head.AppendHtml(headInjectionScript(data))
-		parser.addScripts(head, parser.scripts)
+		parser.addScripts(head, parser.filterScripts("head", parser.scripts))
 		parser.addStyles(head, parser.styles)
 	}
 
@@ -146,6 +146,7 @@ func (parser *TemplateParser) Render(html string) (string, error) {
 			data, _ = jsoniter.MarshalToString(map[string]string{"error": err.Error()})
 		}
 		body.AppendHtml(bodyInjectionScript(data, parser.debug()))
+		parser.addScripts(body, parser.filterScripts("body", parser.scripts))
 	}
 
 	// Fmt
@@ -426,6 +427,17 @@ func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection) {
 
 	attrs := sel.Nodes[0].Attr
 	for _, attr := range attrs {
+
+		if strings.HasPrefix(attr.Key, "s:attr-") {
+			parser.sequence = parser.sequence + 1
+			val, _ := parser.data.Exec(attr.Val)
+			if v, ok := val.(bool); ok {
+				if v {
+					sel.SetAttr(strings.TrimPrefix(attr.Key, "s:attr-"), "")
+				}
+			}
+			continue
+		}
 
 		// Ignore the s: attributes
 		if strings.HasPrefix(attr.Key, "s:") {
