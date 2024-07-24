@@ -310,7 +310,8 @@ debug1: clean
 	mkdir -p .tmp/data/xgen
 	cp -r ./ui .tmp/data/ui
 	cp -r ./yao .tmp/data/yao
-	cp -r ../yao-builder .tmp/data/builder
+# builder has been removed 
+# cp -r ../yao-builder .tmp/data/builder
 	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
