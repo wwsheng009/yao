@@ -20,6 +20,8 @@ type Cache struct {
 	CacheStore    string
 	CacheTime     time.Duration
 	DataCacheTime time.Duration
+	Script        *Script
+	Imports       map[string]string
 }
 
 const (
@@ -71,6 +73,7 @@ func GetCache(file string) *Cache {
 // RemoveCache remove the cache
 func RemoveCache(file string) {
 	ch <- &cacheData{file, nil, removeCache}
+	chScript <- &scriptData{file, nil, removeScript}
 }
 
 // CleanCache clean the cache

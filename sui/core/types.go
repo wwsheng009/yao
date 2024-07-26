@@ -38,6 +38,7 @@ type Page struct {
 	Path       string              `json:"-"`
 	Root       string              `json:"-"`
 	Codes      SourceCodes         `json:"-"`
+	Script     *Script             `json:"-"` // The backend script  name.backend.ts / name.backend.js
 	Document   []byte              `json:"-"`
 	GlobalData []byte              `json:"-"`
 	Attrs      map[string]string   `json:"-"`
@@ -58,7 +59,7 @@ type PageProp struct {
 
 // BuildContext is the struct for the build context
 type BuildContext struct {
-	components    map[string]bool
+	components    map[string]string
 	jitComponents map[string]bool
 	sequence      int
 	doc           *goquery.Document
@@ -166,17 +167,19 @@ type LayoutItem struct {
 
 // Template is the struct for the template
 type Template struct {
-	Version     int              `json:"version"` // Yao Builder version
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Descrption  string           `json:"description"`
-	Screenshots []string         `json:"screenshots"`
-	Themes      []SelectOption   `json:"themes"`
-	Locales     []SelectOption   `json:"locales"`
-	Document    []byte           `json:"-"`
-	GlobalData  []byte           `json:"-"`
-	Scripts     *TemplateScirpts `json:"scripts,omitempty"`
-	Translator  string           `json:"translator,omitempty"`
+	Version      int              `json:"version"` // Yao Builder version
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Descrption   string           `json:"description"`
+	Screenshots  []string         `json:"screenshots"`
+	Themes       []SelectOption   `json:"themes"`
+	Locales      []SelectOption   `json:"locales"`
+	Document     []byte           `json:"-"`
+	GlobalData   []byte           `json:"-"`
+	Scripts      *TemplateScirpts `json:"scripts,omitempty"`
+	Translator   string           `json:"translator,omitempty"`
+	BuildScript  *Script          `json:"-"` // __build.backend.ts / __build.backend.js
+	GlobalScript *Script          `json:"-"` // __global.backend.ts / __global.backend.js
 }
 
 // TemplateScirpts is the struct for the template scripts
@@ -279,6 +282,7 @@ type Request struct {
 	Sid       string                 `json:"sid,omitempty"`
 	Theme     any                    `json:"theme,omitempty"`
 	Locale    any                    `json:"locale,omitempty"`
+	Script    *Script                `json:"-"`
 }
 
 // RequestSource is the struct for the request

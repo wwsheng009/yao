@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/process"
+	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/sui/core"
 	"golang.org/x/text/language"
@@ -53,6 +55,12 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 
 	if option.AssetRoot == "" {
 		option.AssetRoot = filepath.Join(root, "assets")
+	}
+
+	// Write the global script
+	err = tmpl.writeGlobalScript(option.Data)
+	if err != nil {
+		return warnings, err
 	}
 
 	// Sync the assets
@@ -193,6 +201,31 @@ func (tmpl *Template) SyncAssetFile(file string, option *core.BuildOption) error
 	return copy(sourceFile, targetFile)
 }
 
+func (tmpl *Template) writeGlobalScript(data map[string]interface{}) error {
+	file, source, err := tmpl.backendScriptSource("__global.backend")
+	if err != nil {
+		return err
+	}
+
+	if source == nil {
+		return nil
+	}
+
+	name := filepath.Base(file)
+	ext := filepath.Ext(name)
+	root, err := tmpl.local.DSL.PublicRoot(data)
+	if err != nil {
+		log.Error("WriteGlobalScript: Get the public root error: %s. use %s", err.Error(), tmpl.local.DSL.Public.Root)
+		root = tmpl.local.DSL.Public.Root
+	}
+	target := filepath.Join(application.App.Root(), "public", root, fmt.Sprintf("__global%s", ext))
+	dir := filepath.Dir(target)
+	if exist, _ := os.Stat(dir); exist == nil {
+		os.MkdirAll(dir, os.ModePerm)
+	}
+	return os.WriteFile(target, source, 0644)
+}
+
 // SyncAssets sync the assets
 func (tmpl *Template) SyncAssets(option *core.BuildOption) error {
 
@@ -308,7 +341,6 @@ func (tmpl *Template) getLocale(name string, route string, pageOnly ...bool) cor
 func (page *Page) Build(globalCtx *core.GlobalBuildContext, option *core.BuildOption) ([]string, error) {
 
 	ctx := core.NewBuildContext(globalCtx)
-
 	var err error = nil
 	root := option.PublicRoot
 	if root == "" {
@@ -335,6 +367,12 @@ func (page *Page) Build(globalCtx *core.GlobalBuildContext, option *core.BuildOp
 	err = page.writeHTML([]byte(html), option.Data)
 	if err != nil {
 		return warnings, fmt.Errorf("Write the page %s error: %s", page.Route, err.Error())
+	}
+
+	// Save the backend script file
+	err = page.writeBackendScript(option.Data)
+	if err != nil {
+		return warnings, fmt.Errorf("Write the backend script file error: %s", err.Error())
 	}
 
 	// Save the locale files
@@ -608,6 +646,71 @@ func (page *Page) writeLocaleFiles(ctx *core.BuildContext, data map[string]inter
 	return nil
 }
 
+func (page *Page) backendScriptSource() (string, []byte, error) {
+	backendFile := filepath.Join(page.Path, fmt.Sprintf("%s.backend.ts", page.Name))
+	if exist, _ := page.tmpl.local.fs.Exists(backendFile); !exist {
+		backendFile = filepath.Join(page.Path, fmt.Sprintf("%s.backend.js", page.Name))
+	}
+
+	if exist, _ := page.tmpl.local.fs.Exists(backendFile); !exist {
+		return "", nil, nil
+	}
+
+	source, err := page.tmpl.local.fs.ReadFile(backendFile)
+	if err != nil {
+		return "", nil, err
+	}
+
+	source = []byte(fmt.Sprintf("%s\n%s", source, core.BackendScript(page.Route)))
+	return backendFile, source, nil
+}
+
+func (page *Page) loadBackendScript() error {
+	file, source, err := page.backendScriptSource()
+	if err != nil {
+		return err
+	}
+
+	if source == nil {
+		return nil
+	}
+	approot := page.tmpl.local.AppRoot()
+	file = filepath.Join(approot, file)
+	script, err := v8.MakeScript(source, file, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	page.Script = &core.Script{Script: script}
+	return nil
+}
+
+func (page *Page) writeBackendScript(data map[string]interface{}) error {
+
+	file, source, err := page.backendScriptSource()
+	if err != nil {
+		return err
+	}
+
+	if source == nil {
+		return nil
+	}
+
+	ext := filepath.Ext(file)
+	scriptFile := fmt.Sprintf("%s%s", page.publicFile(data), ext)
+	scriptFileAbs := filepath.Join(application.App.Root(), scriptFile)
+	dir := filepath.Dir(scriptFileAbs)
+	if exist, _ := os.Stat(dir); exist == nil {
+		os.MkdirAll(dir, os.ModePerm)
+	}
+
+	err = os.WriteFile(scriptFileAbs, []byte(source), 0644)
+	if err != nil {
+		return err
+	}
+	core.RemoveCache(scriptFile)
+	return nil
+}
+
 // writeHTMLTo write the html to file
 func (page *Page) writeHTML(html []byte, data map[string]interface{}) error {
 	htmlFile := fmt.Sprintf("%s.sui", page.publicFile(data))
@@ -622,7 +725,6 @@ func (page *Page) writeHTML(html []byte, data map[string]interface{}) error {
 	}
 
 	core.RemoveCache(htmlFile)
-	log.Trace("The page %s is removed", htmlFile)
 	return nil
 }
 
@@ -639,6 +741,5 @@ func (page *Page) writeJitHTML(html []byte, data map[string]interface{}) error {
 		return err
 	}
 	core.RemoveCache(htmlFile)
-	log.Trace("The page %s is removed", htmlFile)
 	return nil
 }
