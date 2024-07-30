@@ -194,7 +194,7 @@ func (r *Request) execValue(value interface{}) (interface{}, error) {
 		}
 
 		if strings.HasPrefix(v, "$header.") {
-			key := strings.TrimLeft(v, "$header.")
+			key := strings.TrimPrefix(v, "$header.")
 			if r.Headers.Has(key) {
 				return r.Headers.Get(key), nil
 			}
@@ -202,7 +202,7 @@ func (r *Request) execValue(value interface{}) (interface{}, error) {
 		}
 
 		if strings.HasPrefix(v, "$param.") {
-			key := strings.TrimLeft(v, "$param.")
+			key := strings.TrimPrefix(v, "$param.")
 			if value, has := r.Params[key]; has {
 				return value, nil
 			}
@@ -210,7 +210,7 @@ func (r *Request) execValue(value interface{}) (interface{}, error) {
 		}
 
 		if strings.HasPrefix(v, "$payload.") {
-			key := strings.TrimLeft(v, "$payload.")
+			key := strings.TrimPrefix(v, "$payload.")
 			if value, has := r.Payload[key]; has {
 				return value, nil
 			}
