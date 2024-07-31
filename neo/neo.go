@@ -350,12 +350,16 @@ func (neo *DSL) write(msg *message.JSON, w io.Writer, ctx command.Context, messa
 	args := []interface{}{ctx, messages, msg, string(content)}
 	p, err := process.Of(neo.Write, args...)
 	if err != nil {
-		return err
+		log.Error("Neo custom write process error: %s", err.Error())
+		msg.Write(w)
+		return nil
 	}
 
 	res, err := p.WithSID(ctx.Sid).Exec()
 	if err != nil {
-		return err
+		log.Error("Neo custom write error: %s", err.Error())
+		msg.Write(w)
+		return nil
 	}
 
 	if res == nil {
@@ -562,7 +566,7 @@ func (neo *DSL) newAI() error {
 
 	if neo.Connector == "" || strings.HasPrefix(neo.Connector, "moapi") {
 		model := "gpt-3.5-turbo"
-		if neo.Connector != "" {
+		if strings.HasPrefix(neo.Connector, "moapi:") {
 			model = strings.TrimPrefix(neo.Connector, "moapi:")
 		}
 
