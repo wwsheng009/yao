@@ -317,6 +317,8 @@ debug1: clean
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r .tmp/yao-init .tmp/data/init
+	cp -r sui/libsui .tmp/data/
+	find .tmp/data -name ".DS_Store" -type f -delete
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
 	rm -rf .tmp/data
 #	rm -rf .tmp/xgen
