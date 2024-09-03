@@ -76,9 +76,46 @@ func (parser *TemplateParser) newJitComponentSel(sel *goquery.Selection, comp *J
 		"s:cn":    cn,
 		"s:ready": cn + "()",
 	}
+
+	doc, err := NewDocumentString(comp.html)
+	if err != nil {
+		return nil, fmt.Errorf("Component %s failed to load, please recompile the component. %s", comp.route, err.Error())
+	}
+
+	root := doc.Find("body").First()
+	compSel := doc.Find("body").Children().First()
 	data := Data{}
 	for _, attr := range sel.Nodes[0].Attr {
 		if attr.Key == "is" || attr.Key == "s:jit" {
+			continue
+		}
+
+		// ...variable
+		if strings.HasPrefix(attr.Key, "...") {
+			key := attr.Key[3:]
+			if parser.data != nil {
+				if values, ok := parser.data[key].(map[string]any); ok {
+					for name, value := range values {
+						switch v := value.(type) {
+						case string:
+							props[name] = v
+						case bool, int, float64:
+							props[name] = fmt.Sprintf("%v", v)
+
+						case nil:
+							props[name] = ""
+
+						default:
+							str, err := jsoniter.MarshalToString(value)
+							if err != nil {
+								continue
+							}
+							props[name] = str
+							props[fmt.Sprintf("json-attr-%s", name)] = "true"
+						}
+					}
+				}
+			}
 			continue
 		}
 
@@ -90,11 +127,6 @@ func (parser *TemplateParser) newJitComponentSel(sel *goquery.Selection, comp *J
 		data[attr.Key] = val
 	}
 
-	doc, err := NewDocumentString(comp.html)
-	if err != nil {
-		return nil, fmt.Errorf("Component %s failed to load, please recompile the component. %s", comp.route, err.Error())
-	}
-	compSel := doc.Find("body").Children().First()
 	data.replaceNodeUse(propTokens, compSel.Nodes[0])
 	for key, val := range props {
 		if strings.HasPrefix(key, "s:") || key == "parsed" {
@@ -130,6 +162,7 @@ func (parser *TemplateParser) newJitComponentSel(sel *goquery.Selection, comp *J
 	// Replace the children
 	children := sel.Contents()
 	compSel.Find("children").ReplaceWithSelection(children)
+	parser.BindEvent(root, ns, cn) // bind the events
 	return compSel, nil
 }
 

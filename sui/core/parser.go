@@ -68,25 +68,27 @@ var keepWords = map[string]bool{
 }
 
 var allowUsePropAttrs = map[string]bool{
-	"s:if":       true,
-	"s:elif":     true,
-	"s:for":      true,
-	"s:event":    true,
-	"s:event-cn": true,
-	"s:render":   true,
-	"s:public":   true,
-	"s:assets":   true,
+	"s:if":        true,
+	"s:elif":      true,
+	"s:for":       true,
+	"s:event":     true,
+	"s:event-jit": true,
+	"s:event-cn":  true,
+	"s:render":    true,
+	"s:public":    true,
+	"s:assets":    true,
 }
 
 var keepAttrs = map[string]bool{
-	"s:ns":       true,
-	"s:cn":       true,
-	"s:ready":    true,
-	"s:event":    true,
-	"s:event-cn": true,
-	"s:render":   true,
-	"s:public":   true,
-	"s:assets":   true,
+	"s:ns":        true,
+	"s:cn":        true,
+	"s:ready":     true,
+	"s:event":     true,
+	"s:event-jit": true,
+	"s:event-cn":  true,
+	"s:render":    true,
+	"s:public":    true,
+	"s:assets":    true,
 }
 
 // NewTemplateParser create a new template parser
@@ -569,6 +571,35 @@ func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection, force ..
 		// Ignore the s: attributes
 		if strings.HasPrefix(attr.Key, "s:") {
 			continue
+		}
+
+		// ...variable
+		if strings.HasPrefix(attr.Key, "...") {
+			key := attr.Key[3:]
+			if parser.data != nil {
+				if values, ok := parser.data[key].(map[string]any); ok {
+					for name, value := range values {
+						switch v := value.(type) {
+						case string:
+							sel.SetAttr(name, v)
+						case bool, int, float64:
+							sel.SetAttr(name, fmt.Sprintf("%v", v))
+
+						case nil:
+							sel.SetAttr(name, "")
+
+						default:
+							str, err := jsoniter.MarshalToString(value)
+							if err != nil {
+								continue
+							}
+							sel.SetAttr(name, str)
+							sel.SetAttr(fmt.Sprintf("json-attr-%s", name), "true")
+						}
+					}
+				}
+				continue
+			}
 		}
 
 		parser.sequence = parser.sequence + 1
