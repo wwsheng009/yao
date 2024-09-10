@@ -108,7 +108,8 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 	for _, route := range jitComponents {
 		page, has := tmpl.loaded[route]
 		if !has {
-			err = multierror.Append(fmt.Errorf("The page %s is not loaded", route))
+			// err = multierror.Append(fmt.Errorf("The page %s is not loaded", route))
+			log.Warn("The page %s is not loaded", route)
 			continue
 		}
 
@@ -119,10 +120,6 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 		if len(messages) > 0 {
 			warnings = append(warnings, messages...)
 		}
-	}
-
-	if err != nil {
-		return warnings, err
 	}
 
 	// Add sui lib to the global
