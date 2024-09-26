@@ -53,10 +53,18 @@ func NewRequestContext(c *gin.Context) (*Request, int, error) {
 
 	path := strings.TrimSuffix(c.Request.URL.Path, ".sui")
 
+	sid := ""
+	if v, has := c.Get("__sid"); has {
+		if s, ok := v.(string); ok {
+			sid = s
+		}
+	}
+
 	return &Request{
 		File:    file,
 		context: c,
 		Request: &core.Request{
+			Sid:     sid,
 			Method:  c.Request.Method,
 			Query:   c.Request.URL.Query(),
 			Body:    body,
@@ -311,6 +319,9 @@ func (r *Request) Guard(c *core.Cache) (int, error) {
 			if c.GuardRedirect != "" {
 				redirect := c.GuardRedirect
 				data := core.Data{}
+				// Here may have a security issue, should be refector, in the future.
+				// Copy the script pointer to the request For page backend script execution
+				r.Request.Script = c.Script
 				if c.Data != "" {
 					data, err = r.Request.ExecString(c.Data)
 					if err != nil {
