@@ -108,27 +108,40 @@ jobs:
           mv dist/release/yao-$VERSION-dev-darwin-arm64 dist/release/yao-$VERSION-unstable-darwin-arm64
           mv dist/release/yao-$VERSION-dev-darwin-amd64 dist/release/yao-$VERSION-unstable-darwin-amd64
 
-      # - name: Push arm64 To Silicon Valley
-      #   uses: TencentCloud/cos-action@v1
-      #   with:
-      #     secret_id: ${{ secrets.COS_ID }}
-      #     secret_key: ${{ secrets.COS_KEY }}
-      #     cos_bucket: release-sv-1252011659
-      #     cos_region: na-siliconvalley
-      #     local_path: dist/release/yao-${{ env.VERSION }}-unstable-darwin-arm64
-      #     remote_path: /archives/yao-${{ env.VERSION }}-unstable-darwin-arm64
-      #     clean: false
+      - name: Install Certificates
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
 
-      # - name: Push amd64 To Silicon Valley
-      #   uses: TencentCloud/cos-action@v1
-      #   with:
-      #     secret_id: ${{ secrets.COS_ID }}
-      #     secret_key: ${{ secrets.COS_KEY }}
-      #     cos_bucket: release-sv-1252011659
-      #     cos_region: na-siliconvalley
-      #     local_path: dist/release/yao-${{ env.VERSION }}-unstable-darwin-amd64
-      #     remote_path: /archives/yao-${{ env.VERSION }}-unstable-darwin-amd64
-      #     clean: false
+        run: |
+          mkdir -p certs
+          echo "${{ secrets.APPLE_DEVELOPERIDG2CA }}" | base64 --decode > certs/DeveloperIDG2CA.cer
+          echo "${{ secrets.APPLE_DISTRIBUTION }}" | base64 --decode > certs/distribution.cer
+          echo "${{ secrets.APPLE_PRIVATE_KEY }}" | base64 --decode > certs/private_key.p12
+          security verify-cert -c certs/DeveloperIDG2CA.cer
+          security verify-cert -c certs/distribution.cer
+
+      - name: Import Certificates
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import ./certs/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH -T /usr/bin/codesign
+          security import ./certs/distribution.cer -k $KEYCHAIN_PATH -T /usr/bin/codesign
+
+          # import private key to keychain
+          security import ./certs/private_key.p12 -k $KEYCHAIN_PATH -P "${{ secrets.APPLE_PRIVATE_KEY_PASSWORD }}" -T /usr/bin/codesign
+
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      - name: Sign Artifacts
+        run: |
+          codesign --deep --force --verify --verbose --sign "${{ secrets.APPLE_SIGN }}" dist/release/yao-$VERSION-unstable-darwin-arm64
+          codesign --deep --force --verify --verbose --sign "${{ secrets.APPLE_SIGN }}" dist/release/yao-$VERSION-unstable-darwin-amd64
 
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
