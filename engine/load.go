@@ -475,7 +475,7 @@ func Reload(cfg config.Config, options LoadOption) (err error) {
 		printErr(cfg.Mode, "Moapi", err)
 	}
 	//custom startup
-	err = CustomStartUp(cfg)
+	err = CustomStartUp(cfg, true)
 	if err != nil {
 		printErr(cfg.Mode, "Starup", err)
 	}
@@ -590,7 +590,7 @@ func printErr(mode, widget string, err error) {
 }
 
 // 自定义启动
-func CustomStartUp(cfg config.Config) error {
+func CustomStartUp(cfg config.Config, reload bool) error {
 
 	if app.Setting != nil && app.Setting.Startup != "" {
 
@@ -616,11 +616,11 @@ func CustomStartUp(cfg config.Config) error {
 			}
 			defer ctx.Close()
 
-			_, err = ctx.Call(method)
+			_, err = ctx.Call(method, cfg, reload)
 			return err
 		}
 
-		p, err := process.Of(app.Setting.Startup, cfg)
+		p, err := process.Of(app.Setting.Startup, cfg, reload)
 		if err != nil {
 			return err
 		}
