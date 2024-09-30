@@ -88,6 +88,7 @@ var allowUsePropAttrs = map[string]bool{
 var keepAttrs = map[string]bool{
 	"s:ns":        true,
 	"s:cn":        true,
+	"s:hash":      true,
 	"s:ready":     true,
 	"s:event":     true,
 	"s:event-jit": true,
@@ -913,6 +914,7 @@ func (parser *TemplateParser) show(sel *goquery.Selection) {
 	// sel.SetAttr("style", style)
 }
 
+// Tidy the template by removing the parsed attributes
 func (parser *TemplateParser) Tidy(s *goquery.Selection) {
 
 	s.Contents().Each(func(i int, child *goquery.Selection) {

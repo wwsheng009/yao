@@ -284,6 +284,14 @@ func (page *Page) parseDynamics(ctx *BuildContext, sel *goquery.Selection) {
 			return
 		}
 		ctx.addJitComponent(route)
+
+		// This is a temporary solution, we will refactor this later
+		// Some components are not used in the page, but they are used in the script
+		// So we need to add them to the components
+		// But this solution is not perfect, it will cause import the unnecessary components, just ignore it.
+		// Add to the imports
+		name := fmt.Sprintf("comp_%s", strings.ReplaceAll(route, "/", "_"))
+		ctx.components[name] = route
 	})
 }
 
@@ -723,7 +731,7 @@ func (page *Page) BuildScripts(ctx *BuildContext, option *BuildOption, component
 	}
 
 	arguments := "document.body"
-	if !ispage {
+	if !ispage || option.JitMode {
 		arguments = "component"
 	}
 
