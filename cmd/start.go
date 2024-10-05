@@ -134,7 +134,7 @@ var startCmd = &cobra.Command{
 					return
 				}
 				//custom startup
-				err = engine.CustomStartUp(config.Conf, false)
+				err = engine.CustomStartUp(config.Conf, "development")
 				if err != nil {
 					log.Error("Custom Startup: %s", err.Error())
 				}
@@ -154,7 +154,7 @@ var startCmd = &cobra.Command{
 			printStudio(false, host)
 		} else {
 			//custom startup
-			err = engine.CustomStartUp(config.Conf, false)
+			err = engine.CustomStartUp(config.Conf, "production")
 			if err != nil {
 				log.Error("Custom Startup: %s", err.Error())
 			}
