@@ -104,12 +104,39 @@ func Load() Config {
 
 	return cfg
 }
+func setLogLevel() {
+	level := int(log.InfoLevel)
+	switch strings.ToLower(Conf.LogLevel) {
+	case "trace":
+		level = int(log.TraceLevel)
+	case "debug":
+		level = int(log.DebugLevel)
+	case "info":
+		level = int(log.InfoLevel)
+	case "warn":
+		level = int(log.WarnLevel)
+	case "error":
+		level = int(log.ErrorLevel)
+	case "panic":
+		level = int(log.PanicLevel)
+	case "fatal":
+		level = int(log.FatalLevel)
+	default:
+		if Conf.Mode == "prodcution" {
+			level = int(log.InfoLevel)
+		} else if Conf.Mode == "development" {
+			level = int(log.TraceLevel)
+		}
+	}
+	log.SetLevel(log.Level(level))
+}
 
 // Production 设定为生产环境
 func Production() {
 	os.Setenv("YAO_MODE", "production")
 	Conf.Mode = "production"
-	log.SetLevel(log.InfoLevel)
+	// log.SetLevel(log.InfoLevel)
+	setLogLevel()
 	log.SetFormatter(log.TEXT)
 	if Conf.LogMode == "JSON" {
 		log.SetFormatter(log.JSON)
@@ -122,7 +149,8 @@ func Production() {
 func Development() {
 	os.Setenv("YAO_MODE", "development")
 	Conf.Mode = "development"
-	log.SetLevel(log.TraceLevel)
+	// log.SetLevel(log.TraceLevel)
+	setLogLevel()
 	log.SetFormatter(log.TEXT)
 	if Conf.LogMode == "JSON" {
 		log.SetFormatter(log.JSON)
