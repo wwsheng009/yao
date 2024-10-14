@@ -123,7 +123,7 @@ func loadDSL(cfg config.Config) error {
 }
 
 func loadScripts() error {
-	exts := []string{"*.js"}
+	exts := []string{"*.js", "*.ts"}
 	return application.App.Walk("studio", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
