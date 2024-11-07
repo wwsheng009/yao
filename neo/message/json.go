@@ -1,9 +1,10 @@
 package message
 
 import (
-	"io"
 	"strings"
 
+	"github.com/fatih/color"
+	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/helper"
 	"github.com/yaoapp/kun/log"
@@ -44,6 +45,10 @@ func NewOpenAI(data []byte) *JSON {
 		break
 
 	case strings.Contains(text, `[DONE]`):
+		msg.Done = true
+		break
+
+	case strings.Contains(text, `"finish_reason":"stop"`):
 		msg.Done = true
 		break
 
@@ -189,7 +194,19 @@ func (json *JSON) IsDone() bool {
 }
 
 // Write the message
-func (json *JSON) Write(w io.Writer) bool {
+func (json *JSON) Write(w gin.ResponseWriter) bool {
+
+	defer func() {
+		if r := recover(); r != nil {
+			message := "Write Response Exception: (if clinet close the connection, it's normal) \n  %s\n\n"
+			color.Red(message, r)
+		}
+	}()
+
+	if json.Error != "" {
+		json.writeError(w, json.Error)
+		return false
+	}
 
 	data, err := jsoniter.Marshal(json.Message)
 	if err != nil {
@@ -202,14 +219,25 @@ func (json *JSON) Write(w io.Writer) bool {
 
 	_, err = w.Write(data)
 	if err != nil {
-		log.Error("%s", err.Error())
+		color.Red("Write JSON Message Error: %s", err.Error())
 		return false
 	}
-
+	w.Flush()
 	return true
 }
 
 // Append the message
 func (json *JSON) Append(content []byte) []byte {
 	return append(content, []byte(json.Message.Text)...)
+}
+
+func (json *JSON) writeError(w gin.ResponseWriter, message string) {
+	data := []byte(`{"text":"` + strings.Trim(message, "\"") + `"}`)
+	data = append([]byte("data: "), data...)
+	data = append(data, []byte("\n\n")...)
+	_, err := w.Write(data)
+	if err != nil {
+		color.Red("Write JSON Message Error: %s", message)
+	}
+	w.Flush()
 }
