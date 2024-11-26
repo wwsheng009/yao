@@ -12,7 +12,7 @@
 #  docker run --rm -it -v ./test:/data yaoapp/yao-build:0.10.4 /bin/bash
 #
 # ===========================================
-FROM ubuntu:23.04
+FROM ubuntu:latest
 WORKDIR /app
 ADD build.sh /app/build.sh
 ENV PATH=$PATH:/usr/local/go/bin:/root/go/bin
@@ -28,6 +28,7 @@ RUN apt-get update && \
     apt-get install -y curl  && \
     apt-get install -y git && \
     apt-get install -y unzip
+
 
 RUN wget https://golang.org/dl/go1.21.1.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz && \
