@@ -12,10 +12,16 @@
 #  docker run --rm -it -v ./test:/data yaoapp/yao-build:0.10.4 /bin/bash
 #
 # ===========================================
-FROM ubuntu:latest
+FROM ubuntu:24.04
 WORKDIR /app
 ADD build.sh /app/build.sh
 ENV PATH=$PATH:/usr/local/go/bin:/root/go/bin
+
+# RUN cp /etc/apt/sources.list /etc/apt/sources.list.backup && \
+#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse" | tee -a /etc/apt/sources.list
 
 RUN apt-get update && \
     apt-get install -y libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi libncurses5-dev build-essential bison flex libssl-dev bc && \
