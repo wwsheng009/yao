@@ -19,7 +19,6 @@ import (
 	"github.com/yaoapp/yao/neo/conversation"
 	"github.com/yaoapp/yao/neo/message"
 	"github.com/yaoapp/yao/openai"
-	"github.com/yaoapp/yao/utils"
 )
 
 // API is a method on the Neo type
