@@ -44,6 +44,8 @@ jobs:
       - name: Build Production
         timeout-minutes: 60
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/production
           platforms: linux/amd64
@@ -56,6 +58,8 @@ jobs:
       - name: Build Production Arm64
         timeout-minutes: 60
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/production
           platforms: linux/arm64

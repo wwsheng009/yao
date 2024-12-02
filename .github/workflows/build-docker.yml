@@ -41,6 +41,8 @@ jobs:
 
       - name: Build Development
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/development
           platforms: linux/amd64
@@ -52,6 +54,8 @@ jobs:
 
       - name: Build Development Arm64
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/development
           platforms: linux/arm64
@@ -63,6 +67,8 @@ jobs:
 
       - name: Build Production
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/production
           platforms: linux/amd64
@@ -74,6 +80,8 @@ jobs:
 
       - name: Build Production Arm64
         uses: docker/build-push-action@v6
+        env:
+          DOCKER_CONTENT_TRUST: 1
         with:
           context: ./docker/production
           platforms: linux/arm64

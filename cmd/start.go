@@ -27,7 +27,6 @@ import (
 	"github.com/yaoapp/yao/service"
 	"github.com/yaoapp/yao/setup"
 	"github.com/yaoapp/yao/share"
-	"github.com/yaoapp/yao/studio"
 	itask "github.com/yaoapp/yao/task"
 )
 
@@ -50,17 +49,27 @@ var startCmd = &cobra.Command{
 		Boot()
 
 		// Setup
-		if setup.Check() {
-			go setup.Start()
-			select {
-			case <-setup.Done:
-				setup.Stop()
-				Boot()
-				break
-			case <-setup.Canceled:
+		isnew := false
+		if setup.IsEmptyDir(config.Conf.Root) {
+
+			// In Yao App
+			if setup.InYaoApp(config.Conf.Root) {
+				fmt.Println(color.RedString(L("Please run the command in the root directory of project")))
 				os.Exit(1)
-				break
 			}
+
+			// Install the init app
+			if err := install(); err != nil {
+				fmt.Println(color.RedString(L("Install: %s"), err.Error()))
+				os.Exit(1)
+			}
+			isnew = true
+		}
+
+		// Is Yao App
+		if !setup.IsYaoApp(config.Conf.Root) {
+			fmt.Println(color.RedString(L("yao.app not found")))
+			os.Exit(1)
 		}
 
 		// force debug
@@ -104,60 +113,91 @@ var startCmd = &cobra.Command{
 			fmt.Println(color.WhiteString(L("Root")), color.GreenString(" %s", root))
 		}
 
-		root, _ := adminRoot()
-		urls := []string{fmt.Sprintf("http://%s:%s", host, port)}
-		if host == "0.0.0.0" || host == "" || host == "[::]" {
-			urls, _ = setup.URLs(config.Conf)
-		}
-
 		fmt.Println(color.WhiteString(L("Runtime")), color.GreenString(" %s", runtimeMode))
 		fmt.Println(color.WhiteString(L("Data")), color.GreenString(" %s", dataRoot))
 		fmt.Println(color.WhiteString(L("Listening")), color.GreenString(" %s:%d", config.Conf.Host, config.Conf.Port))
-		for _, url := range urls {
-			fmt.Println(color.CyanString("\n%s", url))
-			fmt.Println(color.WhiteString("--------------------------"))
-			fmt.Println(color.WhiteString(L("Frontend")), color.GreenString(" %s", url))
-			fmt.Println(color.WhiteString(L("Dashboard")), color.GreenString(" %s/%s/login/admin", url, strings.Trim(root, "/")))
-			fmt.Println(color.WhiteString(L("API")), color.GreenString(" %s/api", url))
-		}
 
 		// print the messages under the development mode
 		if mode == "development" {
 
 			// Start Studio Server
-			go func() {
+			// Yao Studio will be deprecated in the future
+			// go func() {
 
-				err = studio.Load(config.Conf)
-				if err != nil {
-					// fmt.Println(color.RedString(L("Studio Load: %s"), err.Error()))
-					log.Error("Studio Load: %s", err.Error())
-					return
-				}
-				//custom startup
-				err = engine.CustomStartUp(config.Conf, "development")
-				if err != nil {
-					log.Error("Custom Startup: %s", err.Error())
-				}
-				err := studio.Start(config.Conf)
-				if err != nil {
-					log.Error("Studio Start: %s", err.Error())
-					return
-				}
-			}()
-			defer studio.Stop()
+			// 	err = studio.Load(config.Conf)
+			// 	if err != nil {
+			// 		// fmt.Println(color.RedString(L("Studio Load: %s"), err.Error()))
+			// 		log.Error("Studio Load: %s", err.Error())
+			// 		return
+			// 	}
+
+			// 	err := studio.Start(config.Conf)
+			// 	if err != nil {
+			// 		log.Error("Studio Start: %s", err.Error())
+			// 		return
+			// 	}
+			// }()
+			// defer studio.Stop()
 
 			printApis(false)
 			printTasks(false)
 			printSchedules(false)
 			printConnectors(false)
 			printStores(false)
-			printStudio(false, host)
-		} else {
-			//custom startup
-			err = engine.CustomStartUp(config.Conf, "production")
-			if err != nil {
-				log.Error("Custom Startup: %s", err.Error())
+			// printStudio(false, host)
+
+		}
+		// custom startup
+		err = engine.CustomStartUp(config.Conf, mode)
+		if err != nil {
+			log.Error("Custom Startup: %s", err.Error())
+		}
+		
+		root, _ := adminRoot()
+		endpoints := []setup.Endpoint{{URL: fmt.Sprintf("http://%s%s", "127.0.0.1", port), Interface: "localhost"}}
+		switch host {
+		case "0.0.0.0":
+			// All interfaces
+			if values, err := setup.Endpoints(config.Conf); err == nil {
+				endpoints = append(endpoints, values...)
 			}
+			break
+		case "127.0.0.1":
+			// Localhost only
+			break
+		default:
+			// Filter by the host IP
+			matched := false
+			endpoints = []setup.Endpoint{}
+			if values, err := setup.Endpoints(config.Conf); err == nil {
+				for _, value := range values {
+					if strings.HasPrefix(value.URL, fmt.Sprintf("http://%s:", host)) {
+						endpoints = append(endpoints, value)
+						matched = true
+					}
+				}
+			}
+			if !matched {
+				fmt.Println(color.RedString(L("Host %s not found"), host))
+				os.Exit(1)
+			}
+		}
+
+		fmt.Println(color.WhiteString("\n---------------------------------"))
+		fmt.Println(color.WhiteString(L("Access Points")))
+		fmt.Println(color.WhiteString("---------------------------------"))
+		for _, endpoint := range endpoints {
+			fmt.Println(color.CyanString("\n%s", endpoint.Interface))
+			fmt.Println(color.WhiteString("--------------------------"))
+			fmt.Println(color.WhiteString(L("Website")), color.GreenString(" %s", endpoint.URL))
+			fmt.Println(color.WhiteString(L("Admin")), color.GreenString(" %s/%s/login/admin", endpoint.URL, strings.Trim(root, "/")))
+			fmt.Println(color.WhiteString(L("API")), color.GreenString(" %s/api", endpoint.URL))
+		}
+		fmt.Println("")
+
+		// Print welcome message for the new application
+		if isnew {
+			printWelcome()
 		}
 
 		// Start Tasks
@@ -172,7 +212,7 @@ var startCmd = &cobra.Command{
 		srv, err := service.Start(config.Conf)
 		defer func() {
 			service.Stop(srv)
-			fmt.Println(color.GreenString(L("✨EXITED✨")))
+			fmt.Println(color.GreenString(L("✨Exited successfully!")))
 		}()
 
 		if err != nil {
@@ -204,11 +244,12 @@ var startCmd = &cobra.Command{
 
 				switch v {
 				case http.READY:
-					fmt.Println(color.GreenString(L("✨LISTENING✨")))
+					fmt.Println(color.GreenString(L("✨Server is up and running...")))
+					fmt.Println(color.GreenString("✨Ctrl+C to stop"))
 					break
 
 				case http.CLOSED:
-					fmt.Println(color.GreenString(L("✨EXITED✨")))
+					fmt.Println(color.GreenString(L("✨Exited successfully!")))
 					watchDone <- 1
 					return
 
@@ -229,6 +270,30 @@ var startCmd = &cobra.Command{
 	},
 }
 
+func install() error {
+	// Copy the app source files from the binary
+	err := setup.Install(config.Conf.Root)
+	if err != nil {
+		return err
+	}
+
+	// Reload the application engine
+	Boot()
+
+	// load the application engine
+	err = engine.Load(config.Conf, engine.LoadOption{Action: "start"})
+	if err != nil {
+		return err
+	}
+
+	err = setup.Initialize(config.Conf.Root, config.Conf)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func adminRoot() (string, int) {
 	adminRoot := "/yao/"
 	if share.App.AdminRoot != "" {
@@ -238,6 +303,16 @@ func adminRoot() (string, int) {
 	}
 	adminRootLen := len(adminRoot)
 	return adminRoot, adminRootLen
+}
+
+func printWelcome() {
+	fmt.Println(color.CyanString("\n---------------------------------"))
+	fmt.Println(color.CyanString(L("🎉 Welcome to Yao 🎉 ")))
+	fmt.Println(color.CyanString("---------------------------------"))
+	fmt.Println(color.WhiteString("📚 Documentation:     "), color.CyanString("https://yaoapps.com/docs"))
+	fmt.Println(color.WhiteString("🏡 Join Yao Community:"), color.CyanString("https://yaoapps.com/community"))
+	fmt.Println(color.WhiteString("💬 Build App via Chat:"), color.CyanString("https://moapi.ai"))
+	fmt.Println("")
 }
 
 func printConnectors(silent bool) {
@@ -257,8 +332,8 @@ func printConnectors(silent bool) {
 	fmt.Println(color.WhiteString(L("Connectors List (%d)"), len(connector.Connectors)))
 	fmt.Println(color.WhiteString("---------------------------------"))
 	for name := range connector.Connectors {
-		fmt.Printf(color.CyanString("[Connector]"))
-		fmt.Printf(color.WhiteString(" %s\t loaded\n", name))
+		fmt.Print(color.CyanString("[Connector]"))
+		fmt.Print(color.WhiteString(" %s\t loaded\n", name))
 	}
 }
 
@@ -278,8 +353,8 @@ func printStores(silent bool) {
 	fmt.Println(color.WhiteString(L("Stores List (%d)"), len(connector.Connectors)))
 	fmt.Println(color.WhiteString("---------------------------------"))
 	for name := range store.Pools {
-		fmt.Printf(color.CyanString("[Store]"))
-		fmt.Printf(color.WhiteString(" %s\t loaded\n", name))
+		fmt.Print(color.CyanString("[Store]"))
+		fmt.Print(color.WhiteString(" %s\t loaded\n", name))
 	}
 }
 
@@ -296,13 +371,13 @@ func printStudio(silent bool, host string) {
 	fmt.Println(color.WhiteString("\n---------------------------------"))
 	fmt.Println(color.WhiteString(L("Yao Studio Server")))
 	fmt.Println(color.WhiteString("---------------------------------"))
-	fmt.Printf(color.CyanString("HOST  : "))
-	fmt.Printf(color.WhiteString(" %s\n", config.Conf.Host))
-	fmt.Printf(color.CyanString("PORT  : "))
-	fmt.Printf(color.WhiteString(" %d\n", config.Conf.Studio.Port))
+	fmt.Print(color.CyanString("HOST  : "))
+	fmt.Print(color.WhiteString(" %s\n", config.Conf.Host))
+	fmt.Print(color.CyanString("PORT  : "))
+	fmt.Print(color.WhiteString(" %d\n", config.Conf.Studio.Port))
 	if config.Conf.Studio.Auto {
-		fmt.Printf(color.CyanString("SECRET: "))
-		fmt.Printf(color.WhiteString(" %s\n", config.Conf.Studio.Secret))
+		fmt.Print(color.CyanString("SECRET: "))
+		fmt.Print(color.WhiteString(" %s\n", config.Conf.Studio.Secret))
 	}
 }
 
@@ -331,8 +406,8 @@ func printSchedules(silent bool) {
 		if sch.TaskName != "" {
 			process = fmt.Sprintf("Task: %s", sch.TaskName)
 		}
-		fmt.Printf(color.CyanString("[Schedule] %s %s", sch.Schedule, name))
-		fmt.Printf(color.WhiteString("\t%s\t%s\n", sch.Name, process))
+		fmt.Print(color.CyanString("[Schedule] %s %s", sch.Schedule, name))
+		fmt.Print(color.WhiteString("\t%s\t%s\n", sch.Name, process))
 	}
 }
 
@@ -353,8 +428,8 @@ func printTasks(silent bool) {
 	fmt.Println(color.WhiteString(L("Tasks List (%d)"), len(task.Tasks)))
 	fmt.Println(color.WhiteString("---------------------------------"))
 	for _, t := range task.Tasks {
-		fmt.Printf(color.CyanString("[Task] %s", t.Option.Name))
-		fmt.Printf(color.WhiteString("\t workers: %d\n", t.Option.WorkerNums))
+		fmt.Print(color.CyanString("[Task] %s", t.Option.Name))
+		fmt.Print(color.WhiteString("\t workers: %d\n", t.Option.WorkerNums))
 	}
 }
 
@@ -377,7 +452,7 @@ func printApis(silent bool) {
 	}
 
 	fmt.Println(color.WhiteString("\n---------------------------------"))
-	fmt.Println(color.WhiteString(L("API List")))
+	fmt.Println(color.WhiteString(L("APIs List")))
 	fmt.Println(color.WhiteString("---------------------------------"))
 
 	for _, api := range api.APIs { // API信息
