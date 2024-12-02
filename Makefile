@@ -310,7 +310,7 @@ debug1: clean
 # cp -r ../yao-builder .tmp/data/builder
 	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
-	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
+#	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r .tmp/yao-init .tmp/data/init
 	cp -r sui/libsui .tmp/data/
 	find .tmp/data -name ".DS_Store" -type f -delete
@@ -440,7 +440,7 @@ linux-release: clean
 	cd .tmp/xgen/v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
 
 #   Setup UI
-	cd .tmp/xgen/v1.0/packages/setup  && pnpm install --no-frozen-lockfile && pnpm run build
+#	cd .tmp/xgen/v1.0/packages/setup  && pnpm install --no-frozen-lockfile && pnpm run build
 
 
 #	Checkout init
@@ -462,7 +462,7 @@ linux-release: clean
 	cp -r ./ui .tmp/data/ui
 	cp -r ./yao .tmp/data/yao
 	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
-	cp -r .tmp/xgen/v1.0/packages/setup/build .tmp/data/xgen/setup
+#	cp -r .tmp/xgen/v1.0/packages/setup/build .tmp/data/xgen/setup
 	cp -r .tmp/xgen/v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 	cp -r .tmp/yao-init .tmp/data/init
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...

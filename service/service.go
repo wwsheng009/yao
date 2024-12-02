@@ -24,7 +24,7 @@ func Start(cfg config.Config) (*http.Server, error) {
 		cfg.AllowFrom = []string{}
 	}
 
-	err := prepare()
+	err := prepare(cfg.AllowFrom...)
 	if err != nil {
 		return nil, err
 	}

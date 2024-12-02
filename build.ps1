@@ -41,7 +41,7 @@ Copy-Item -Path .tmp\xgen\v0.9\dist -Destination .tmp\data\xgen\v0.9 -Recurse
 Copy-Item -Path '..\xgen-v1.0\packages\xgen\dist' -Destination .tmp\data\xgen\v1.0 -Recurse
 
 # Copy ..\xgen-v1.0\packages\setup\build directory to .tmp\data\xgen\setup
-Copy-Item -Path '..\xgen-v1.0\packages\setup\build' -Destination .tmp\data\xgen\setup -Recurse
+# Copy-Item -Path '..\xgen-v1.0\packages\setup\build' -Destination .tmp\data\xgen\setup -Recurse
 
 Copy-Item -Path ".tmp\yao-init" -Destination ".tmp\data\init" -Recurse -Force
 
