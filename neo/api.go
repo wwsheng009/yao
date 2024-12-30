@@ -136,7 +136,11 @@ func (neo *DSL) handleChatList(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	// Create filter from query parameters
 	filter := conversation.ChatFilter{
 		Keywords: c.Query("keywords"),
@@ -175,7 +179,11 @@ func (neo *DSL) handleChatHistory(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	cid := c.Query("chat_id")
 	history, err := neo.Conversation.GetHistory(sid, cid)
 	if err != nil {
@@ -360,7 +368,11 @@ func (neo *DSL) handleChatDetail(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	chat, err := neo.Conversation.GetChat(sid, chatID)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -476,7 +488,11 @@ func (neo *DSL) handleChatUpdate(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	err := neo.Conversation.UpdateChatTitle(sid, chatID, body.Title)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -503,7 +519,11 @@ func (neo *DSL) handleChatDelete(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	err := neo.Conversation.DeleteChat(sid, chatID)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -523,7 +543,11 @@ func (neo *DSL) handleChatsDeleteAll(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Conversation == nil {
+		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
+		c.Done()
+		return
+	}
 	err := neo.Conversation.DeleteAllChats(sid)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
