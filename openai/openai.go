@@ -15,7 +15,20 @@ import (
 
 // Tiktoken get number of tokens
 func Tiktoken(model string, input string) (int, error) {
-	tkm, err := tiktoken.EncodingForModel(model)
+	modelName := model
+	isOpenApi := false
+	if _, ok := tiktoken.MODEL_TO_ENCODING[modelName]; ok {
+		isOpenApi = true
+	}
+	for prefix, _ := range tiktoken.MODEL_PREFIX_TO_ENCODING {
+		if strings.HasPrefix(modelName, prefix) {
+			isOpenApi = true
+		}
+	}
+	if !isOpenApi {
+		modelName = "gpt-4"
+	}
+	tkm, err := tiktoken.EncodingForModel(modelName)
 	if err != nil {
 		return 0, err
 	}
@@ -267,7 +280,20 @@ func (openai OpenAI) ImagesVariations(imageBase64 string, option map[string]inte
 
 // Tiktoken get number of tokens
 func (openai OpenAI) Tiktoken(input string) (int, error) {
-	tkm, err := tiktoken.EncodingForModel(openai.model)
+	modelName := openai.model
+	isOpenApi := false
+	if _, ok := tiktoken.MODEL_TO_ENCODING[modelName]; ok {
+		isOpenApi = true
+	}
+	for prefix, _ := range tiktoken.MODEL_PREFIX_TO_ENCODING {
+		if strings.HasPrefix(modelName, prefix) {
+			isOpenApi = true
+		}
+	}
+	if !isOpenApi {
+		modelName = "gpt-4"
+	}
+	tkm, err := tiktoken.EncodingForModel(modelName)
 	if err != nil {
 		return 0, err
 	}
