@@ -1,22 +1,15 @@
 package neo
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/yaoapp/gou/connector"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/neo/assistant"
-	"github.com/yaoapp/yao/neo/assistant/local"
-	"github.com/yaoapp/yao/neo/assistant/openai"
-	"github.com/yaoapp/yao/neo/conversation"
 	"github.com/yaoapp/yao/neo/message"
-	"github.com/yaoapp/yao/share"
 )
 
 // Lock the assistant list
@@ -40,23 +33,20 @@ func (neo *DSL) Answer(ctx Context, question string, c *gin.Context) error {
 	}
 
 	// Select Assistant
-	ast, err := neo.selectAssistant(res.AssistantID)
+	ast, err := neo.Select(res.AssistantID)
 	if err != nil {
 		return err
 	}
-
 	// Chat with AI
 	return neo.chat(ast, ctx, messages, c)
 }
 
-// GetAssistants returns the list of assistants
-func (neo *DSL) GetAssistants() []assistant.Assistant {
-	return neo.AssistantList
-}
-
-// GetMentions returns the mention list
-func (neo *DSL) GetMentions(keywords string) ([]Mention, error) {
-	return neo.HookMention(context.Background(), keywords)
+// Select select an assistant
+func (neo *DSL) Select(id string) (assistant.API, error) {
+	if id == "" {
+		return neo.Assistant, nil
+	}
+	return assistant.Get(id)
 }
 
 // GeneratePrompts generate prompts for the AI assistant
@@ -111,7 +101,7 @@ func (neo *DSL) GenerateWithAI(ctx Context, input string, messageType string, sy
 	}
 
 	// Select Assistant
-	ast, err := neo.selectAssistant(res.AssistantID)
+	ast, err := neo.Select(res.AssistantID)
 	if err != nil {
 		return "", err
 	}
@@ -125,7 +115,6 @@ func (neo *DSL) GenerateWithAI(ctx Context, input string, messageType string, sy
 	clientBreak := make(chan bool, 1)
 	done := make(chan bool, 1)
 	fail := make(chan error, 1)
-
 	content := []byte{}
 
 	// Chat with AI in background
@@ -143,26 +132,28 @@ func (neo *DSL) GenerateWithAI(ctx Context, input string, messageType string, sy
 
 				// Handle error
 				if msg.Type == "error" {
-					fail <- fmt.Errorf("%s", msg.Message.Text)
+					fail <- fmt.Errorf("%s", msg.Text)
 					return 0 // break
 				}
 
 				// Append content and send message
 				content = msg.Append(content)
-
-				// Only send real-time messages if not in silent mode
-				if !silent && msg.Message != nil && msg.Message.Text != "" {
-					message.New().
-						Map(map[string]interface{}{
-							"text": msg.Message.Text,
-							"done": msg.Message.Done,
-						}).
-						Write(c.Writer)
+				if !silent {
+					value := msg.String()
+					if value != "" {
+						message.New().
+							Map(map[string]interface{}{
+								"text": value,
+								"done": msg.IsDone,
+							}).
+							Write(c.Writer)
+					}
 				}
 
 				// Complete the stream
-				if msg.Message.Done {
-					if !silent && msg.Message.Text == "" {
+				if msg.IsDone {
+					value := msg.String()
+					if value == "" {
 						msg.Write(c.Writer)
 					}
 					done <- true
@@ -234,7 +225,7 @@ func (neo *DSL) Upload(ctx Context, c *gin.Context) (*assistant.File, error) {
 	}
 
 	// Select Assistant
-	ast, err := neo.selectAssistant(res.AssistantID)
+	ast, err := neo.Select(res.AssistantID)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +248,7 @@ func (neo *DSL) Download(ctx Context, c *gin.Context) (*assistant.FileResponse, 
 	}
 
 	// Select Assistant
-	ast, err := neo.selectAssistant(res.AssistantID)
+	ast, err := neo.Select(res.AssistantID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +259,6 @@ func (neo *DSL) Download(ctx Context, c *gin.Context) (*assistant.FileResponse, 
 
 // chat chat with AI
 func (neo *DSL) chat(ast assistant.API, ctx Context, messages []map[string]interface{}, c *gin.Context) error {
-
 	if ast == nil {
 		msg := message.New().Error("assistant is not initialized").Done()
 		msg.Write(c.Writer)
@@ -294,24 +284,26 @@ func (neo *DSL) chat(ast assistant.API, ctx Context, messages []map[string]inter
 
 				// Handle error
 				if msg.Type == "error" {
-					message.New().Error(msg.Message.Text).Done().Write(c.Writer)
+					value := msg.String()
+					message.New().Error(value).Done().Write(c.Writer)
 					return 0 // break
 				}
 
 				// Append content and send message
 				content = msg.Append(content)
-				if msg.Message != nil && msg.Message.Text != "" {
+				value := msg.String()
+				if value != "" {
 					message.New().
 						Map(map[string]interface{}{
-							"text": msg.Message.Text,
-							"done": msg.Message.Done,
+							"text": value,
+							"done": msg.IsDone,
 						}).
 						Write(c.Writer)
 				}
 
 				// Complete the stream
-				if msg.Message != nil && msg.Message.Done {
-					if msg.Message.Text == "" {
+				if msg.IsDone {
+					if value == "" {
 						msg.Write(c.Writer)
 					}
 					done <- true
@@ -345,137 +337,10 @@ func (neo *DSL) chat(ast assistant.API, ctx Context, messages []map[string]inter
 	}
 }
 
-// updateAssistantList update the assistant list
-func (neo *DSL) updateAssistantList(list []assistant.Assistant) {
-	lock.Lock()
-	defer lock.Unlock()
-	neo.AssistantList = list
-	neo.AssistantMaps = make(map[string]assistant.Assistant)
-	if list != nil {
-		for _, assistant := range list {
-			neo.AssistantMaps[assistant.ID] = assistant
-		}
-	}
-}
-
-// selectAssistant select the assistant
-func (neo *DSL) selectAssistant(assistantID string) (assistant.API, error) {
-	ast := neo.Assistant
-	if assistantID != "" {
-		ast, err := neo.newAssistant(assistantID)
-		if err != nil {
-			return nil, err
-		}
-		return ast, nil
-	}
-	return ast, nil
-}
-
-// newAssistant create a new assistant
-func (neo *DSL) newAssistant(id string) (assistant.API, error) {
-	// Try to find assistant in AssistantList first
-	if id != "" && neo.AssistantMaps != nil {
-		if ast, ok := neo.AssistantMaps[id]; ok {
-
-			if ast.API != nil {
-				return ast.API, nil
-			}
-			api, err := neo.newAssistantByConfig(&ast)
-			if err != nil {
-				return nil, err
-			}
-			ast.API = api
-			return api, nil
-		}
-	}
-	return neo.newAssistantByConnector(id)
-}
-
-// newAssistantByConfig create a new assistant from assistant configuration
-func (neo *DSL) newAssistantByConfig(ast *assistant.Assistant) (assistant.API, error) {
-	return neo.newAssistantByConnector(ast.Connector)
-}
-
-// newAssistantByConnector create a new assistant from connector id
-func (neo *DSL) newAssistantByConnector(id string) (assistant.API, error) {
-	// Moapi connector
-	if id == "" || strings.HasPrefix(id, "moapi") {
-		return neo.newMoapiAssistant(id)
-	}
-
-	// Other connector
-	conn, err := connector.Select(id)
-	if err != nil {
-		return nil, fmt.Errorf("Neo assistant connector %s not support", id)
-	}
-
-	if conn.Is(connector.OPENAI) {
-		api, err := openai.New(conn, id)
-		if err != nil {
-			return nil, fmt.Errorf("Create openai assistant error: %s", err.Error())
-		}
-		return api, nil
-	}
-
-	// Base on the assistant list hook
-	api, err := local.New(conn, neo.Prompts, id)
-	if err != nil {
-		return nil, fmt.Errorf("Create local assistant error: %s", err.Error())
-	}
-	return api, nil
-}
-
-// newMoapiAssistant creates a new moapi assistant
-func (neo *DSL) newMoapiAssistant(id string) (assistant.API, error) {
-	model := "gpt-3.5-turbo"
-	if strings.HasPrefix(id, "moapi:") {
-		model = strings.TrimPrefix(id, "moapi:")
-	}
-
-	// Get the moapi setting
-	url := share.MoapiHosts[0]
-	if share.App.Moapi.Mirrors != nil {
-		url = share.App.Moapi.Mirrors[0]
-	}
-	key := share.App.Moapi.Secret
-	organization := share.App.Moapi.Organization
-
-	if !strings.HasPrefix(url, "http") {
-		url = "https://" + url
-	}
-
-	// Check the moapi secret
-	if key == "" {
-		return nil, fmt.Errorf("The moapi secret is empty")
-	}
-
-	conn, err := connector.New(`moapi`, `__yao.moapi`, []byte(`{"name":"Moapi", "options":{"model": "`+model+`", "key": "`+key+`", "organization": "`+organization+`", "host": "`+url+`"}}`))
-	if err != nil {
-		return nil, fmt.Errorf("Create moapi assistant error: %s", err.Error())
-	}
-
-	api, err := openai.New(conn, strings.ReplaceAll(id, ":", "_"))
-	if err != nil {
-		return nil, fmt.Errorf("Create openai assistant error: %s", err.Error())
-	}
-	return api, nil
-}
-
-// createDefaultAssistant create a default assistant
-func (neo *DSL) createDefaultAssistant() (assistant.API, error) {
-	if neo.Use != "" {
-		return neo.newAssistant(neo.Use)
-	}
-	return neo.newAssistant(neo.Connector)
-}
-
 // chatMessages get the chat messages
 func (neo *DSL) chatMessages(ctx Context, content ...string) ([]map[string]interface{}, error) {
 
-	if neo.Conversation == nil {
-		return nil,errors.New("neo error config, please check neo config and error log")
-	}
-	history, err := neo.Conversation.GetHistory(ctx.Sid, ctx.ChatID)
+	history, err := neo.Store.GetHistory(ctx.Sid, ctx.ChatID)
 	if err != nil {
 		return nil, err
 	}
@@ -495,11 +360,7 @@ func (neo *DSL) chatMessages(ctx Context, content ...string) ([]map[string]inter
 func (neo *DSL) saveHistory(sid string, chatID string, content []byte, messages []map[string]interface{}) {
 
 	if len(content) > 0 && sid != "" && len(messages) > 0 {
-		if neo.Conversation == nil {
-			log.Error("neo error config, please check neo config and error log")
-			return
-		}
-		err := neo.Conversation.SaveHistory(
+		err := neo.Store.SaveHistory(
 			sid,
 			[]map[string]interface{}{
 				{"role": "user", "content": messages[len(messages)-1]["content"], "name": sid},
@@ -515,46 +376,13 @@ func (neo *DSL) saveHistory(sid string, chatID string, content []byte, messages 
 	}
 }
 
-// createConversation create a new conversation
-func (neo *DSL) createConversation() error {
-
-	var err error
-	if neo.ConversationSetting.Connector == "default" || neo.ConversationSetting.Connector == "" {
-		neo.Conversation, err = conversation.NewXun(neo.ConversationSetting)
-		return err
-	}
-
-	// other connector
-	conn, err := connector.Select(neo.ConversationSetting.Connector)
-	if err != nil {
-		return err
-	}
-
-	if conn.Is(connector.DATABASE) {
-		neo.Conversation, err = conversation.NewXun(neo.ConversationSetting)
-		return err
-
-	} else if conn.Is(connector.REDIS) {
-		neo.Conversation = conversation.NewRedis()
-		return nil
-
-	} else if conn.Is(connector.MONGO) {
-		neo.Conversation = conversation.NewMongo()
-		return nil
-
-	} else if conn.Is(connector.WEAVIATE) {
-		neo.Conversation = conversation.NewWeaviate()
-		return nil
-	}
-
-	return fmt.Errorf("%s conversation connector %s not support", neo.ID, neo.ConversationSetting.Connector)
-}
-
 // sendMessage sends a message to the client
 func (neo *DSL) sendMessage(w gin.ResponseWriter, data interface{}) error {
-	msg := message.New().Map(data.(map[string]interface{}))
-	if !msg.Write(w) {
-		return fmt.Errorf("failed to write message to stream")
+	if msg, ok := data.(map[string]interface{}); ok {
+		if !message.New().Map(msg).Write(w) {
+			return fmt.Errorf("failed to write message to stream")
+		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("invalid message data type")
 }
