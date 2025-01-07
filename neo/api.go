@@ -228,11 +228,6 @@ func (neo *DSL) handleChatList(c *gin.Context) {
 		c.Done()
 		return
 	}
-	if neo.Conversation == nil {
-		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
-		c.Done()
-		return
-	}
 	// Create filter from query parameters
 	filter := store.ChatFilter{
 		Keywords: c.Query("keywords"),
@@ -268,11 +263,6 @@ func (neo *DSL) handleChatHistory(c *gin.Context) {
 	sid := c.GetString("__sid")
 	if sid == "" {
 		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
-		c.Done()
-		return
-	}
-	if neo.Conversation == nil {
-		c.JSON(500, gin.H{"message": "neo error config, please check neo config and error log", "code": 500})
 		c.Done()
 		return
 	}
