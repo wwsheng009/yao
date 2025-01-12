@@ -291,6 +291,7 @@ debug1: clean
 	rm -rf .tmp/yao-init
 	cp -r ../yao-init .tmp/yao-init
 	rm -rf .tmp/yao-init/.git
+	rm -rf .tmp/yao-init/node_modules
 	rm -rf .tmp/yao-init/.gitignore
 	rm -rf .tmp/yao-init/LICENSE
 	rm -rf .tmp/yao-init/README.md

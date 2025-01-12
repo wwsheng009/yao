@@ -209,6 +209,8 @@ func LoadPath(path string) (*Assistant, error) {
 	}
 
 	id := strings.ReplaceAll(strings.TrimPrefix(path, "/assistants/"), "/", ".")
+	id = strings.ReplaceAll(strings.TrimPrefix(id, "\\assistants\\"), "\\", ".")
+
 	var data map[string]interface{}
 	err = jsoniter.Unmarshal(pkg, &data)
 	if err != nil {

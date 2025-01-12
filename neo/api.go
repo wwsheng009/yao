@@ -217,7 +217,12 @@ func (neo *DSL) handleChat(c *gin.Context) {
 	ctx, cancel := NewContextWithCancel(sid, chatID, c.Query("context"))
 	defer cancel()
 
-	neo.Answer(ctx, content, c)
+	err := neo.Answer(ctx, content, c)
+	if err != nil {
+		message.New().Error(err).Done().Write(c.Writer)
+		c.Done()
+		return
+	}
 }
 
 // handleChatList handles the chat list request
