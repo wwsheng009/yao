@@ -43,6 +43,10 @@ func (ast *Assistant) HookInit(c *gin.Context, context chatctx.Context, input []
 				response.Next.Payload = payload
 			}
 		}
+		
+		if res, ok := v["options"].(map[string]interface{}); ok {
+			response.Options = res;
+		}
 
 	case string:
 		response.AssistantID = v
