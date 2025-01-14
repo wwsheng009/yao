@@ -316,12 +316,14 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []message.Me
 	for index, message := range messages {
 		role := message.Role
 		if role == "" {
-			return nil, fmt.Errorf("role must be string")
+			continue
+			// return nil, fmt.Errorf("role must be string")
 		}
 
 		content := message.Text
 		if content == "" {
-			return nil, fmt.Errorf("content must be string")
+			continue
+			// return nil, fmt.Errorf("content must be string")
 		}
 
 		newMessage := map[string]interface{}{
