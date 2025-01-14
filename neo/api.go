@@ -218,6 +218,11 @@ func (neo *DSL) handleChat(c *gin.Context) {
 	ctx, cancel := chatctx.NewWithCancel(sid, chatID, c.Query("context"))
 	defer cancel()
 
+	assistantId := c.Query("assistant_id")
+	if assistantId != "" && ctx.AssistantID == "" {
+		ctx.AssistantID = assistantId
+	}
+
 	err := neo.Answer(ctx, content, c)
 	if err != nil {
 		message.New().Error(err).Done().Write(c.Writer)

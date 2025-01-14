@@ -57,14 +57,15 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 	if err != nil {
 		return err
 	}
-
+	refAst := &ast
 	// Switch to the new assistant if necessary
 	if res.AssistantID != ctx.AssistantID {
 		newAst, err := Get(res.AssistantID)
 		if err != nil {
 			return err
 		}
-		*ast = *newAst
+		// *ast = *newAst
+		refAst = &newAst
 	}
 
 	// Handle next action
@@ -87,7 +88,7 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 	}
 
 	// Only proceed with chat stream if no specific next action was handled
-	return ast.handleChatStream(c, ctx, messages, options)
+	return (*refAst).handleChatStream(c, ctx, messages, options)
 }
 
 // handleChatStream manages the streaming chat interaction with the AI
@@ -344,8 +345,8 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []message.Me
 			}
 
 			newMessage["content"] = msg.Text
-			if msg.Attachments != nil {
-				content, err := ast.withAttachments(ctx, msg)
+			if message.Attachments != nil {
+				content, err := ast.withAttachments(ctx, &message)
 				if err != nil {
 					return nil, fmt.Errorf("with attachments error: %s", err.Error())
 				}

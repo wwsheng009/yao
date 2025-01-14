@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -46,6 +47,24 @@ func (ast *Assistant) HookInit(c *gin.Context, context chatctx.Context, input []
 		
 		if res, ok := v["options"].(map[string]interface{}); ok {
 			response.Options = res;
+		}
+
+		if res, ok := v["input"].([]interface{}); ok {
+			// Marshal the []interface{} to JSON
+			jsonData, err := json.Marshal(res)
+			if err != nil {
+				return response,err
+			}
+
+			// Unmarshal the JSON into []Message
+			var messages []message.Message
+			err = json.Unmarshal(jsonData, &messages)
+			if err != nil {
+				return response,err
+			}
+
+			// Assign the converted []Message to response.Input
+			response.Input = messages
 		}
 
 	case string:
