@@ -87,7 +87,7 @@ func NewOpenAI(data []byte) *Message {
 
 	msg := New()
 	text := string(data)
-	println(text)
+	log.Debug("openai:%s",text)
 	data = []byte(strings.TrimPrefix(text, "data: "))
 	switch {
 	case strings.Contains(text, `[DONE]`):

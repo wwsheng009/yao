@@ -272,6 +272,9 @@ func (ast *Assistant) streamChat(
 				content.SetType("function") // Set type to function
 				// Set id
 				if id, ok := msg.Props["id"].(string); ok && id != "" {
+					if content.ID == "" {
+						content.Bytes = []byte("")
+					}
 					content.SetID(id)
 				}
 
