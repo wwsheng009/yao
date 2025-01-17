@@ -222,7 +222,7 @@ func (ast *Assistant) call(ctx context.Context, method string, context chatctx.C
 	if err != nil {
 		return nil, err
 	}
-	defer scriptCtx.Close()
+	// defer scriptCtx.Close()
 
 	// Check if the method exists
 	if !scriptCtx.Global().Has(method) {
@@ -237,6 +237,7 @@ func (ast *Assistant) call(ctx context.Context, method string, context chatctx.C
 	go func() {
 		defer close(done)
 		// Call the method
+		defer scriptCtx.Close()
 		args = append([]interface{}{context.Map()}, args...)
 		result, callErr = scriptCtx.Call(method, args...)
 	}()
@@ -244,7 +245,7 @@ func (ast *Assistant) call(ctx context.Context, method string, context chatctx.C
 	// Wait for either context cancellation or method completion
 	select {
 	case <-ctx.Done():
-		scriptCtx.Close() // Force close the script context
+		// scriptCtx.Close() // Force close the script context
 		return nil, ctx.Err()
 	case <-done:
 		return result, callErr

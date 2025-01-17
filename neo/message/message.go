@@ -14,6 +14,18 @@ import (
 	"github.com/yaoapp/yao/openai"
 )
 
+type FCAttributes struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type FunctionCall struct {
+	Index    int          `json:"index"`
+	ID       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function FCAttributes `json:"function"`
+}
+
 // Message the message
 type Message struct {
 	Text        string                 `json:"text,omitempty"`  // text content
@@ -24,6 +36,8 @@ type Message struct {
 	Attachments []Attachment           `json:"attachments,omitempty"` // File attachments
 	Role        string                 `json:"role,omitempty"`        // user, assistant, system ...
 	Name        string                 `json:"name,omitempty"`        // name for the message
+	ToolCallId  string                 `json:"tool_call_id,omitempty"`
+	ToolCalls   []FunctionCall         `json:"tool_calls,omitempty"`
 	Data        map[string]interface{} `json:"-"`
 }
 
@@ -73,10 +87,19 @@ func NewOpenAI(data []byte) *Message {
 
 	msg := New()
 	text := string(data)
+	println(text)
 	data = []byte(strings.TrimPrefix(text, "data: "))
-
 	switch {
+	case strings.Contains(text, `[DONE]`):
+		msg.IsDone = true
 
+	case strings.Contains(text, `"finish_reason":"stop"`):
+		msg.IsDone = true
+
+	case strings.Contains(text, `"finish_reason":"tool_calls"`):
+		msg.IsDone = true
+	}
+	switch {
 	case strings.Contains(text, `"delta":{`) && strings.Contains(text, `"tool_calls"`):
 		var toolCalls openai.ToolCalls
 		if err := jsoniter.Unmarshal(data, &toolCalls); err != nil {
@@ -103,19 +126,12 @@ func NewOpenAI(data []byte) *Message {
 			msg.Text = message.Choices[0].Delta.Content
 		}
 
-	case strings.Contains(text, `[DONE]`):
-		msg.IsDone = true
-
-	case strings.Contains(text, `"finish_reason":"stop"`):
-		msg.IsDone = true
-
-	case strings.Contains(text, `"finish_reason":"tool_calls"`):
-		msg.IsDone = true
-
 	default:
-		str := strings.TrimPrefix(strings.Trim(string(data), "\""), "data: ")
-		msg.Type = "error"
-		msg.Text = str
+		if !msg.IsDone {
+			str := strings.TrimPrefix(strings.Trim(string(data), "\""), "data: ")
+			msg.Type = "error"
+			msg.Text = str
+		}
 	}
 
 	return msg

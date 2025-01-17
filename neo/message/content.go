@@ -15,11 +15,12 @@ const (
 
 // Content the content
 type Content struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Bytes  []byte `json:"bytes"`
-	Type   string `json:"type"`   // text, function, error
-	Status uint8  `json:"status"` // 0: pending, 1: done
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Bytes          []byte `json:"bytes"`
+	Type           string `json:"type"`   // text, function, error
+	Status         uint8  `json:"status"` // 0: pending, 1: done
+	FunctionResult string `json:"function_result"`
 }
 
 // NewContent create a new content

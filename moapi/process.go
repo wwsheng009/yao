@@ -101,7 +101,7 @@ func ChatCompletions(process *process.Process) interface{} {
 			ctx, cancel := context.WithCancel(c.Request.Context())
 			defer cancel()
 
-			go ai.Stream(ctx, "/v1/chat/completions", option, func(data []byte) int {
+			go ai.Stream(ctx, "/chat/completions", option, func(data []byte) int {
 
 				if (string(data)) == "\n" || string(data) == "" {
 					return 1 // HandlerReturnOk

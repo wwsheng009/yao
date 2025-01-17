@@ -12,6 +12,7 @@ import (
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/utils"
 	chatctx "github.com/yaoapp/yao/neo/context"
+	"github.com/yaoapp/yao/neo/message"
 	chatMessage "github.com/yaoapp/yao/neo/message"
 )
 
@@ -173,6 +174,49 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
 		}
+		count:=0
+		for {
+			if content.Type == "function" {
+				count++
+				var asstMmsg message.Message
+				asstMmsg.Role = "assistant"
+				asstMmsg.Name = content.Name
+				asstMmsg.Text = ""
+				asstMmsg.ToolCalls = []message.FunctionCall{
+					{
+						Index: 0,
+						ID:    content.ID,
+						Type:  "function",
+						Function: message.FCAttributes{
+							Name:      content.Name,
+							Arguments: string(content.Bytes),
+						},
+					},
+				}
+				messages = append(messages, asstMmsg)
+				var msg message.Message
+				msg.Role = "tool"
+				msg.ToolCallId = content.ID
+				// msg.Name = content.Name
+				msg.Text = content.FunctionResult
+
+				messages = append(messages, msg)
+				content = message.NewContent("text")
+				err := ast.streamChat(c, ctx, messages, options, clientBreak, done, content)
+				if err != nil {
+					chatMessage.New().Error(err).Done().Write(c.Writer)
+				}
+				//delete last two line of messages
+				messages = messages[:len(messages)-2]
+			} else {
+				break
+			}
+			if count > 5 {
+				err = fmt.Errorf("too many function calls")
+				chatMessage.New().Error(err).Done().Write(c.Writer)
+				break
+			}
+		}
 
 		ast.saveChatHistory(ctx, messages, content)
 		done <- true
@@ -262,13 +306,14 @@ func (ast *Assistant) streamChat(
 						return 1 // continue
 					}
 				}
-
-				chatMessage.New().
+				if msg.Type != "tool_calls" {
+					chatMessage.New().
 					Map(map[string]interface{}{
 						"text": value,
 						"done": msg.IsDone,
 					}).
 					Write(c.Writer)
+				}
 			}
 
 			// Complete the stream
@@ -282,6 +327,10 @@ func (ast *Assistant) streamChat(
 				res, hookErr := ast.HookDone(c, ctx, messages, content.String(), content.Type == "function")
 				if hookErr == nil && res != nil {
 					if res.Output != "" {
+						if content.Type == "function" {
+							content.FunctionResult = res.Output
+							return 0 // break
+						}
 						chatMessage.New().
 							Map(map[string]interface{}{
 								"text": res.Output,
@@ -299,14 +348,22 @@ func (ast *Assistant) streamChat(
 						return 0 // break
 					}
 
-				} else if value != "" {
-					chatMessage.New().
-						Map(map[string]interface{}{
-							"text": value,
-							"done": true,
-						}).
-						Write(c.Writer)
 				}
+				if hookErr != nil {
+					chatMessage.New().
+					Map(map[string]interface{}{
+						"text": hookErr.Error(),
+						"done": true,
+					}).
+					Write(c.Writer)
+
+				}
+				chatMessage.New().
+					Map(map[string]interface{}{
+						"text": value,
+						"done": true,
+					}).
+					Write(c.Writer)
 
 				done <- true
 				return 0 // break
@@ -418,19 +475,27 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		}
 
 		content := message.Text
-		if content == "" {
-			continue
-			// return nil, fmt.Errorf("content must be string")
-		}
 
 		newMessage := map[string]interface{}{
-			"role":    role,
-			"content": content,
+			"role": role,
+		}
+		if len(message.ToolCalls) == 0 {
+			if content != "" {
+				newMessage["content"] = content
+			} else {
+				continue
+			}
+		}else{
+			newMessage["tool_calls"] = message.ToolCalls
 		}
 
 		if name := message.Name; name != "" {
 			newMessage["name"] = name
 		}
+		if role == "tool" {
+			newMessage["tool_call_id"] = message.ToolCallId
+		}
+		
 
 		// Special handling for user messages with JSON content last message
 		if role == "user" && index == length-1 {
