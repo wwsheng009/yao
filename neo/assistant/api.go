@@ -10,7 +10,6 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/gou/process"
-	"github.com/yaoapp/kun/utils"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	"github.com/yaoapp/yao/neo/message"
 	chatMessage "github.com/yaoapp/yao/neo/message"
@@ -62,7 +61,7 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 	}
 	refAst := &ast
 	// Switch to the new assistant if necessary
-	if res.AssistantID != ctx.AssistantID {
+	if res != nil && res.AssistantID != ctx.AssistantID {
 		newAst, err := Get(res.AssistantID)
 		if err != nil {
 			return err
@@ -72,17 +71,17 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 	}
 
 	// Handle next action
-	if res.Next != nil {
+	if res != nil && res.Next != nil {
 		return res.Next.Execute(c, ctx)
 	}
 
 	// Update options if provided
-	if res.Options != nil {
+	if res != nil && res.Options != nil {
 		options = res.Options
 	}
 
 	// messages
-	if res.Input != nil {
+	if res != nil && res.Input != nil {
 		messages = res.Input
 	}
 
@@ -174,7 +173,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
 		}
-		count:=0
+		count := 0
 		for {
 			if content.Type == "function" {
 				count++
@@ -311,19 +310,22 @@ func (ast *Assistant) streamChat(
 				}
 				if msg.Type != "tool_calls" {
 					chatMessage.New().
-					Map(map[string]interface{}{
-						"text": value,
-						"done": msg.IsDone,
-					}).
-					Write(c.Writer)
+						Map(map[string]interface{}{
+							"assistant_id":     ast.ID,
+							"assistant_name":   ast.Name,
+							"assistant_avatar": ast.Avatar,
+							"text":             value,
+							"done":             msg.IsDone,
+						}).
+						Write(c.Writer)
 				}
 			}
 
 			// Complete the stream
 			if msg.IsDone {
-				// if value == "" {
-				// 	msg.Write(c.Writer)
-				// }
+				if value == "" {
+					msg.Write(c.Writer)
+				}
 
 				// Call HookDone
 				content.SetStatus(chatMessage.ContentStatusDone)
@@ -336,6 +338,9 @@ func (ast *Assistant) streamChat(
 						}
 						chatMessage.New().
 							Map(map[string]interface{}{
+								"assistant_id":     ast.ID,
+								"assistant_name":   ast.Name,
+								"assistant_avatar": ast.Avatar,
 								"text": res.Output,
 								"done": true,
 							}).
@@ -351,22 +356,27 @@ func (ast *Assistant) streamChat(
 						return 0 // break
 					}
 
-				}
-				if hookErr != nil {
+				} else if hookErr != nil {
 					chatMessage.New().
-					Map(map[string]interface{}{
-						"text": hookErr.Error(),
-						"done": true,
-					}).
-					Write(c.Writer)
-
+						Map(map[string]interface{}{
+							"assistant_id":     ast.ID,
+							"assistant_name":   ast.Name,
+							"assistant_avatar": ast.Avatar,
+							"text": hookErr.Error(),
+							"done": true,
+						}).
+						Write(c.Writer)
+				} else if value != "" {
+					chatMessage.New().
+						Map(map[string]interface{}{
+							"assistant_id":     ast.ID,
+							"assistant_name":   ast.Name,
+							"assistant_avatar": ast.Avatar,
+							"text":             value,
+							"done":             true,
+						}).
+						Write(c.Writer)
 				}
-				chatMessage.New().
-					Map(map[string]interface{}{
-						"text": value,
-						"done": true,
-					}).
-					Write(c.Writer)
 
 				done <- true
 				return 0 // break
@@ -380,15 +390,29 @@ func (ast *Assistant) streamChat(
 // saveChatHistory saves the chat history if storage is available
 func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessage.Message, content *chatMessage.Content) {
 	if len(content.Bytes) > 0 && ctx.Sid != "" && len(messages) > 0 {
-		storage.SaveHistory(
-			ctx.Sid,
-			[]map[string]interface{}{
-				{"role": "user", "content": messages[len(messages)-1].Content(), "name": ctx.Sid},
-				{"role": "assistant", "content": content.String(), "name": ctx.Sid},
+		userMessage := messages[len(messages)-1]
+		data := []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": userMessage.Content(),
+				"name":    ctx.Sid,
 			},
-			ctx.ChatID,
-			nil,
-		)
+			{
+				"role":             "assistant",
+				"content":          content.String(),
+				"name":             ctx.Sid,
+				"assistant_id":     ast.ID,
+				"assistant_name":   ast.Name,
+				"assistant_avatar": ast.Avatar,
+			},
+		}
+
+		// Add mentions
+		if userMessage.Mentions != nil {
+			data[0]["mentions"] = userMessage.Mentions
+		}
+
+		storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
 	}
 }
 
@@ -488,7 +512,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 			} else {
 				continue
 			}
-		}else{
+		} else {
 			newMessage["tool_calls"] = message.ToolCalls
 		}
 
@@ -498,7 +522,6 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		if role == "tool" {
 			newMessage["tool_call_id"] = message.ToolCallId
 		}
-		
 
 		// Special handling for user messages with JSON content last message
 		if role == "user" && index == length-1 {
@@ -592,8 +615,6 @@ func (ast *Assistant) withAttachments(ctx context.Context, msg *chatMessage.Mess
 				},
 			})
 		}
-
-		utils.Dump(contents)
 		return contents, nil
 	}
 
