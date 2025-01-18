@@ -165,7 +165,7 @@ func (conv *Xun) initHistoryTable() error {
 	fields := []string{"id", "sid", "cid", "uid", "role", "name", "content", "context", "assistant_id", "assistant_name", "assistant_avatar", "mentions", "created_at", "updated_at", "expired_at"}
 	for _, field := range fields {
 		if !tab.HasColumn(field) {
-			return fmt.Errorf("%s is required", field)
+			return fmt.Errorf("%s is required for table:%s", field, historyTable)
 		}
 	}
 
@@ -205,7 +205,7 @@ func (conv *Xun) initChatTable() error {
 	fields := []string{"id", "chat_id", "title", "sid", "created_at", "updated_at"}
 	for _, field := range fields {
 		if !tab.HasColumn(field) {
-			return fmt.Errorf("%s is required", field)
+			return fmt.Errorf("%s is required for table:%s", field, chatTable)
 		}
 	}
 
@@ -261,7 +261,7 @@ func (conv *Xun) initAssistantTable() error {
 	fields := []string{"id", "assistant_id", "type", "name", "avatar", "connector", "description", "path", "sort", "built_in", "options", "prompts", "flows", "files", "functions", "tags", "mentionable", "created_at", "updated_at"}
 	for _, field := range fields {
 		if !tab.HasColumn(field) {
-			return fmt.Errorf("%s is required", field)
+			return fmt.Errorf("%s is required for table:%s", field, assistantTable)
 		}
 	}
 

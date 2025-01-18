@@ -341,8 +341,8 @@ func (ast *Assistant) streamChat(
 								"assistant_id":     ast.ID,
 								"assistant_name":   ast.Name,
 								"assistant_avatar": ast.Avatar,
-								"text": res.Output,
-								"done": true,
+								"text":             res.Output,
+								"done":             true,
 							}).
 							Write(c.Writer)
 					}
@@ -362,8 +362,8 @@ func (ast *Assistant) streamChat(
 							"assistant_id":     ast.ID,
 							"assistant_name":   ast.Name,
 							"assistant_avatar": ast.Avatar,
-							"text": hookErr.Error(),
-							"done": true,
+							"text":             hookErr.Error(),
+							"done":             true,
 						}).
 						Write(c.Writer)
 				} else if value != "" {
