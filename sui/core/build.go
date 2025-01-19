@@ -614,7 +614,7 @@ func (page *Page) buildComponents(doc *goquery.Document, ctx *BuildContext, opti
 		// Get the translation
 
 		name, has := sel.Attr("is")
-		if !has {
+		if ! has {
 			return
 		}
 
