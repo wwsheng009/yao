@@ -26,7 +26,7 @@ type Data struct {
 	Function  string `json:"function"`  // the function name
 	Bytes     []byte `json:"bytes"`     // the content bytes
 	Arguments []byte `json:"arguments"` // the function arguments
-	Result  string 	 `json:"result"`    // the function call result
+	Result    interface{} 	 `json:"result"`    // the function call result
 }
 
 // NewContents create a new contents
@@ -146,7 +146,7 @@ func (data *Data) Map() (map[string]interface{}, error) {
 		v["function"] = data.Function
 	}
 
-	if data.Result != "" {
+	if data.Result != nil {
 		v["result"] = data.Result
 	}
 
@@ -178,8 +178,9 @@ func (data *Data) MarshalJSON() ([]byte, error) {
 	if data.Function != "" {
 		v["function"] = data.Function
 	}
-	if data.Result != "" {
-		v["result"] = data.Result
+	if data.Result != nil {
+		data,_ := jsoniter.MarshalToString(data.Result)
+		v["result"] = data
 	}
 	return jsoniter.Marshal(v)
 }

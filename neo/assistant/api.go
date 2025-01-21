@@ -10,6 +10,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/gou/process"
+	"github.com/yaoapp/kun/log"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	chatMessage "github.com/yaoapp/yao/neo/message"
 )
@@ -206,7 +207,8 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				msg.Role = "tool"
 				msg.ToolCallId = contents.Data[contents.Current].ID
 				// msg.Name = content.Name
-				msg.Text = contents.Data[contents.Current].Result
+				raw, _ := jsoniter.MarshalToString(contents.Data[contents.Current].Result)
+				msg.Text = raw
 
 				messages = append(messages, msg)
 				contents = chatMessage.NewContents()
@@ -220,6 +222,8 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				break
 			}
 			if count > 5 {
+				contents = chatMessage.NewContents()
+				contents.AppendText([]byte("Too many function calls"))
 				err = fmt.Errorf("too many function calls")
 				chatMessage.New().Error(err).Done().Write(c.Writer)
 				break
@@ -319,16 +323,34 @@ func (ast *Assistant) streamChat(
 				res, hookErr := ast.HookDone(c, ctx, messages, contents.Data)
 				if hookErr == nil && res != nil {
 					if res.Output != nil {
-						if contents.Data[contents.Current].Function != "" && len(res.Output) > 0 {
-							contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result;
-							return 0;
+						if len(res.Output) > 0 {
+							if contents.Data[contents.Current].Function != "" {
+								contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
+								return 0
+							} else {
+								chatMessage.New().
+									Map(map[string]interface{}{
+										"assistant_id":     ast.ID,
+										"assistant_name":   ast.Name,
+										"assistant_avatar": ast.Avatar,
+										"text":             string(res.Output[len(res.Output)-1].Bytes),
+										"done":             true,
+									}).
+									Write(c.Writer)
+							}
+							contents.Data = res.Output
+							
+						} else {
+							chatMessage.New().
+								Map(map[string]interface{}{
+									"assistant_id":     ast.ID,
+									"assistant_name":   ast.Name,
+									"assistant_avatar": ast.Avatar,
+									"text":             value,
+									"done":             true,
+								}).
+								Write(c.Writer)
 						}
-						chatMessage.New().
-							Map(map[string]interface{}{
-								"text": res.Input,
-								"done": true,
-							}).
-							Write(c.Writer)
 					}
 
 					if res.Next != nil {
@@ -396,7 +418,10 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 			data[0]["mentions"] = userMessage.Mentions
 		}
 
-		storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
+		err:= storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
+		if err != nil {
+			log.Error("save neo history with error:%s",err.Error())
+		}
 	}
 }
 

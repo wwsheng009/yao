@@ -45,6 +45,7 @@ Copy-Item -Path '..\xgen-v1.0\packages\xgen\dist' -Destination .tmp\data\xgen\v1
 
 Copy-Item -Path ".tmp\yao-init" -Destination ".tmp\data\init" -Recurse -Force
 
+Copy-Item -Path "sui\libsui" -Destination ".tmp\data\libsui" -Recurse -Force
 
 # Generate data/bindata.go with go-bindata
 go-bindata -fs -pkg data -o data/bindata.go -prefix '.tmp/data/' .tmp/data/...
