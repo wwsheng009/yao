@@ -572,7 +572,34 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 		newMessages = append(newMessages, newMessage)
 	}
+	newMessages = MergeMessages(newMessages)
+
 	return newMessages, nil
+}
+
+// MergeMessages 函数合并相邻的相同 role 的消息
+func MergeMessages(messages []map[string]interface{}) []map[string]interface{} {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	merged := []map[string]interface{}{messages[0]} // 初始化合并后的列表，放入第一条消息
+
+	for i := 1; i < len(messages); i++ {
+		last := merged[len(merged)-1] // 获取合并列表中的最后一条消息
+		current := messages[i]        // 当前遍历的消息
+
+		// 检查当前消息和上一条消息的 role 是否相同
+		if last["role"] == current["role"] {
+			// 合并 content
+			last["content"] = fmt.Sprintf("%v\n%v", last["content"], current["content"])
+		} else {
+			// 如果 role 不同，直接添加到合并列表
+			merged = append(merged, current)
+		}
+	}
+
+	return merged
 }
 
 func (ast *Assistant) withAttachments(ctx context.Context, msg *chatMessage.Message) ([]map[string]interface{}, error) {
