@@ -516,9 +516,9 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		}
 
 		content := message.String()
-		if content == "" {
-			return nil, fmt.Errorf("content must be string")
-		}
+		// if content == "" {
+		// 	return nil, fmt.Errorf("content must be string")
+		// }
 
 		newMessage := map[string]interface{}{
 			"role": role,
