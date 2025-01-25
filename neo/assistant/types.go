@@ -24,7 +24,17 @@ type API interface {
 	Upload(ctx context.Context, file *multipart.FileHeader, reader io.Reader, option map[string]interface{}) (*File, error)
 	Download(ctx context.Context, fileID string) (*FileResponse, error)
 	ReadBase64(ctx context.Context, fileID string) (string, error)
+
+	GetPlaceholder() *Placeholder
 	Execute(c *gin.Context, ctx chatctx.Context, input string, options map[string]interface{}) error
+	Call(c *gin.Context, payload APIPayload) (interface{}, error)
+}
+
+// APIPayload the API payload
+type APIPayload struct {
+	Sid     string                 `json:"sid"`
+	Name    string                 `json:"name"`
+	Payload map[string]interface{} `json:"payload"`
 }
 
 // ResHookInit the response of the init hook
@@ -121,12 +131,20 @@ type Assistant struct {
 	Prompts     []Prompt                 `json:"prompts,omitempty"`     // AI Prompts
 	Functions   []Function               `json:"functions,omitempty"`   // Assistant Functions
 	Flows       []map[string]interface{} `json:"flows,omitempty"`       // Assistant Flows
+	Placeholder *Placeholder             `json:"placeholder,omitempty"` // Assistant Placeholder
 	Script      *v8.Script               `json:"-" yaml:"-"`            // Assistant Script
 	CreatedAt   int64                    `json:"created_at"`            // Creation timestamp
 	UpdatedAt   int64                    `json:"updated_at"`            // Last update timestamp
 	openai      *api.OpenAI              // OpenAI API
 	vision      bool                     // Whether this assistant supports vision
 	initHook    bool                     // Whether this assistant has an init hook
+}
+
+// Placeholder the assistant placeholder
+type Placeholder struct {
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Prompts     []string `json:"prompts,omitempty"`
 }
 
 // VisionCapableModels list of LLM models that support vision capabilities
