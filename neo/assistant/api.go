@@ -55,6 +55,10 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 	contents := chatMessage.NewContents()
 	options = ast.withOptions(options)
 
+	// Add RAG and Version support
+	ctx.RAG = rag != nil
+	ctx.Version = ast.vision
+
 	// Run init hook
 	res, err := ast.HookInit(c, ctx, messages, options, contents)
 	if err != nil {
@@ -454,6 +458,7 @@ func (ast *Assistant) withOptions(options map[string]interface{}) map[string]int
 		options = map[string]interface{}{}
 	}
 
+	// Add Custom Options
 	if ast.Options != nil {
 		for key, value := range ast.Options {
 			options[key] = value
@@ -461,7 +466,7 @@ func (ast *Assistant) withOptions(options map[string]interface{}) map[string]int
 	}
 
 	// Add functions
-	if ast.Functions != nil {
+	if ast.Functions != nil && len(ast.Functions) > 0 {
 		options["tools"] = ast.Functions
 		if options["tool_choice"] == nil {
 			options["tool_choice"] = "auto"
