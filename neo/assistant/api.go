@@ -47,12 +47,21 @@ func GetByConnector(connector string, name string) (*Assistant, error) {
 
 // Execute implements the execute functionality
 func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string, options map[string]interface{}) error {
+	contents := chatMessage.NewContents()
+	return ast.execute(c, ctx, input, options, contents)
+}
+
+// Execute implements the execute functionality
+func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input string, options map[string]interface{}, contents *chatMessage.Contents) error {
+
 	messages, err := ast.withHistory(ctx, input)
 	if err != nil {
 		return err
 	}
 
-	contents := chatMessage.NewContents()
+	if contents == nil {
+		contents = chatMessage.NewContents()
+	}
 	options = ast.withOptions(options)
 
 	// Add RAG and Version support
@@ -87,7 +96,7 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 
 	// Handle next action
 	if res != nil && res.Next != nil {
-		return res.Next.Execute(c, ctx)
+		return res.Next.Execute(c, ctx, contents)
 	}
 
 	// Update options if provided
@@ -105,7 +114,7 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 }
 
 // Execute the next action
-func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context) error {
+func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *chatMessage.Contents) error {
 	switch next.Action {
 
 	case "process":
@@ -166,7 +175,7 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context) error {
 		if v, ok := next.Payload["options"].(map[string]interface{}); ok {
 			options = v
 		}
-		return assistant.Execute(c, ctx, input, options)
+		return assistant.execute(c, ctx, input, options, contents)
 
 	case "exit":
 		return nil
@@ -323,11 +332,11 @@ func (ast *Assistant) streamChat(
 			value := msg.String()
 			if value != "" {
 				// Handle stream
-				res, err := ast.HookStream(c, ctx, messages, contents)
+				res, err := ast.HookStream(c, ctx, messages, msg, contents)
 				if err == nil && res != nil {
 
 					if res.Next != nil {
-						err = res.Next.Execute(c, ctx)
+						err = res.Next.Execute(c, ctx, contents)
 						if err != nil {
 							chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
 						}
@@ -361,42 +370,13 @@ func (ast *Assistant) streamChat(
 
 				res, hookErr := ast.HookDone(c, ctx, messages, contents)
 				if hookErr == nil && res != nil {
-					if res.Output != nil {
-						if len(res.Output) > 0 {
-							if contents.Data[contents.Current].Function != "" {
-								contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
-								return 0
-							} else {
-								chatMessage.New().
-									Map(map[string]interface{}{
-										"assistant_id":     ast.ID,
-										"assistant_name":   ast.Name,
-										"assistant_avatar": ast.Avatar,
-										"text":             string(res.Output[len(res.Output)-1].Bytes),
-										"done":             true,
-									}).
-									Write(c.Writer)
-							}
-							contents.Data = res.Output
-
-						} else {
-							chatMessage.New().
-								Map(map[string]interface{}{
-									"assistant_id":     ast.ID,
-									"assistant_name":   ast.Name,
-									"assistant_avatar": ast.Avatar,
-									"text":             value,
-									"done":             true,
-								}).
-								Write(c.Writer)
-						}
-					}
 
 					if res.Next != nil {
-						err := res.Next.Execute(c, ctx)
+						err := res.Next.Execute(c, ctx, contents)
 						if err != nil {
 							chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
 						}
+
 						done <- true
 						return 0 // break
 					}
@@ -419,6 +399,16 @@ func (ast *Assistant) streamChat(
 							"assistant_avatar": ast.Avatar,
 							"text":             value,
 							"done":             true,
+						}).
+						Write(c.Writer)
+				}
+
+				// Output
+				if res.Output != nil {
+					chatMessage.New().
+						Map(map[string]interface{}{
+							"text": res.Input,
+							"done": true,
 						}).
 						Write(c.Writer)
 				}
@@ -549,6 +539,12 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 	length := len(messages)
 
 	for index, message := range messages {
+
+		// Ignore the function call message
+		if message.Type == "function" {
+			continue
+		}
+
 		role := message.Role
 		if role == "" {
 			continue
