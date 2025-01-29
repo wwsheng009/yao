@@ -334,7 +334,7 @@ func (ast *Assistant) call(ctx context.Context, method string, c *gin.Context, c
 	}
 
 	// Call the method directly in the current thread
-	args = append([]interface{}{context.Map(),contents.Data}, args...)
+	args = append([]interface{}{context.Map()}, args...)
 	if scriptCtx != nil {
 		return scriptCtx.CallWith(ctx, method, args...)
 	}
