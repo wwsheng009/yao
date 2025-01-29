@@ -10,6 +10,7 @@ type Message struct {
 	Choices []struct {
 		Delta struct {
 			Content string `json:"content,omitempty"`
+			RasoningContent string `json:"reasoning_content,omitempty"`
 		} `json:"delta,omitempty"`
 		Index        int    `json:"index,omitempty"`
 		FinishReason string `json:"finish_reason,omitempty"`

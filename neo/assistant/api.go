@@ -306,7 +306,18 @@ func (ast *Assistant) streamChat(
 				chatMessage.New().Error(value).Done().Write(c.Writer)
 				return 0 // break
 			}
-
+			if msg.Type == "reasoning_content" {
+				chatMessage.New().
+					Map(map[string]interface{}{
+						"assistant_id":     ast.ID,
+						"assistant_name":   ast.Name,
+						"assistant_avatar": ast.Avatar,
+						"text":             msg.Text,
+						"done":             msg.IsDone,
+					}).
+					Write(c.Writer)
+				return 1 // continue
+			}
 			// Append content and send message
 			msg.AppendTo(contents)
 			value := msg.String()
@@ -367,7 +378,7 @@ func (ast *Assistant) streamChat(
 									Write(c.Writer)
 							}
 							contents.Data = res.Output
-							
+
 						} else {
 							chatMessage.New().
 								Map(map[string]interface{}{
@@ -446,9 +457,9 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 			data[0]["mentions"] = userMessage.Mentions
 		}
 
-		err:= storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
+		err := storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
 		if err != nil {
-			log.Error("save neo history with error:%s",err.Error())
+			log.Error("save neo history with error:%s", err.Error())
 		}
 	}
 }

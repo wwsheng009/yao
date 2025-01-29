@@ -166,7 +166,7 @@ func NewOpenAI(data []byte) *Message {
 
 	msg := New()
 	text := string(data)
-	log.Debug("openai:%s",text)
+	log.Debug("openai response:%s",text)
 	data = []byte(strings.TrimPrefix(text, "data: "))
 	switch {
 	case strings.Contains(text, `[DONE]`):
@@ -192,7 +192,17 @@ func NewOpenAI(data []byte) *Message {
 			msg.Props["function"] = toolCalls.Choices[0].Delta.ToolCalls[0].Function.Name
 			msg.Text = toolCalls.Choices[0].Delta.ToolCalls[0].Function.Arguments
 		}
+	case strings.Contains(text, `"delta":{`) && strings.Contains(text, `"reasoning_content":`):
+		var message openai.Message
+		if err := jsoniter.Unmarshal(data, &message); err != nil {
+			msg.Text = err.Error() + "\n" + string(data)
+			return msg
+		}
 
+		msg.Type = "reasoning_content"
+		if len(message.Choices) > 0 {
+			msg.Text = message.Choices[0].Delta.RasoningContent
+		}
 	case strings.Contains(text, `"delta":{`) && strings.Contains(text, `"content":`):
 		var message openai.Message
 		if err := jsoniter.Unmarshal(data, &message); err != nil {
