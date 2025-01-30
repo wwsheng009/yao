@@ -381,6 +381,23 @@ func (ast *Assistant) streamChat(
 						return 0 // break
 					}
 
+					if len(res.Output) > 0 {
+						if contents.Data[contents.Current].Function != "" {
+							contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
+							return 0
+						} else {
+							chatMessage.New().
+								Map(map[string]interface{}{
+									"assistant_id":     ast.ID,
+									"assistant_name":   ast.Name,
+									"assistant_avatar": ast.Avatar,
+									"text":             string(res.Output[len(res.Output)-1].Bytes),
+									"done":             true,
+								}).
+								Write(c.Writer)
+						}
+					}
+
 				} else if hookErr != nil {
 					chatMessage.New().
 						Map(map[string]interface{}{
@@ -404,7 +421,7 @@ func (ast *Assistant) streamChat(
 				}
 
 				// Output
-				if res.Output != nil {
+				if res != nil && res.Output != nil {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"text": res.Input,
