@@ -132,7 +132,7 @@ func (ast *Assistant) Map() map[string]interface{} {
 		"description":  ast.Description,
 		"options":      ast.Options,
 		"prompts":      ast.Prompts,
-		"functions":    ast.Functions,
+		"tools":        ast.Tools,
 		"tags":         ast.Tags,
 		"mentionable":  ast.Mentionable,
 		"automated":    ast.Automated,
@@ -199,6 +199,20 @@ func (ast *Assistant) Clone() *Assistant {
 		copy(clone.Prompts, ast.Prompts)
 	}
 
+	// Deep copy tools
+	if ast.Tools != nil {
+		clone.Tools = &ToolCalls{}
+		if ast.Tools.Tools != nil {
+			clone.Tools.Tools = make([]Tool, len(ast.Tools.Tools))
+			copy(clone.Tools.Tools, ast.Tools.Tools)
+		}
+
+		if ast.Tools.Prompts != nil {
+			clone.Tools.Prompts = make([]Prompt, len(ast.Tools.Prompts))
+			copy(clone.Tools.Prompts, ast.Tools.Prompts)
+		}
+	}
+
 	// Deep copy flows
 	if ast.Flows != nil {
 		clone.Flows = make([]map[string]interface{}, len(ast.Flows))
@@ -232,6 +246,31 @@ func (ast *Assistant) Update(data map[string]interface{}) error {
 	if v, ok := data["connector"].(string); ok {
 		ast.Connector = v
 	}
+
+	if v, has := data["tools"]; has {
+		switch tools := v.(type) {
+		case []Tool:
+			ast.Tools = &ToolCalls{
+				Tools:   tools,
+				Prompts: ast.Prompts,
+			}
+
+		case *ToolCalls:
+			ast.Tools = tools
+
+		default:
+			raw, err := jsoniter.Marshal(tools)
+			if err != nil {
+				return err
+			}
+			ast.Tools = &ToolCalls{}
+			err = jsoniter.Unmarshal(raw, &ast.Tools)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	if v, ok := data["type"].(string); ok {
 		ast.Type = v
 	}

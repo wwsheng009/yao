@@ -464,6 +464,13 @@ func (ast *Assistant) streamChat(
 						Write(c.Writer)
 				}
 
+				// Hook execute error
+				if hookErr != nil {
+					chatMessage.New().Error(hookErr.Error()).Done().Write(c.Writer)
+					done <- true
+					return 0 // break
+				}
+
 				// Output
 				if res != nil && res.Output != nil {
 					chatMessage.New().
@@ -521,7 +528,13 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 
 		// contents
 		fmt.Println("---contents ---")
-		utils.Dump(contents)
+		if contents.Data != nil {
+			fmt.Println("---contents.Data ---")
+			for _, content := range contents.Data {
+				fmt.Println(content.Map())
+			}
+			fmt.Println("---contents.Data end ---")
+		}
 		fmt.Println("---contents end ---")
 
 		// Add mentions
@@ -548,11 +561,13 @@ func (ast *Assistant) withOptions(options map[string]interface{}) map[string]int
 		}
 	}
 
-	// Add functions
-	if ast.Functions != nil && len(ast.Functions) > 0 {
-		options["tools"] = ast.Functions
-		if options["tool_choice"] == nil {
-			options["tool_choice"] = "auto"
+	// Add tool_calls
+	if ast.Tools != nil && ast.Tools.Tools != nil && len(ast.Tools.Tools) > 0 {
+		if settings, has := connectorSettings[ast.Connector]; has && settings.Tools {
+			options["tools"] = ast.Tools.Tools
+			if options["tool_choice"] == nil {
+				options["tool_choice"] = "auto"
+			}
 		}
 	}
 
@@ -569,6 +584,49 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 			messages = append(messages, *chatMessage.New().Map(map[string]interface{}{"role": prompt.Role, "content": prompt.Content, "name": name}))
 		}
 	}
+
+	// Add tool_calls
+	if ast.Tools != nil && ast.Tools.Tools != nil && len(ast.Tools.Tools) > 0 {
+		if settings, has := connectorSettings[ast.Connector]; has && !settings.Tools {
+			raw, _ := jsoniter.MarshalToString(ast.Tools.Tools)
+			messages = append(messages, *chatMessage.New().Map(map[string]interface{}{
+				"role":    "system",
+				"content": raw,
+			}))
+
+			// Add the default system prompts for tool calls
+			messages = append(messages, *chatMessage.New().Map(map[string]interface{}{
+				"role": "system",
+				"content": "## Tool Calls Match Rules:\n" +
+					"1. if the user's question is about the tool_calls, just answer one of the tool_calls, do not provide any additional information.\n" +
+					"2. if the user's question is not about the tool_calls, just answer the user's question directly.\n" +
+					"3. You can only use the functions defined in tool_calls. If none exist, reply directly to the user.",
+			}))
+			messages = append(messages, *chatMessage.New().Map(map[string]interface{}{
+				"role": "system",
+				"content": "## Tool Calls Response Rules:\n" +
+					"1. The response should be a valid JSON object.\n" +
+					"2. The JSON object should be wrapped by <tool_calls> and </tool_calls>.\n" +
+					"3. The structure of the JSON object is { \"arguments\": {...}, function:\"function_name\"}\n" +
+					"4. The function_name should be the name of the function defined in tool_calls.\n" +
+					"5. The arguments should be the arguments of the function defined in tool_calls.\n" +
+					"6. Do not add any additional information to the response.\n" +
+					"7. e.g: <tool_calls>{\"arguments\":{\"assistant_id\":\"xxxx\"},\"function\":\"select_assistant\"}</tool_calls>",
+			}))
+
+			// Add tool_calls prompts
+			if ast.Tools.Prompts != nil && len(ast.Tools.Prompts) > 0 {
+				for _, prompt := range ast.Tools.Prompts {
+					messages = append(messages, *chatMessage.New().Map(map[string]interface{}{
+						"role":    prompt.Role,
+						"content": prompt.Content,
+						"name":    prompt.Name,
+					}))
+				}
+			}
+		}
+	}
+
 	return messages
 }
 
@@ -637,8 +695,8 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	for index, message := range messages {
 
-		// Ignore the function call message
-		if message.Type == "function" {
+		// Ignore the tool call message
+		if message.Type == "tool_calls" {
 			continue
 		}
 
