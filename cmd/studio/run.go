@@ -99,7 +99,7 @@ var RunCmd = &cobra.Command{
 
 		res, err := ctx.Call(method, pargs...)
 		if err != nil {
-			fmt.Println(color.RedString("--------------------------------------"))
+			fmt.Println(color.RedString("\n--------------------------------------"))
 			fmt.Println(color.RedString(L("%s Error"), args[0]))
 			fmt.Println(color.RedString("--------------------------------------"))
 			utils.Dump(err)
@@ -108,7 +108,7 @@ var RunCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Println(color.WhiteString("--------------------------------------"))
+		fmt.Println(color.WhiteString("\n--------------------------------------"))
 		fmt.Println(color.WhiteString(L("%s Response"), args[0]))
 		fmt.Println(color.WhiteString("--------------------------------------"))
 		utils.Dump(res)

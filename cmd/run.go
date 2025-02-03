@@ -130,7 +130,7 @@ var runCmd = &cobra.Command{
 		}
 
 		if !runSilent {
-			color.White("--------------------------------------\n")
+			color.White("\n--------------------------------------\n")
 			color.White(L("%s Response\n"), name)
 			color.White("--------------------------------------\n")
 			helper.Dump(res)
