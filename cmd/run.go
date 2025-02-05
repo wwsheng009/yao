@@ -3,7 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
@@ -118,8 +121,18 @@ var runCmd = &cobra.Command{
 		ischedule.Start()
 		defer ischedule.Stop()
 
-		process := process.NewWithContext(context.Background(), name, pargs...)
-		res, err := process.Exec()
+		ctx, cancel := context.WithCancel(context.Background())
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+		// 启动一个goroutine来监听信号
+		go func() {
+			<-sigChan
+			// fmt.Printf("Received signal: %v\n", sig)
+			cancel()
+		}()
+		process := process.NewWithContext(ctx, name, pargs...)
+		err = process.Execute()
 		if err != nil {
 			if !runSilent {
 				color.Red(L("Process: %s\n"), fmt.Sprintf("%s", strings.TrimPrefix(err.Error(), "Exception|404:")))
@@ -128,7 +141,7 @@ var runCmd = &cobra.Command{
 			fmt.Printf("%s\n", err.Error())
 			return
 		}
-
+		res := process.Value()
 		if !runSilent {
 			color.White("\n--------------------------------------\n")
 			color.White(L("%s Response\n"), name)
