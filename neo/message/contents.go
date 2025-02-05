@@ -68,7 +68,7 @@ func (c *Contents) ScanTokens(currentID string, cb func(token string, id string,
 			c.UpdateType(c.token, map[string]interface{}{"text": text}, c.id)
 			c.NewText([]byte(tails), c.id) // Create new text with the tails
 			cb(c.token, c.id, false, text, tails)
-			c.token = "" // clear the token
+			c.ClearToken() // clear the token
 			return
 		}
 
@@ -88,6 +88,11 @@ func (c *Contents) ScanTokens(currentID string, cb func(token string, id string,
 			cb(name, c.id, true, text, "") // call the callback
 		}
 	}
+}
+
+// ClearToken clear the token
+func (c *Contents) ClearToken() {
+	c.token = ""
 }
 
 // RemoveLastEmpty remove the last empty data

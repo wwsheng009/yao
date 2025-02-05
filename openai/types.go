@@ -10,10 +10,22 @@ type Message struct {
 	Choices []struct {
 		Delta struct {
 			Content string `json:"content,omitempty"`
-			RasoningContent string `json:"reasoning_content,omitempty"`
 		} `json:"delta,omitempty"`
 		Index        int    `json:"index,omitempty"`
 		FinishReason string `json:"finish_reason,omitempty"`
+	} `json:"choices,omitempty"`
+}
+
+// MessageWithReasoningContent is the response from OpenAI
+type MessageWithReasoningContent struct {
+	ID      string `json:"id,omitempty"`
+	Object  string `json:"object,omitempty"`
+	Created int64  `json:"created,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Choices []struct {
+		Delta        map[string]interface{} `json:"delta,omitempty"`
+		Index        int                    `json:"index,omitempty"`
+		FinishReason string                 `json:"finish_reason,omitempty"`
 	} `json:"choices,omitempty"`
 }
 

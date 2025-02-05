@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/pkoukk/tiktoken-go"
@@ -42,6 +41,7 @@ type OpenAI struct {
 	key          string
 	model        string
 	host         string
+	baseURL      string
 	organization string
 	maxToken     int
 }
@@ -85,8 +85,16 @@ func NewOpenAI(setting map[string]interface{}) (*OpenAI, error) {
 	}
 
 	host := "https://api.openai.com"
+	baseURL := "/v1"
 	if v, ok := setting["host"].(string); ok {
+		// Trim trailing slashes
+		v = strings.TrimRight(v, "/")
 		host = v
+		parts := strings.Split(v, "/")
+		if len(parts) > 3 {
+			host = strings.Join(parts[0:3], "/")
+			baseURL = "/" + strings.Join(parts[3:], "/")
+		}
 	}
 
 	organization := ""
@@ -103,6 +111,7 @@ func NewOpenAI(setting map[string]interface{}) (*OpenAI, error) {
 		key:          key,
 		model:        model,
 		host:         host,
+		baseURL:      baseURL,
 		organization: organization,
 		maxToken:     maxToken,
 	}, nil
@@ -156,11 +165,11 @@ func (openai OpenAI) Completions(prompt interface{}, option map[string]interface
 
 	if cb != nil {
 		option["stream"] = true
-		return nil, openai.stream(context.Background(), "/completions", option, cb)
+		return nil, openai.stream(context.Background(), openai.baseURL+"/completions", option, cb)
 	}
 
 	option["stream"] = false
-	return openai.post("/completions", option)
+	return openai.post(openai.baseURL+"/completions", option)
 }
 
 // CompletionsWith Creates a completion for the provided prompt and parameters.
@@ -173,11 +182,11 @@ func (openai OpenAI) CompletionsWith(ctx context.Context, prompt interface{}, op
 
 	if cb != nil {
 		option["stream"] = true
-		return nil, openai.stream(ctx, "/completions", option, cb)
+		return nil, openai.stream(ctx, openai.baseURL+"/completions", option, cb)
 	}
 
 	option["stream"] = false
-	return openai.post("/completions", option)
+	return openai.post(openai.baseURL+"/completions", option)
 }
 
 // ChatCompletions Creates a model response for the given chat conversation.
@@ -190,11 +199,11 @@ func (openai OpenAI) ChatCompletions(messages []map[string]interface{}, option m
 
 	if cb != nil {
 		option["stream"] = true
-		return nil, openai.stream(context.Background(), "/chat/completions", option, cb)
+		return nil, openai.stream(context.Background(), openai.baseURL+"/chat/completions", option, cb)
 	}
 
 	option["stream"] = false
-	return openai.post("/chat/completions", option)
+	return openai.post(openai.baseURL+"/chat/completions", option)
 }
 
 // ChatCompletionsWith Creates a model response for the given chat conversation.
@@ -207,11 +216,11 @@ func (openai OpenAI) ChatCompletionsWith(ctx context.Context, messages []map[str
 
 	if cb != nil {
 		option["stream"] = true
-		return nil, openai.stream(ctx, "/chat/completions", option, cb)
+		return nil, openai.stream(ctx, openai.baseURL+"/chat/completions", option, cb)
 	}
 
 	option["stream"] = false
-	return openai.post("/chat/completions", option)
+	return openai.post(openai.baseURL+"/chat/completions", option)
 }
 
 // Edits Creates a new edit for the provided input, instruction, and parameters.
@@ -221,7 +230,7 @@ func (openai OpenAI) Edits(instruction string, option map[string]interface{}) (i
 		option = map[string]interface{}{}
 	}
 	option["instruction"] = instruction
-	return openai.post("/edits", option)
+	return openai.post(openai.baseURL+"/edits", option)
 }
 
 // Embeddings Creates an embedding vector representing the input text.
@@ -231,7 +240,7 @@ func (openai OpenAI) Embeddings(input interface{}, user string) (interface{}, *e
 	if user != "" {
 		payload["user"] = user
 	}
-	return openai.post("/embeddings", payload)
+	return openai.post(openai.baseURL+"/embeddings", payload)
 }
 
 // AudioTranscriptions Transcribes audio into the input language.
@@ -245,7 +254,7 @@ func (openai OpenAI) AudioTranscriptions(dataBase64 string, option map[string]in
 	if option == nil {
 		option = map[string]interface{}{}
 	}
-	return openai.postFile("/audio/transcriptions", map[string][]byte{"file": data}, option)
+	return openai.postFile(openai.baseURL+"/audio/transcriptions", map[string][]byte{"file": data}, option)
 }
 
 // ImagesGenerations Creates an image given a prompt.
@@ -260,7 +269,7 @@ func (openai OpenAI) ImagesGenerations(prompt string, option map[string]interfac
 	}
 
 	option["prompt"] = prompt
-	return openai.postWithoutModel("/images/generations", option)
+	return openai.postWithoutModel(openai.baseURL+"/images/generations", option)
 }
 
 // ImagesEdits Creates an edited or extended image given an original image and a prompt.
@@ -291,7 +300,7 @@ func (openai OpenAI) ImagesEdits(imageBase64 string, prompt string, option map[s
 	}
 
 	option["prompt"] = prompt
-	return openai.postFileWithoutModel("/images/edits", files, option)
+	return openai.postFileWithoutModel(openai.baseURL+"/images/edits", files, option)
 }
 
 // ImagesVariations Creates a variation of a given image.
@@ -312,7 +321,7 @@ func (openai OpenAI) ImagesVariations(imageBase64 string, option map[string]inte
 		option["response_format"] = "b64_json"
 	}
 
-	return openai.postFileWithoutModel("/images/variations", files, option)
+	return openai.postFileWithoutModel(openai.baseURL+"/images/variations", files, option)
 }
 
 // Tiktoken get number of tokens
@@ -380,11 +389,8 @@ func (openai OpenAI) Stream(ctx context.Context, path string, payload map[string
 
 // post post request
 func (openai OpenAI) post(path string, payload map[string]interface{}) (interface{}, *exception.Exception) {
-	basePath := openai.host
-	//check the suffix of path if is /v1, if this empty then add /v1
-	basePath = CompletePath(basePath)
 
-	url := fmt.Sprintf("%s%s", basePath, path)
+	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 	payload["model"] = openai.model
 
@@ -398,23 +404,9 @@ func (openai OpenAI) post(path string, payload map[string]interface{}) (interfac
 	return res.Data, nil
 }
 
-func CompletePath(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	if u.Path == "/" {
-		return rawURL + "v1"
-	} else if u.Path != "" {
-		return rawURL
-	} else {
-		return rawURL + "/v1"
-	}
-}
-
 // post post request without model
 func (openai OpenAI) postWithoutModel(path string, payload map[string]interface{}) (interface{}, *exception.Exception) {
-	url := fmt.Sprintf("%s%s", CompletePath(openai.host), path)
+	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 
 	req := http.New(url).
@@ -430,7 +422,7 @@ func (openai OpenAI) postWithoutModel(path string, payload map[string]interface{
 // post post request with file
 func (openai OpenAI) postFile(path string, files map[string][]byte, option map[string]interface{}) (interface{}, *exception.Exception) {
 
-	url := fmt.Sprintf("%s%s", CompletePath(openai.host), path)
+	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 	option["model"] = openai.model
 
@@ -453,7 +445,7 @@ func (openai OpenAI) postFile(path string, files map[string][]byte, option map[s
 
 // post post request with file without model
 func (openai OpenAI) postFileWithoutModel(path string, files map[string][]byte, option map[string]interface{}) (interface{}, *exception.Exception) {
-	url := fmt.Sprintf("%s%s", CompletePath(openai.host), path)
+	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 
 	req := http.New(url).
@@ -475,7 +467,7 @@ func (openai OpenAI) postFileWithoutModel(path string, files map[string][]byte, 
 
 // stream post request
 func (openai OpenAI) stream(ctx context.Context, path string, payload map[string]interface{}, cb func(data []byte) int) *exception.Exception {
-	url := fmt.Sprintf("%s%s", CompletePath(openai.host), path)
+	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 	payload["model"] = openai.model
 	req := http.New(url)
