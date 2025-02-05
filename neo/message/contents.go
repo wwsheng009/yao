@@ -63,6 +63,7 @@ func (c *Contents) ScanTokens(currentID string, cb func(token string, id string,
 			tails := ""
 			if index > 0 {
 				tails = text[index+len(token[1]):]
+				text = text[:index+len(token[1])]
 			}
 			c.UpdateType(c.token, map[string]interface{}{"text": text}, c.id)
 			c.NewText([]byte(tails), c.id) // Create new text with the tails
