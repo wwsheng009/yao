@@ -330,6 +330,8 @@ func (ast *Assistant) streamChat(
 	contents *chatMessage.Contents) error {
 
 	errorRaw := ""
+	isFirst := true
+	currentMessageID := ""
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
 		select {
 		case <-clientBreak:
@@ -359,22 +361,34 @@ func (ast *Assistant) streamChat(
 				chatMessage.New().Error(value).Done().Write(c.Writer)
 				return 0 // break
 			}
-			if msg.Type == "reasoning_content" {
-				chatMessage.New().
-					Map(map[string]interface{}{
-						"assistant_id":     ast.ID,
-						"assistant_name":   ast.Name,
-						"assistant_avatar": ast.Avatar,
-						"text":             msg.Text,
-						"done":             msg.IsDone,
-					}).
-					Write(c.Writer)
-				return 1 // continue
-			}
-			// Append content and send message
-			msg.AppendTo(contents)
-			value := msg.String()
-			if value != "" {
+
+			delta := msg.String()
+
+			// Chunk the delta
+			if delta != "" {
+				msg.AppendTo(contents) // Append content and send message
+				delta = msg.String()
+				// Scan the tokens
+				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
+					currentMessageID = id
+					msg.ID = id
+					msg.Type = token
+					msg.Text = ""                                    // clear the text
+					msg.Props = map[string]interface{}{"text": text} // Update props
+
+					// End of the token clear the text
+					if begin {
+						return
+					}
+
+					// New message with the tails
+					newMsg, err := chatMessage.NewString(tails, id)
+					if err != nil {
+						return
+					}
+					messages = append(messages, *newMsg)
+				})
+
 				// Handle stream
 				res, err := ast.HookStream(c, ctx, messages, msg, contents)
 				if err == nil && res != nil {
@@ -393,28 +407,34 @@ func (ast *Assistant) streamChat(
 						return 1 // continue
 					}
 				}
-				if msg.Type != "tool_calls" {
-					chatMessage.New().
-						Map(map[string]interface{}{
-							"assistant_id":     ast.ID,
-							"assistant_name":   ast.Name,
-							"assistant_avatar": ast.Avatar,
-							"text":             value,
-							"done":             msg.IsDone,
-						}).
-						Write(c.Writer)
+
+				// Write the message to the client
+				output := chatMessage.New().Map(map[string]interface{}{
+					"text":  delta,
+					"type":  msg.Type,
+					"done":  msg.IsDone,
+					"delta": true,
+				})
+
+				if isFirst {
+					output.Assistant(ast.ID, ast.Name, ast.Avatar)
+					isFirst = false
 				}
+				output.Write(c.Writer)
 			}
 
 			// Complete the stream
 			if msg.IsDone {
+
 				// if value == "" {
 				// 	msg.Write(c.Writer)
 				// }
 
+				// Remove the last empty data
+				contents.RemoveLastEmpty()
+
 				res, hookErr := ast.HookDone(c, ctx, messages, contents)
 				if hookErr == nil && res != nil {
-
 					if res.Next != nil {
 						err := res.Next.Execute(c, ctx, contents)
 						if err != nil {
@@ -424,7 +444,6 @@ func (ast *Assistant) streamChat(
 						done <- true
 						return 0 // break
 					}
-
 					if len(res.Output) > 0 {
 						if contents.Data[contents.Current].Function != "" {
 							contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
@@ -432,33 +451,25 @@ func (ast *Assistant) streamChat(
 						} else {
 							chatMessage.New().
 								Map(map[string]interface{}{
-									"assistant_id":     ast.ID,
-									"assistant_name":   ast.Name,
-									"assistant_avatar": ast.Avatar,
-									"text":             string(res.Output[len(res.Output)-1].Bytes),
-									"done":             true,
+									"text":  string(res.Output[len(res.Output)-1].Bytes),
+									"type":  "text",
+									"done":  true,
 								}).
 								Write(c.Writer)
+							done <- true
+							return 0 // break
 						}
 					}
 
-				} else if hookErr != nil {
+				} else if delta != "" {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"assistant_id":     ast.ID,
 							"assistant_name":   ast.Name,
 							"assistant_avatar": ast.Avatar,
-							"text":             hookErr.Error(),
-							"done":             true,
-						}).
-						Write(c.Writer)
-				} else if value != "" {
-					chatMessage.New().
-						Map(map[string]interface{}{
-							"assistant_id":     ast.ID,
-							"assistant_name":   ast.Name,
-							"assistant_avatar": ast.Avatar,
-							"text":             value,
+							"text":             delta,
+							"type":             "text",
+							"delta":            true,
 							"done":             true,
 						}).
 						Write(c.Writer)
@@ -471,16 +482,15 @@ func (ast *Assistant) streamChat(
 					return 0 // break
 				}
 
-				// Output
+				msg := chatMessage.New().Done()
 				if res != nil && res.Output != nil {
-					chatMessage.New().
+					msg = chatMessage.New().
 						Map(map[string]interface{}{
-							"text": res.Input,
+							"text": string(res.Output[len(res.Output)-1].Bytes),
 							"done": true,
-						}).
-						Write(c.Writer)
+						})
 				}
-
+				msg.Write(c.Writer)
 				done <- true
 				return 0 // break
 			}
@@ -607,9 +617,9 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 				"role": "system",
 				"content": "## Tool Calls Response Rules:\n" +
 					"1. The response should be a valid JSON object:\n" +
-					"  1.1. e.g: <tool_calls>{\"arguments\":{\"assistant_id\":\"xxxx\"},\"function\":\"select_assistant\"}</tool_calls>\n" +
+					"  1.1. e.g: <tool>{\"function\":\"function_name\",\"arguments\":{\"arg1\":\"xxxx\"}}</tool>\n" +
 					"  1.2. strict the example format, do not add any additional information.\n" +
-					"  1.3. The JSON object should be wrapped by <tool_calls> and </tool_calls>.\n" +
+					"  1.3. The JSON object should be wrapped by <tool> and </tool>.\n" +
 					"2. The structure of the JSON object is { \"arguments\": {...}, function:\"function_name\"}\n" +
 					"3. The function_name should be the name of the function defined in tool_calls.\n" +
 					"4. The arguments should be the arguments of the function defined in tool_calls.\n",
@@ -696,8 +706,8 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	for index, message := range messages {
 
-		// Ignore the tool call message
-		if message.Type == "tool_calls" {
+		// Ignore the tool, think, error
+		if message.Type == "tool" || message.Type == "think" || message.Type == "error" {
 			continue
 		}
 

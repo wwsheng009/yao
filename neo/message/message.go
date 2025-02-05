@@ -28,11 +28,13 @@ type FunctionCall struct {
 
 // Message the message
 type Message struct {
+	ID              string                 `json:"id,omitempty"`               // id for the message
 	Text            string                 `json:"text,omitempty"`             // text content
 	Type            string                 `json:"type,omitempty"`             // error, text, plan, table, form, page, file, video, audio, image, markdown, json ...
 	Props           map[string]interface{} `json:"props,omitempty"`            // props for the types
 	IsDone          bool                   `json:"done,omitempty"`             // Mark as a done message from neo
 	IsNew           bool                   `json:"new,omitempty"`              // Mark as a new message from neo
+	IsDelta         bool                   `json:"delta,omitempty"`            // Mark as a delta message from neo
 	Actions         []Action               `json:"actions,omitempty"`          // Conversation Actions for frontend
 	Attachments     []Attachment           `json:"attachments,omitempty"`      // File attachments
 	Role            string                 `json:"role,omitempty"`             // user, assistant, system ...
@@ -43,8 +45,8 @@ type Message struct {
 	Mentions        []Mention              `json:"menions,omitempty"`          // Mentions for the message ( for user  role = user )
 	Data            map[string]interface{} `json:"-"`                          // data for the message
 	Pending         bool                   `json:"-"`                          // pending for the message
-	ToolCallId  	string                 `json:"tool_call_id,omitempty"`
-	ToolCalls   	[]FunctionCall         `json:"tool_calls,omitempty"`
+	ToolCallId      string                 `json:"tool_call_id,omitempty"`
+	ToolCalls       []FunctionCall         `json:"tool_calls,omitempty"`
 }
 
 // Mention represents a mention
@@ -148,13 +150,16 @@ func NewContent(content string) ([]Message, error) {
 }
 
 // NewString create a new message from string
-func NewString(content string) (*Message, error) {
+func NewString(content string, id ...string) (*Message, error) {
 	if strings.HasPrefix(content, "{") && strings.HasSuffix(content, "}") {
 		var msg Message
 		if err := jsoniter.UnmarshalFromString(content, &msg); err != nil {
 			return nil, err
 		}
 		return &msg, nil
+	}
+	if len(id) > 0 {
+		return &Message{ID: id[0], Text: content}, nil
 	}
 	return &Message{Text: content}, nil
 }
@@ -199,7 +204,7 @@ func NewOpenAI(data []byte) *Message {
 
 	msg := New()
 	text := string(data)
-	log.Debug("openai response:%s",text)
+	log.Debug("openai response:%s", text)
 	data = []byte(strings.TrimPrefix(text, "data: "))
 	switch {
 	case strings.Contains(text, `[DONE]`):
@@ -223,7 +228,7 @@ func NewOpenAI(data []byte) *Message {
 			return msg
 		}
 
-		msg.Type = "tool_calls"
+		msg.Type = "tool_calls_native"
 		if len(toolCalls.Choices) > 0 && len(toolCalls.Choices[0].Delta.ToolCalls) > 0 {
 			msg.Props["id"] = toolCalls.Choices[0].Delta.ToolCalls[0].ID
 			msg.Props["function"] = toolCalls.Choices[0].Delta.ToolCalls[0].Function.Name
@@ -236,7 +241,7 @@ func NewOpenAI(data []byte) *Message {
 			return msg
 		}
 
-		msg.Type = "reasoning_content"
+		msg.Type = "think"
 		if len(message.Choices) > 0 {
 			msg.Text = message.Choices[0].Delta.RasoningContent
 		}
@@ -319,7 +324,7 @@ func (m *Message) String() string {
 	}
 
 	switch typ {
-	case "text":
+	case "text", "think", "tool":
 		return m.Text
 
 	case "error":
@@ -341,6 +346,12 @@ func (m *Message) SetText(text string) *Message {
 			}
 		}
 	}
+	return m
+}
+
+// SetProps set the props
+func (m *Message) SetProps(props map[string]interface{}) *Message {
+	m.Props = props
 	return m
 }
 
@@ -381,35 +392,45 @@ func (m *Message) AppendTo(contents *Contents) *Message {
 	if m.Type == "" {
 		m.Type = "text"
 	}
-
+	if contents.Current == -1 {
+		m.IsNew = true
+	}
 	switch m.Type {
-	case "text":
+	case "text", "think", "tool":
 		if m.Text != "" {
 			if m.IsNew {
-				contents.NewText([]byte(m.Text))
+				if m.Type == "think" {
+					m.Text = "<think>" + m.Text
+				}
+				contents.NewText([]byte(m.Text), m.ID)
 				return m
+			} else {
+				if m.Type == "text" && strings.Contains(string(contents.Data[contents.Current].Bytes), "<think>") &&
+					!strings.Contains(string(contents.Data[contents.Current].Bytes), "</think>") {
+					m.Text = "</think>" + m.Text
+				}
 			}
-			contents.AppendText([]byte(m.Text))
+			contents.AppendText([]byte(m.Text), m.ID)
 			return m
 		}
 		return m
 
-	case "tool_calls":
+	case "tool_calls_native":
 
 		// Set function name
 		new := false
-		if name, ok := m.Props["function"].(string); ok && name != "" {
-			contents.NewFunction(name, []byte(m.Text))
+		if name, ok := m.Props["tool"].(string); ok && name != "" {
+			contents.NewTool(name, []byte(m.Text))
 			new = true
 		}
 
 		// Set id
 		if id, ok := m.Props["id"].(string); ok && id != "" {
-			contents.SetFunctionID(id)
+			contents.SetToolID(id)
 		}
 
 		if !new {
-			contents.AppendFunction([]byte(m.Text))
+			contents.AppendTool([]byte(m.Text))
 		}
 		return m
 
@@ -494,6 +515,10 @@ func (m *Message) Map(msg map[string]interface{}) *Message {
 
 	if isNew, ok := msg["new"].(bool); ok {
 		m.IsNew = isNew
+	}
+
+	if isDelta, ok := msg["delta"].(bool); ok {
+		m.IsDelta = isDelta
 	}
 
 	if assistantID, ok := msg["assistant_id"].(string); ok {
