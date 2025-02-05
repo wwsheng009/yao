@@ -419,7 +419,7 @@ func (m *Message) AppendTo(contents *Contents) *Message {
 
 		// Set function name
 		new := false
-		if name, ok := m.Props["tool"].(string); ok && name != "" {
+		if name, ok := m.Props["function"].(string); ok && name != "" {
 			contents.NewTool(name, []byte(m.Text))
 			new = true
 		}

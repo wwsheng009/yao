@@ -363,11 +363,11 @@ func (ast *Assistant) streamChat(
 			}
 
 			delta := msg.String()
-
+			msg.AppendTo(contents) // Append content and send message
+			delta = msg.String()
 			// Chunk the delta
-			if delta != "" {
-				msg.AppendTo(contents) // Append content and send message
-				delta = msg.String()
+			if delta != "" && msg.Type != "tool_calls_native" {
+				
 				// Scan the tokens
 				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
 					currentMessageID = id
@@ -483,7 +483,7 @@ func (ast *Assistant) streamChat(
 				}
 
 				msg := chatMessage.New().Done()
-				if res != nil && res.Output != nil {
+				if res != nil && res.Output != nil && len(res.Output) > 0 {
 					msg = chatMessage.New().
 						Map(map[string]interface{}{
 							"text": string(res.Output[len(res.Output)-1].Bytes),
