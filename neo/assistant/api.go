@@ -9,9 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
-	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/kun/utils"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	chatMessage "github.com/yaoapp/yao/neo/message"
 )
@@ -117,35 +115,37 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatM
 func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *chatMessage.Contents) error {
 	switch next.Action {
 
-	case "process":
-		if next.Payload == nil {
-			return fmt.Errorf("payload is required")
-		}
+	// It's not used, because the process could be executed in the hook script
+	// It may remove in the future
+	// case "process":
+	// 	if next.Payload == nil {
+	// 		return fmt.Errorf("payload is required")
+	// 	}
 
-		name, ok := next.Payload["name"].(string)
-		if !ok {
-			return fmt.Errorf("process name should be string")
-		}
+	// 	name, ok := next.Payload["name"].(string)
+	// 	if !ok {
+	// 		return fmt.Errorf("process name should be string")
+	// 	}
 
-		args := []interface{}{}
-		if v, ok := next.Payload["args"].([]interface{}); ok {
-			args = v
-		}
+	// 	args := []interface{}{}
+	// 	if v, ok := next.Payload["args"].([]interface{}); ok {
+	// 		args = v
+	// 	}
 
-		// Add context and writer to args
-		args = append(args, ctx, c.Writer)
-		p, err := process.Of(name, args...)
-		if err != nil {
-			return fmt.Errorf("get process error: %s", err.Error())
-		}
+	// 	// Add context and writer to args
+	// 	args = append(args, ctx, c.Writer)
+	// 	p, err := process.Of(name, args...)
+	// 	if err != nil {
+	// 		return fmt.Errorf("get process error: %s", err.Error())
+	// 	}
 
-		err = p.Execute()
-		if err != nil {
-			return fmt.Errorf("execute process error: %s", err.Error())
-		}
-		defer p.Release()
+	// 	err = p.Execute()
+	// 	if err != nil {
+	// 		return fmt.Errorf("execute process error: %s", err.Error())
+	// 	}
+	// 	defer p.Release()
 
-		return nil
+	// 	return nil
 
 	case "assistant":
 		if next.Payload == nil {
@@ -203,16 +203,25 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *c
 			options = v
 		}
 
+		input.Hidden = true // not show in the history
 		messages, err := assistant.withHistory(ctx, input)
 		if err != nil {
 			return fmt.Errorf("with history error: %s", err.Error())
 		}
 
-		fmt.Println("---messages ---")
-		utils.Dump(messages)
-		fmt.Println(`chatID: `, ctx.ChatID)
+		// Create a new Text
+		// Send loading message and mark as new
+		msg := chatMessage.New().Map(map[string]interface{}{
+			"new":   true,
+			"role":  "assistant",
+			"type":  "loading",
+			"props": map[string]interface{}{"placeholder": "Calling " + assistant.Name},
+		})
+		msg.Assistant(assistant.ID, assistant.Name, assistant.Avatar)
+		msg.Write(c.Writer)
+		newContents := chatMessage.NewContents()
 
-		return assistant.execute(c, ctx, messages, options, contents)
+		return assistant.execute(c, ctx, messages, options, newContents)
 
 	case "exit":
 		return nil
@@ -283,6 +292,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				// msg.Name = content.Name
 				raw, _ := jsoniter.MarshalToString(contents.Data[contents.Current].Result)
 				msg.Text = raw
+				msg.Hidden = true
 
 				messages = append(messages, msg)
 				contents = chatMessage.NewContents()
@@ -291,7 +301,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 					chatMessage.New().Error(err).Done().Write(c.Writer)
 				}
 				//delete last two line of messages
-				messages = messages[:len(messages)-2]
+				// messages = messages[:len(messages)-2]
 			} else {
 				break
 			}
@@ -303,9 +313,6 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				break
 			}
 		}
-
-		ast.saveChatHistory(ctx, messages, contents)
-		fmt.Printf("saveChatHistory %v\n", ctx.ChatID)
 		done <- true
 	}()
 
@@ -407,33 +414,39 @@ func (ast *Assistant) streamChat(
 					}
 
 					// New message with the tails
-					newMsg, err := chatMessage.NewString(tails, id)
-					if err != nil {
-						return
+					if tails != "" {
+						newMsg, err := chatMessage.NewString(tails, id)
+						if err != nil {
+							return
+						}
+						messages = append(messages, *newMsg)
 					}
-					messages = append(messages, *newMsg)
 				})
 
 				// Handle stream
-				res, err := ast.HookStream(c, ctx, messages, msg, contents)
-				if err == nil && res != nil {
+				// The stream hook is not used, because there's no need to handle the stream output
+				// if some thing need to be handled in future, we can use the stream hook again
+				// ------------------------------------------------------------------------------
+				// res, err := ast.HookStream(c, ctx, messages, msg, contents)
+				// if err == nil && res != nil {
 
-					if res.Next != nil {
-						err = res.Next.Execute(c, ctx, contents)
-						if err != nil {
-							chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
-						}
+				// 	if res.Next != nil {
+				// 		err = res.Next.Execute(c, ctx, contents)
+				// 		if err != nil {
+				// 			chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
+				// 		}
 
-						done <- true
-						return 0 // break
-					}
+				// 		done <- true
+				// 		return 0 // break
+				// 	}
 
-					if res.Silent {
-						return 1 // continue
-					}
-				}
+				// 	if res.Silent {
+				// 		return 1 // continue
+				// 	}
+				// }
+				// ------------------------------------------------------------------------------
 
-				// Write the message to the client
+				// Write the message to the stream
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
 					"type":  msg.Type,
@@ -451,42 +464,8 @@ func (ast *Assistant) streamChat(
 			// Complete the stream
 			if msg.IsDone {
 
-				// if value == "" {
-				// 	msg.Write(c.Writer)
-				// }
-
-				// Remove the last empty data
-				contents.RemoveLastEmpty()
-
-				res, hookErr := ast.HookDone(c, ctx, messages, contents)
-				if hookErr == nil && res != nil {
-					if res.Next != nil {
-						err := res.Next.Execute(c, ctx, contents)
-						if err != nil {
-							chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
-						}
-
-						done <- true
-						return 0 // break
-					}
-					if len(res.Output) > 0 {
-						if contents.Data[contents.Current].Function != "" {
-							contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
-							return 0
-						} else {
-							chatMessage.New().
-								Map(map[string]interface{}{
-									"text":  string(res.Output[len(res.Output)-1].Bytes),
-									"type":  "text",
-									"done":  true,
-								}).
-								Write(c.Writer)
-							done <- true
-							return 0 // break
-						}
-					}
-
-				} else if delta != "" {
+				// Send the last message to the client
+				if delta != ""  && msg.Type != "tool_calls_native" {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"assistant_id":     ast.ID,
@@ -500,22 +479,40 @@ func (ast *Assistant) streamChat(
 						Write(c.Writer)
 				}
 
-				// Hook execute error
+				// Remove the last empty data
+				contents.RemoveLastEmpty()
+				res, hookErr := ast.HookDone(c, ctx, messages, contents)
+
+				// Some error occurred in the hook, return the error
 				if hookErr != nil {
 					chatMessage.New().Error(hookErr.Error()).Done().Write(c.Writer)
 					done <- true
 					return 0 // break
 				}
-
-				msg := chatMessage.New().Done()
-				if res != nil && res.Output != nil && len(res.Output) > 0 {
-					msg = chatMessage.New().
-						Map(map[string]interface{}{
-							"text": string(res.Output[len(res.Output)-1].Bytes),
-							"done": true,
-						})
+				ast.saveChatHistory(ctx, messages, contents)
+				
+				if len(res.Output) > 0 {
+					if contents.Data[contents.Current].Function != "" {
+						contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
+						return 0
+					}
 				}
-				msg.Write(c.Writer)
+				// If the hook is successful, execute the next action
+				if res != nil && res.Next != nil {
+					err := res.Next.Execute(c, ctx, contents)
+					if err != nil {
+						chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
+					}
+					done <- true
+					return 0 // break
+				}
+				
+				// The default output
+				output := chatMessage.New().Done()
+				if res != nil && res.Output != nil {
+					output = chatMessage.New().Map(map[string]interface{}{"text": res.Output, "done": true})
+				}
+				output.Write(c.Writer)
 				done <- true
 				return 0 // break
 			}
@@ -561,20 +558,12 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 			},
 		}
 
-		// contents
-		fmt.Println("---contents ---")
-		if contents.Data != nil {
-			fmt.Println("---contents.Data ---")
-			for _, content := range contents.Data {
-				fmt.Println(content.Map())
-			}
-			fmt.Println("---contents.Data end ---")
+		// if the user message is hidden, just save the assistant message
+		if userMessage.Hidden {
+			data = []map[string]interface{}{data[1]}
 		}
-		fmt.Println("---contents end ---")
-
-		// Add mentions
-		if userMessage.Mentions != nil {
-			data[0]["mentions"] = userMessage.Mentions
+		if contents.Data[contents.Current].Function != ""  {
+			data = []map[string]interface{}{data[0]}
 		}
 
 		err := storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())

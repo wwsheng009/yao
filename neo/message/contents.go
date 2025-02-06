@@ -38,7 +38,7 @@ type Data struct {
 	Bytes     []byte                 `json:"bytes"`               // the content bytes
 	Arguments []byte                 `json:"arguments,omitempty"` // the function arguments
 	Props     map[string]interface{} `json:"props"`               // the props
-	Result    interface{} 	 `json:"result"`    // the function call result
+	Result    interface{} 	 		 `json:"result"`    		  // the function call result
 }
 
 // NewContents create a new contents

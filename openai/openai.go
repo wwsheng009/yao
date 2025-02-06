@@ -146,6 +146,7 @@ func NewMoapi(model string) (*OpenAI, error) {
 		model:        model,
 		host:         url,
 		organization: organization,
+		baseURL:      "/v1",
 		maxToken:     16384,
 	}, nil
 }

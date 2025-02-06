@@ -11,7 +11,7 @@ import (
 
 // Load load AIGC
 func Load(cfg config.Config) error {
-	exts := []string{"*.ai.yml", "*.ai.yaml"}
+	exts := []string{"*.yml", "*.yaml"}
 	messages := []string{}
 	err := application.App.Walk("aigcs", func(root, file string, isdir bool) error {
 		if isdir {

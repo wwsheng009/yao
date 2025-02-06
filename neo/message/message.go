@@ -45,6 +45,7 @@ type Message struct {
 	Mentions        []Mention              `json:"menions,omitempty"`          // Mentions for the message ( for user  role = user )
 	Data            map[string]interface{} `json:"-"`                          // data for the message
 	Pending         bool                   `json:"-"`                          // pending for the message
+	Hidden          bool                   `json:"hidden,omitempty"`           // hidden for the message (not show in the UI and history)
 	ToolCallId      string                 `json:"tool_call_id,omitempty"`
 	ToolCalls       []FunctionCall         `json:"tool_calls,omitempty"`
 }
