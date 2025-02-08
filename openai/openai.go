@@ -44,6 +44,7 @@ type OpenAI struct {
 	baseURL      string
 	organization string
 	maxToken     int
+	azure        bool // Azure Credentials, "true" or "false" or ""
 }
 
 // New create a new OpenAI instance by connector id
@@ -107,6 +108,11 @@ func NewOpenAI(setting map[string]interface{}) (*OpenAI, error) {
 		maxToken = v
 	}
 
+	azure := false
+	if v, ok := setting["azure"].(string); ok {
+		azure = v == "true" || v == "1"
+	}
+
 	return &OpenAI{
 		key:          key,
 		model:        model,
@@ -114,6 +120,7 @@ func NewOpenAI(setting map[string]interface{}) (*OpenAI, error) {
 		baseURL:      baseURL,
 		organization: organization,
 		maxToken:     maxToken,
+		azure:        azure,
 	}, nil
 }
 
@@ -392,11 +399,14 @@ func (openai OpenAI) Stream(ctx context.Context, path string, payload map[string
 func (openai OpenAI) post(path string, payload map[string]interface{}) (interface{}, *exception.Exception) {
 
 	url := fmt.Sprintf("%s%s", openai.host, path)
-	key := fmt.Sprintf("Bearer %s", openai.key)
 	payload["model"] = openai.model
 
-	req := http.New(url).
-		WithHeader(map[string][]string{"Authorization": {key}})
+	req := http.New(url)
+	if openai.azure {
+		req.WithHeader(map[string][]string{"api-key": {openai.key}})
+	} else {
+		req.WithHeader(map[string][]string{"Authorization": {fmt.Sprintf("Bearer %s", openai.key)}})
+	}
 
 	res := req.Post(payload)
 	if err := openai.isError(res); err != nil {
@@ -408,10 +418,12 @@ func (openai OpenAI) post(path string, payload map[string]interface{}) (interfac
 // post post request without model
 func (openai OpenAI) postWithoutModel(path string, payload map[string]interface{}) (interface{}, *exception.Exception) {
 	url := fmt.Sprintf("%s%s", openai.host, path)
-	key := fmt.Sprintf("Bearer %s", openai.key)
-
-	req := http.New(url).
-		WithHeader(map[string][]string{"Authorization": {key}})
+	req := http.New(url)
+	if openai.azure {
+		req.WithHeader(map[string][]string{"api-key": {openai.key}})
+	} else {
+		req.WithHeader(map[string][]string{"Authorization": {fmt.Sprintf("Bearer %s", openai.key)}})
+	}
 
 	res := req.Post(payload)
 	if err := openai.isError(res); err != nil {
@@ -424,14 +436,15 @@ func (openai OpenAI) postWithoutModel(path string, payload map[string]interface{
 func (openai OpenAI) postFile(path string, files map[string][]byte, option map[string]interface{}) (interface{}, *exception.Exception) {
 
 	url := fmt.Sprintf("%s%s", openai.host, path)
-	key := fmt.Sprintf("Bearer %s", openai.key)
 	option["model"] = openai.model
 
-	req := http.New(url).
-		WithHeader(map[string][]string{
-			"Authorization": {key},
-			"Content-Type":  {"multipart/form-data"},
-		})
+	req := http.New(url).WithHeader(map[string][]string{"Content-Type": {"multipart/form-data"}})
+
+	if openai.azure {
+		req.WithHeader(map[string][]string{"api-key": {openai.key}})
+	} else {
+		req.WithHeader(map[string][]string{"Authorization": {fmt.Sprintf("Bearer %s", openai.key)}})
+	}
 
 	for name, data := range files {
 		req.AddFileBytes(name, fmt.Sprintf("%s.mp3", name), data)
@@ -449,11 +462,12 @@ func (openai OpenAI) postFileWithoutModel(path string, files map[string][]byte, 
 	url := fmt.Sprintf("%s%s", openai.host, path)
 	key := fmt.Sprintf("Bearer %s", openai.key)
 
-	req := http.New(url).
-		WithHeader(map[string][]string{
-			"Authorization": {key},
-			"Content-Type":  {"multipart/form-data"},
-		})
+	req := http.New(url).WithHeader(map[string][]string{"Authorization": {key}})
+	if openai.azure {
+		req.WithHeader(map[string][]string{"api-key": {openai.key}})
+	} else {
+		req.WithHeader(map[string][]string{"Authorization": {fmt.Sprintf("Bearer %s", openai.key)}})
+	}
 
 	for name, data := range files {
 		req.AddFileBytes(name, fmt.Sprintf("%s.mp3", name), data)
@@ -469,16 +483,17 @@ func (openai OpenAI) postFileWithoutModel(path string, files map[string][]byte, 
 // stream post request
 func (openai OpenAI) stream(ctx context.Context, path string, payload map[string]interface{}, cb func(data []byte) int) *exception.Exception {
 	url := fmt.Sprintf("%s%s", openai.host, path)
-	key := fmt.Sprintf("Bearer %s", openai.key)
 	payload["model"] = openai.model
 	req := http.New(url)
-	err := req.
-		WithHeader(map[string][]string{
-			"Content-Type":  {"application/json; charset=utf-8"},
-			"Authorization": {key},
-		}).
-		Stream(ctx, "POST", payload, cb)
+	req.WithHeader(map[string][]string{"Content-Type": {"application/json; charset=utf-8"}})
 
+	if openai.azure {
+		req.WithHeader(map[string][]string{"api-key": {openai.key}})
+	} else {
+		req.WithHeader(map[string][]string{"Authorization": {fmt.Sprintf("Bearer %s", openai.key)}})
+	}
+
+	err := req.Stream(ctx, "POST", payload, cb)
 	if err != nil {
 		return exception.New(err.Error(), 500)
 	}

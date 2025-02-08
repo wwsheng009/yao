@@ -2,6 +2,7 @@ package message
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -198,7 +199,16 @@ func NewAny(content interface{}) (*Message, error) {
 }
 
 // NewOpenAI create a new message from OpenAI response
+// @todo:
+//
+//	this function need to be refactored
 func NewOpenAI(data []byte, isThinking bool) *Message {
+
+	// For Debug
+	if os.Getenv("YAO_AGENT_DEBUG") == "true" {
+		fmt.Printf("%s\n", string(data))
+	}
+
 	if data == nil || len(data) == 0 {
 		return nil
 	}
@@ -218,7 +228,7 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 		msg.IsDone = true
 	}
 	switch {
-	case strings.Contains(text, `"delta":{`) && strings.Contains(text, `"tool_calls"`):
+	case strings.Contains(text, `"delta":{`) && strings.Contains(text, `"tool_calls"`) && !strings.Contains(text, `"tool_calls":null`):
 		var toolCalls openai.ToolCalls
 		if err := jsoniter.Unmarshal(data, &toolCalls); err != nil {
 			color.Red("JSON parse error: %s", err.Error())
@@ -270,7 +280,7 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 			return msg
 		}
 
-	case strings.Index(text, `{"code":`) == 0:
+	case strings.Index(text, `{"code":`) == 0 || strings.Index(text, `"statusCode":`) > 0:
 		var errorMessage openai.Error
 		if err := jsoniter.UnmarshalFromString(text, &errorMessage); err != nil {
 			color.Red("JSON parse error: %s", err.Error())
@@ -297,6 +307,10 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 		}
 		msg.Type = "error"
 		msg.Text = errorMessage.Error.Message
+		msg.IsDone = true
+		break
+
+	case strings.Contains(text, `"usage":`) && !strings.Contains(text, `"chat.completion.chunk`):
 		msg.IsDone = true
 		break
 
