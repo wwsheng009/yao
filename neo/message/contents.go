@@ -31,13 +31,10 @@ type Contents struct {
 
 // Data the data of the content
 type Data struct {
-	Type      string                 `json:"type"`                // text, function, error, think, tool
-	ID        string                 `json:"id"`                  // the id of the content
-	Function  string                 `json:"function"`            // the function name
-	Bytes     []byte                 `json:"bytes"`               // the content bytes
-	Arguments []byte                 `json:"arguments,omitempty"` // the function arguments
-	Props     map[string]interface{} `json:"props"`               // the props
-	Result    interface{} 	 		 `json:"result"`    		  // the function call result
+	Type  string                 `json:"type"`  // text, function, error, think, tool
+	ID    string                 `json:"id"`    // the id of the content
+	Bytes []byte                 `json:"bytes"` // the content bytes
+	Props map[string]interface{} `json:"props"` // the props
 }
 
 // NewContents create a new contents
@@ -119,22 +116,6 @@ func (c *Contents) NewText(bytes []byte, id ...string) *Contents {
 	return c
 }
 
-// NewTool create a new tool data and append to the contents
-func (c *Contents) NewTool(function string, arguments []byte, id ...string) *Contents {
-
-	data := Data{
-		Type:      "tool",
-		Function:  function,
-		Arguments: arguments,
-	}
-	if len(id) > 0 && id[0] != "" {
-		data.ID = id[0]
-	}
-	c.Data = append(c.Data, data)
-	c.Current++
-	return c
-}
-
 // NewType create a new type data and append to the contents
 func (c *Contents) NewType(typ string, props map[string]interface{}, id ...string) *Contents {
 
@@ -165,15 +146,6 @@ func (c *Contents) UpdateType(typ string, props map[string]interface{}, id ...st
 	return c
 }
 
-// SetToolID set the id of the current tool content
-func (c *Contents) SetToolID(id string) *Contents {
-	if c.Current == -1 {
-		c.NewTool("", []byte{})
-	}
-	c.Data[c.Current].ID = id
-	return c
-}
-
 // NewError create a new error data and append to the contents
 func (c *Contents) NewError(err []byte) *Contents {
 	c.Data = append(c.Data, Data{
@@ -195,16 +167,6 @@ func (c *Contents) AppendText(bytes []byte, id ...string) *Contents {
 		c.Data[c.Current].ID = id[0]
 	}
 	c.Data[c.Current].Bytes = append(c.Data[c.Current].Bytes, bytes...)
-	return c
-}
-
-// AppendTool append the tool to the current content
-func (c *Contents) AppendTool(arguments []byte, id ...string) *Contents {
-	if c.Current == -1 {
-		c.NewTool("", arguments, id...)
-		return c
-	}
-	c.Data[c.Current].Arguments = append(c.Data[c.Current].Arguments, arguments...)
 	return c
 }
 
@@ -255,24 +217,6 @@ func (data *Data) Map() (map[string]interface{}, error) {
 	if data.Props != nil && data.Type != "text" {
 		v["props"] = data.Props
 	}
-
-	if data.Arguments != nil && len(data.Arguments) > 0 {
-		var vv interface{} = nil
-		err := jsoniter.Unmarshal(data.Arguments, &vv)
-		if err != nil {
-			return nil, err
-		}
-		v["arguments"] = vv
-	}
-
-	if data.Function != "" {
-		v["function"] = data.Function
-	}
-
-	if data.Result != nil {
-		v["result"] = data.Result
-	}
-
 	return v, nil
 }
 
@@ -293,21 +237,18 @@ func (data *Data) MarshalJSON() ([]byte, error) {
 		v["props"] = data.Props
 	}
 
-	if data.Arguments != nil && len(data.Arguments) > 0 {
-		var vv interface{} = nil
-		err := jsoniter.Unmarshal(data.Arguments, &vv)
-		if err != nil {
-			return nil, err
-		}
-		v["arguments"] = vv
-	}
-
-	if data.Function != "" {
-		v["function"] = data.Function
-	}
-	if data.Result != nil {
-		data,_ := jsoniter.MarshalToString(data.Result)
-		v["result"] = data
-	}
 	return jsoniter.Marshal(v)
+}
+func (data *Data) UnmarshalJSON(input []byte) error {
+	origin := map[string]interface{}{}
+	err := jsoniter.Unmarshal(input, &origin)
+	if err != nil {
+		return err
+	}
+	*data = Data{}
+	data.ID = origin["id"].(string)
+	data.Type = origin["type"].(string)
+	data.Bytes = []byte(origin["text"].(string))
+	data.Props = origin["props"].(map[string]interface{})
+	return nil
 }

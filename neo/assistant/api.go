@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/kun/log"
+	"github.com/yaoapp/kun/utils"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	chatMessage "github.com/yaoapp/yao/neo/message"
 )
@@ -55,12 +57,12 @@ func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string,
 }
 
 // Execute implements the execute functionality
-func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatMessage.Message, options map[string]interface{}, contents *chatMessage.Contents) error {
+func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatMessage.Message, userOptions map[string]interface{}, contents *chatMessage.Contents) error {
 
 	if contents == nil {
 		contents = chatMessage.NewContents()
 	}
-	options = ast.withOptions(options)
+	options := ast.withOptions(userOptions)
 
 	// Add RAG and Version support
 	ctx.RAG = rag != nil
@@ -77,25 +79,6 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatM
 		return err
 	}
 	refAst := &ast
-	// Switch to the new assistant if necessary
-	if res != nil && res.AssistantID != ctx.AssistantID {
-		newAst, err := Get(res.AssistantID)
-		if err != nil {
-			chatMessage.New().
-				Assistant(ast.ID, ast.Name, ast.Avatar).
-				Error(err).
-				Done().
-				Write(c.Writer)
-			return err
-		}
-		// *ast = *newAst
-		refAst = &newAst
-	}
-
-	// Handle next action
-	if res != nil && res.Next != nil {
-		return res.Next.Execute(c, ctx, contents)
-	}
 
 	// Update options if provided
 	if res != nil && res.Options != nil {
@@ -105,6 +88,45 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatM
 	// messages
 	if res != nil && res.Input != nil {
 		input = res.Input
+	}
+
+	// Handle next action
+	// It's not used, return the new assistant_id and chat_id
+	// if res != nil && res.Next != nil {
+	// 	return res.Next.Execute(c, ctx, contents)
+	// }
+
+	// Switch to the new assistant if necessary
+	if res != nil && res.AssistantID != "" && res.AssistantID != ctx.AssistantID {
+		newAst, err := Get(res.AssistantID)
+		if err != nil {
+			chatMessage.New().
+				Assistant(ast.ID, ast.Name, ast.Avatar).
+				Error(err).
+				Done().
+				Write(c.Writer)
+			return err
+		}
+		refAst = &newAst
+
+		// Reset Message Contents
+		last := input[len(input)-1]
+		input, err = newAst.withHistory(ctx, last)
+		if err != nil {
+			return err
+		}
+
+		// Reset options
+		options = newAst.withOptions(userOptions)
+
+		// Update options if provided
+		if res.Options != nil {
+			options = res.Options
+		}
+
+		// Update assistant id
+		ctx.AssistantID = res.AssistantID
+		return newAst.handleChatStream(c, ctx, input, options, contents)
 	}
 
 	// Only proceed with chat stream if no specific next action was handled
@@ -225,6 +247,8 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *c
 		msg.Write(c.Writer)
 		newContents := chatMessage.NewContents()
 
+		// Update the context id
+		ctx.AssistantID = assistant.ID
 		return assistant.execute(c, ctx, messages, options, newContents)
 
 	case "exit":
@@ -272,11 +296,23 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 		}
 		count := 0
 		for {
-			if len(contents.Data) > 0 && contents.Data[contents.Current].Function != "" {
+			if len(contents.Data) > 0 && contents.Data[contents.Current].Props["function"] != "" {
+				fname, ok := contents.Data[contents.Current].Props["function"].(string)
+				if !ok {
+					continue
+				}
+				arguments, ok := contents.Data[contents.Current].Props["arguments"].(string)
+				if !ok {
+					continue
+				}
+				result, ok := contents.Data[contents.Current].Props["result"]
+				if !ok {
+					continue
+				}
 				count++
 				var asstMmsg chatMessage.Message
 				asstMmsg.Role = "assistant"
-				asstMmsg.Name = contents.Data[contents.Current].Function
+				asstMmsg.Name = fname
 				asstMmsg.Text = ""
 				asstMmsg.ToolCalls = []chatMessage.FunctionCall{
 					{
@@ -284,8 +320,8 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 						ID:    contents.Data[contents.Current].ID,
 						Type:  "function",
 						Function: chatMessage.FCAttributes{
-							Name:      contents.Data[contents.Current].Function,
-							Arguments: string(contents.Data[contents.Current].Bytes),
+							Name:      fname,
+							Arguments: arguments,
 						},
 					},
 				}
@@ -294,7 +330,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				msg.Role = "tool"
 				msg.ToolCallId = contents.Data[contents.Current].ID
 				// msg.Name = content.Name
-				raw, _ := jsoniter.MarshalToString(contents.Data[contents.Current].Result)
+				raw, _ := jsoniter.MarshalToString(result)
 				msg.Text = raw
 				msg.Hidden = true
 
@@ -344,6 +380,9 @@ func (ast *Assistant) streamChat(
 	isFirst := true
 	isFirstThink := true
 	isThinking := false
+
+	isFirstTool := true
+	isTool := false
 	currentMessageID := ""
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
 		select {
@@ -399,12 +438,39 @@ func (ast *Assistant) streamChat(
 				contents.ClearToken()
 			}
 
+			// for native tool_calls response
+			if msg.Type == "tool_calls_native" {
+				if isFirstTool {
+					msg.Text = "<tool>\n" + msg.Text // add the tool_calls begin tag
+					isFirstTool = false
+					isTool = true
+				}
+			}
+
+			// for tool response
+			if isTool && msg.Type != "tool_calls_native" {
+
+				if msg.IsDone {
+					end := chatMessage.New().Map(map[string]interface{}{"text": "}\n</tool>\n", "type": "tool", "delta": true})
+					end.Write(c.Writer)
+					end.ID = currentMessageID
+					end.AppendTo(contents)
+					contents.UpdateType("tool", map[string]interface{}{"text": contents.Text()}, currentMessageID)
+					isTool = false
+				} else {
+					msg.Text = "\n</tool>\n" + msg.Text // add the tool_calls close tag
+				}
+
+				isTool = false
+			}
+
 			delta := msg.String()
-			msg.AppendTo(contents) // Append content and send message
-			delta = msg.String()
+			// delta = msg.String()
 			// Chunk the delta
-			if delta != "" && msg.Type != "tool_calls_native" {
-				
+			if delta != "" {
+
+				msg.AppendTo(contents) // Append content and send message
+
 				// Scan the tokens
 				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
 					currentMessageID = id
@@ -452,9 +518,14 @@ func (ast *Assistant) streamChat(
 				// ------------------------------------------------------------------------------
 
 				// Write the message to the stream
+				msgType := msg.Type
+				if msgType == "tool_calls_native" {
+					msgType = "tool"
+				}
+
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
-					"type":  msg.Type,
+					"type":  msgType,
 					"done":  msg.IsDone,
 					"delta": true,
 				})
@@ -470,7 +541,7 @@ func (ast *Assistant) streamChat(
 			if msg.IsDone {
 
 				// Send the last message to the client
-				if delta != ""  && msg.Type != "tool_calls_native" {
+				if delta != "" {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"assistant_id":     ast.ID,
@@ -495,10 +566,10 @@ func (ast *Assistant) streamChat(
 					return 0 // break
 				}
 				ast.saveChatHistory(ctx, messages, contents)
-				
+
 				if len(res.Output) > 0 {
-					if contents.Data[contents.Current].Function != "" {
-						contents.Data[contents.Current].Result = res.Output[len(res.Output)-1].Result
+					if contents.Data[contents.Current].Props["function"] != "" {
+						contents.Data[contents.Current].Props["result"] = string(res.Output[len(res.Output)-1].Bytes)
 						return 0
 					}
 				}
@@ -511,7 +582,7 @@ func (ast *Assistant) streamChat(
 					done <- true
 					return 0 // break
 				}
-				
+
 				// The default output
 				output := chatMessage.New().Done()
 				if res != nil && res.Output != nil {
@@ -567,7 +638,7 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 		if userMessage.Hidden {
 			data = []map[string]interface{}{data[1]}
 		}
-		if contents.Data[contents.Current].Function != ""  {
+		if contents.Data[contents.Current].Props["function"] != "" {
 			data = []map[string]interface{}{data[0]}
 		}
 
@@ -758,7 +829,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		}
 
 		if name := message.Name; name != "" {
-			newMessage["name"] = name
+			newMessage["name"] = stringHash(name)
 		}
 		if role == "tool" {
 			newMessage["tool_call_id"] = message.ToolCallId
@@ -797,6 +868,13 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		newMessages = append(newMessages, newMessage)
 	}
 	newMessages = MergeMessages(newMessages)
+
+	// For debug environment, print the request messages
+	if os.Getenv("YAO_AGENT_PRINT_REQUEST_MESSAGES") == "true" {
+		fmt.Println("--------------------------------")
+		utils.Dump(newMessages)
+		fmt.Println("--------------------------------")
+	}
 
 	return newMessages, nil
 }
