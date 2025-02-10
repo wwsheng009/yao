@@ -710,7 +710,7 @@ func (conv *Xun) GetChat(sid string, cid string) (*ChatInfo, error) {
 
 	// Return nil if chat_id is nil (means no chat found)
 	if row.Get("chat_id") == nil {
-		return nil, nil
+		return nil, fmt.Errorf("chat not found for id: %s", cid)
 	}
 
 	chat := map[string]interface{}{

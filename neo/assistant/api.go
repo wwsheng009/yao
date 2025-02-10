@@ -296,7 +296,10 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 		}
 		count := 0
 		for {
-			if len(contents.Data) > 0 && contents.Data[contents.Current].Props["function"] != "" {
+			if len(contents.Data) == 0 || contents.Data[contents.Current].Props == nil {
+				break
+			}
+			if contents.Data[contents.Current].Type == "tool" {
 				fname, ok := contents.Data[contents.Current].Props["function"].(string)
 				if !ok {
 					continue
@@ -305,11 +308,15 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				if !ok {
 					continue
 				}
-				result, ok := contents.Data[contents.Current].Props["result"]
+				id, ok := contents.Data[contents.Current].Props["id"].(string)
 				if !ok {
 					continue
 				}
-				count++
+				result, ok := contents.Data[contents.Current].Props["result"].(string)
+				if !ok {
+					continue
+				}
+
 				var asstMmsg chatMessage.Message
 				asstMmsg.Role = "assistant"
 				asstMmsg.Name = fname
@@ -317,7 +324,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				asstMmsg.ToolCalls = []chatMessage.FunctionCall{
 					{
 						Index: 0,
-						ID:    contents.Data[contents.Current].ID,
+						ID:    id,
 						Type:  "function",
 						Function: chatMessage.FCAttributes{
 							Name:      fname,
@@ -328,10 +335,10 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				messages = append(messages, asstMmsg)
 				var msg chatMessage.Message
 				msg.Role = "tool"
-				msg.ToolCallId = contents.Data[contents.Current].ID
+				msg.ToolCallId = id
 				// msg.Name = content.Name
-				raw, _ := jsoniter.MarshalToString(result)
-				msg.Text = raw
+				// raw, _ := jsoniter.MarshalToString(result)
+				msg.Text = result
 				msg.Hidden = true
 
 				messages = append(messages, msg)
@@ -340,6 +347,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				if err != nil {
 					chatMessage.New().Error(err).Done().Write(c.Writer)
 				}
+				count++
 				//delete last two line of messages
 				// messages = messages[:len(messages)-2]
 			} else {
@@ -463,21 +471,27 @@ func (ast *Assistant) streamChat(
 
 				isTool = false
 			}
+			if isTool && msg.IsDone {
+				msg.Text += "}\n</tool>\n"
+			}
 
 			delta := msg.String()
-			// delta = msg.String()
 			// Chunk the delta
 			if delta != "" {
 
 				msg.AppendTo(contents) // Append content and send message
 
 				// Scan the tokens
-				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
+				callback := func(token string, id string, begin bool, text string, tails string) {
 					currentMessageID = id
 					msg.ID = id
 					msg.Type = token
-					msg.Text = ""                                    // clear the text
-					msg.Props = map[string]interface{}{"text": text} // Update props
+					msg.Text = "" // clear the text
+					if msg.Props == nil {
+						msg.Props = map[string]interface{}{"text": text} // Update props
+					} else {
+						msg.Props["text"] = text
+					}
 
 					// End of the token clear the text
 					if begin {
@@ -492,7 +506,13 @@ func (ast *Assistant) streamChat(
 						}
 						messages = append(messages, *newMsg)
 					}
-				})
+				}
+				contents.ScanTokens(currentMessageID, callback)
+
+				if isTool && msg.IsDone {
+					contents.ScanTokens(currentMessageID, callback)
+					isTool = false
+				}
 
 				// Handle stream
 				// The stream hook is not used, because there's no need to handle the stream output
@@ -526,7 +546,7 @@ func (ast *Assistant) streamChat(
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
 					"type":  msgType,
-					"done":  msg.IsDone,
+					"done":  msg.IsDone && msg.Type != "tool",
 					"delta": true,
 				})
 
@@ -534,14 +554,16 @@ func (ast *Assistant) streamChat(
 					output.Assistant(ast.ID, ast.Name, ast.Avatar)
 					isFirst = false
 				}
-				output.Write(c.Writer)
+				if msg.Type != "tool" {
+					output.Write(c.Writer)
+				}
 			}
 
 			// Complete the stream
 			if msg.IsDone {
 
 				// Send the last message to the client
-				if delta != "" {
+				if delta != "" && msg.Type != "tool" {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"assistant_id":     ast.ID,
@@ -550,7 +572,7 @@ func (ast *Assistant) streamChat(
 							"text":             delta,
 							"type":             "text",
 							"delta":            true,
-							"done":             true,
+							"done":             msg.IsDone, //msg.Type != "tool",
 						}).
 						Write(c.Writer)
 				}
@@ -568,7 +590,7 @@ func (ast *Assistant) streamChat(
 				ast.saveChatHistory(ctx, messages, contents)
 
 				if len(res.Output) > 0 {
-					if contents.Data[contents.Current].Props["function"] != "" {
+					if contents.Data[contents.Current].Props["function"] != nil && contents.Data[contents.Current].Props["function"] != "" {
 						contents.Data[contents.Current].Props["result"] = string(res.Output[len(res.Output)-1].Bytes)
 						return 0
 					}

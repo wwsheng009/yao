@@ -242,6 +242,7 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 			arguments := chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments
 			msg.Props["function"] = function
 			msg.Props["arguments"] = arguments
+			msg.Props["id"] = id
 			text := arguments
 			if id != "" {
 				text = fmt.Sprintf(`{"id": "%s", "function": "%s", "arguments": %s`, id, function, arguments)
@@ -533,22 +534,20 @@ func (m *Message) AppendTo(contents *Contents) *Message {
 	if m.Type == "" {
 		m.Type = "text"
 	}
-	if contents.Current == -1 {
-		m.IsNew = true
-	}
+
 	switch m.Type {
 	case "text", "think", "tool", "tool_calls_native":
 		if m.Text != "" {
 			if m.IsNew {
 				contents.NewText([]byte(m.Text), m.ID)
+				contents.UpdateType("text",m.Props, m.ID)
 				return m
 			}
 			contents.AppendText([]byte(m.Text), m.ID)
+			contents.UpdateType("text",m.Props, m.ID)
 			return m
 		}
-		if m.Type == "tool_calls_native" {
-			contents.UpdateType("tool_calls_native", m.Props)
-		}
+
 		return m
 
 	case "loading", "error", "action": // Ignore loading, action and error messages

@@ -142,7 +142,15 @@ func (c *Contents) UpdateType(typ string, props map[string]interface{}, id ...st
 		c.Data[c.Current].ID = id[0]
 	}
 	c.Data[c.Current].Type = typ
-	c.Data[c.Current].Props = props
+	// c.Data[c.Current].Props = props
+	if c.Data[c.Current].Props == nil  {
+		c.Data[c.Current].Props = props
+	}else{
+		for key, value := range props {
+			c.Data[c.Current].Props[key] = value
+		}
+	}
+	
 	return c
 }
 
@@ -246,9 +254,17 @@ func (data *Data) UnmarshalJSON(input []byte) error {
 		return err
 	}
 	*data = Data{}
-	data.ID = origin["id"].(string)
-	data.Type = origin["type"].(string)
-	data.Bytes = []byte(origin["text"].(string))
-	data.Props = origin["props"].(map[string]interface{})
+	if origin["id"] != nil {
+		data.ID = origin["id"].(string)
+	}
+	if origin["type"] != nil {
+		data.Type = origin["type"].(string)
+	}
+	if origin["text"] != nil {
+		data.Bytes = []byte(origin["text"].(string))
+	}
+	if origin["props"] != nil {
+		data.Props = origin["props"].(map[string]interface{})
+	}
 	return nil
 }
