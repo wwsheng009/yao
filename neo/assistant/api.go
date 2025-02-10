@@ -290,60 +290,79 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 
 	// Chat with AI in background
 	go func() {
-		err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents)
+		err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, false)
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
 		}
 		count := 0
 		for {
-			if len(contents.Data) == 0 || contents.Data[contents.Current].Props == nil {
+			currentLine := contents.Data[contents.Current]
+			if len(contents.Data) == 0 || currentLine.Type != "tool" {
 				break
 			}
-			if contents.Data[contents.Current].Type == "tool" {
-				fname, ok := contents.Data[contents.Current].Props["function"].(string)
-				if !ok {
-					continue
-				}
-				arguments, ok := contents.Data[contents.Current].Props["arguments"].(string)
-				if !ok {
-					continue
-				}
-				id, ok := contents.Data[contents.Current].Props["id"].(string)
-				if !ok {
-					continue
-				}
-				result, ok := contents.Data[contents.Current].Props["result"].(string)
-				if !ok {
-					continue
-				}
+			if currentLine.Type == "tool" &&
+				currentLine.Props["result"] != nil {
 
-				var asstMmsg chatMessage.Message
-				asstMmsg.Role = "assistant"
-				asstMmsg.Name = fname
-				asstMmsg.Text = ""
-				asstMmsg.ToolCalls = []chatMessage.FunctionCall{
-					{
-						Index: 0,
-						ID:    id,
-						Type:  "function",
-						Function: chatMessage.FCAttributes{
-							Name:      fname,
-							Arguments: arguments,
+				result, ok := currentLine.Props["result"].(string)
+				if !ok {
+					continue
+				}
+				if currentLine.Props != nil &&
+					currentLine.Props["function"] != nil &&
+					currentLine.Props["arguments"] != nil &&
+					currentLine.Props["id"] != nil {
+
+					fname, ok := currentLine.Props["function"].(string)
+					if !ok {
+						continue
+					}
+					arguments, ok := currentLine.Props["arguments"].(string)
+					if !ok {
+						continue
+					}
+					id, ok := currentLine.Props["id"].(string)
+					if !ok {
+						continue
+					}
+
+					var asstMmsg chatMessage.Message
+					asstMmsg.Role = "assistant"
+					asstMmsg.Name = fname
+					asstMmsg.Text = ""
+					asstMmsg.ToolCalls = []chatMessage.FunctionCall{
+						{
+							Index: 0,
+							ID:    id,
+							Type:  "function",
+							Function: chatMessage.FCAttributes{
+								Name:      fname,
+								Arguments: arguments,
+							},
 						},
-					},
-				}
-				messages = append(messages, asstMmsg)
-				var msg chatMessage.Message
-				msg.Role = "tool"
-				msg.ToolCallId = id
-				// msg.Name = content.Name
-				// raw, _ := jsoniter.MarshalToString(result)
-				msg.Text = result
-				msg.Hidden = true
+					}
+					messages = append(messages, asstMmsg)
+					var msg chatMessage.Message
+					msg.Role = "tool"
+					msg.ToolCallId = id
+					msg.Text = result
+					msg.Hidden = true
 
-				messages = append(messages, msg)
+					messages = append(messages, msg)
+				} else {
+					var msg chatMessage.Message
+					fname := currentLine.Props["function"].(string)
+
+					msg.Role = "system"
+					msg.Text = "function call is finished. " + fname
+
+					messages = append(messages, msg)
+
+					msg.Role = "user"
+					msg.Text = "function call result is :" + result
+					messages = append(messages, msg)
+				}
 				contents = chatMessage.NewContents()
-				err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents)
+				err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true)
 				if err != nil {
 					chatMessage.New().Error(err).Done().Write(c.Writer)
 				}
@@ -353,7 +372,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			} else {
 				break
 			}
-			if count > 5 {
+			if count > 2 {
 				contents = chatMessage.NewContents()
 				contents.AppendText([]byte("Too many function calls"))
 				err = fmt.Errorf("too many function calls")
@@ -382,7 +401,7 @@ func (ast *Assistant) streamChat(
 	options map[string]interface{},
 	clientBreak chan bool,
 	done chan bool,
-	contents *chatMessage.Contents) error {
+	contents *chatMessage.Contents, recall bool) error {
 
 	errorRaw := ""
 	isFirst := true
@@ -392,6 +411,7 @@ func (ast *Assistant) streamChat(
 	isFirstTool := true
 	isTool := false
 	currentMessageID := ""
+	isRecall := recall
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
 		select {
 		case <-clientBreak:
@@ -546,17 +566,19 @@ func (ast *Assistant) streamChat(
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
 					"type":  msgType,
+					"new":   isRecall,
 					"done":  msg.IsDone && msg.Type != "tool",
 					"delta": true,
 				})
+				isRecall = false
 
 				if isFirst {
 					output.Assistant(ast.ID, ast.Name, ast.Avatar)
 					isFirst = false
 				}
-				if msg.Type != "tool" {
-					output.Write(c.Writer)
-				}
+				// if msg.Type != "tool" {
+				output.Write(c.Writer)
+				// }
 			}
 
 			// Complete the stream
@@ -590,7 +612,7 @@ func (ast *Assistant) streamChat(
 				ast.saveChatHistory(ctx, messages, contents)
 
 				if len(res.Output) > 0 {
-					if contents.Data[contents.Current].Props["function"] != nil && contents.Data[contents.Current].Props["function"] != "" {
+					if contents.Data[contents.Current].Type == "tool" {
 						contents.Data[contents.Current].Props["result"] = string(res.Output[len(res.Output)-1].Bytes)
 						return 0
 					}

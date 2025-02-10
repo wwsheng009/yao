@@ -534,7 +534,9 @@ func (m *Message) AppendTo(contents *Contents) *Message {
 	if m.Type == "" {
 		m.Type = "text"
 	}
-
+	if !m.IsNew && contents.Current == -1 {
+		m.IsNew = true
+	}
 	switch m.Type {
 	case "text", "think", "tool", "tool_calls_native":
 		if m.Text != "" {

@@ -203,6 +203,7 @@ func (ast *Assistant) HookDone(c *gin.Context, context chatctx.Context, input []
 					if err != nil {
 						props["error"] = fmt.Sprintf("Can not parse the tool call: %s\n--original--\n%s", err.Error(), text)
 					}
+					contents.UpdateType("tool",props)
 				}
 
 				output = append(output, message.Data{Type: "tool", Props: props})
