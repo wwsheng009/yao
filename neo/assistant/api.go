@@ -300,78 +300,87 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			if len(contents.Data) == 0 || currentLine.Type != "tool" {
 				break
 			}
-			if currentLine.Type == "tool" &&
-				currentLine.Props["result"] != nil {
-
-				result, ok := currentLine.Props["result"].(string)
-				if !ok {
-					continue
-				}
-				if currentLine.Props != nil &&
-					currentLine.Props["function"] != nil &&
-					currentLine.Props["arguments"] != nil &&
-					currentLine.Props["id"] != nil {
-
-					fname, ok := currentLine.Props["function"].(string)
-					if !ok {
-						continue
-					}
-					arguments, ok := currentLine.Props["arguments"].(string)
-					if !ok {
-						continue
-					}
-					id, ok := currentLine.Props["id"].(string)
-					if !ok {
-						continue
-					}
-
-					var asstMmsg chatMessage.Message
-					asstMmsg.Role = "assistant"
-					asstMmsg.Name = fname
-					asstMmsg.Text = ""
-					asstMmsg.ToolCalls = []chatMessage.FunctionCall{
-						{
-							Index: 0,
-							ID:    id,
-							Type:  "function",
-							Function: chatMessage.FCAttributes{
-								Name:      fname,
-								Arguments: arguments,
-							},
-						},
-					}
-					messages = append(messages, asstMmsg)
-					var msg chatMessage.Message
-					msg.Role = "tool"
-					msg.ToolCallId = id
-					msg.Text = result
-					msg.Hidden = true
-
-					messages = append(messages, msg)
-				} else {
-					var msg chatMessage.Message
-					fname := currentLine.Props["function"].(string)
-
-					msg.Role = "system"
-					msg.Text = "function call is finished. " + fname
-
-					messages = append(messages, msg)
-
-					msg.Role = "user"
-					msg.Text = "function call result is :" + result
-					messages = append(messages, msg)
-				}
-				contents = chatMessage.NewContents()
-				err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true)
-				if err != nil {
-					chatMessage.New().Error(err).Done().Write(c.Writer)
-				}
-				count++
-				//delete last two line of messages
-				// messages = messages[:len(messages)-2]
-			} else {
+			if currentLine.Type != "tool" || currentLine.Props == nil ||
+				currentLine.Props["result"] == nil {
 				break
 			}
+
+			result, ok := currentLine.Props["result"].(string)
+			if !ok {
+				break
+			}
+			// doubao function calling model call
+			if currentLine.Props != nil &&
+				currentLine.Props["function"] != nil &&
+				currentLine.Props["arguments"] != nil &&
+				currentLine.Props["id"] != nil {
+
+				id, ok := currentLine.Props["id"].(string)
+				if !ok {
+					break
+				}
+
+				fname, ok := currentLine.Props["function"].(string)
+				if !ok {
+					break
+				}
+				args := ""
+				arguments, ok := currentLine.Props["arguments"]
+				if !ok {
+					break
+				}
+				if args, ok = arguments.(string); !ok {
+					args, err = jsoniter.MarshalToString(arguments)
+					if err != nil {
+						chatMessage.New().Error(err).Done().Write(c.Writer)
+						break
+					}
+				}
+
+				var asstMmsg chatMessage.Message
+				asstMmsg.Role = "assistant"
+				asstMmsg.Name = fname
+				asstMmsg.Text = ""
+				asstMmsg.ToolCalls = []chatMessage.FunctionCall{
+					{
+						Index: 0,
+						ID:    id,
+						Type:  "function",
+						Function: chatMessage.FCAttributes{
+							Name:      fname,
+							Arguments: args,
+						},
+					},
+				}
+				asstMmsg.Hidden = true
+				messages = append(messages, asstMmsg)
+				var msg chatMessage.Message
+				msg.Role = "tool"
+				msg.ToolCallId = id
+				msg.Text = result
+				msg.Hidden = true
+				messages = append(messages, msg)
+			} else {
+				// deepseek like call
+				var msg chatMessage.Message
+				fname := currentLine.Props["function"].(string)
+				msg.Role = "system"
+				msg.Text = "function call is finished. " + fname
+				msg.Hidden = true
+
+				messages = append(messages, msg)
+				msg.Role = "user"
+				msg.Text = "function call result is :" + result
+				msg.Hidden = true
+				messages = append(messages, msg)
+			}
+			contents = chatMessage.NewContents()
+			err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true)
+			if err != nil {
+				chatMessage.New().Error(err).Done().Write(c.Writer)
+			}
+			count++
+
 			if count > 2 {
 				contents = chatMessage.NewContents()
 				contents.AppendText([]byte("Too many function calls"))
