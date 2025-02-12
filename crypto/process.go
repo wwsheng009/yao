@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"strings"
+
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/exception"
 )
@@ -34,7 +36,7 @@ func ProcessHash(process *process.Process) interface{} {
 	typ := process.ArgsString(0)
 	value := process.ArgsString(1)
 
-	h, has := HashTypes[typ]
+	h, has := HashTypes[strings.ToUpper(typ)]
 	if !has {
 		exception.New("%s does not support", 400, typ).Throw()
 	}
@@ -57,7 +59,7 @@ func ProcessHmac(process *process.Process) interface{} {
 	value := process.ArgsString(1)
 	key := process.ArgsString(2)
 
-	h, has := HashTypes[typ]
+	h, has := HashTypes[strings.ToUpper(typ)]
 	if !has {
 		exception.New("%s does not support", 400, typ).Throw()
 	}
@@ -97,7 +99,7 @@ func ProcessHmacWith(process *process.Process) interface{} {
 	if v, has := option["algo"].(string); has && v != "" {
 		typ = v
 	}
-	h, has := HashTypes[typ]
+	h, has := HashTypes[strings.ToUpper(typ)]
 	if !has {
 		exception.New("%s does not support", 400, typ).Throw()
 	}
@@ -120,7 +122,7 @@ func ProcessRsa2Sign(process *process.Process) interface{} {
 	value := process.ArgsString(2)
 	base64 := process.ArgsString(3)
 
-	h, has := HashTypes[typ]
+	h, has := HashTypes[strings.ToUpper(typ)]
 	if !has {
 		exception.New("%s does not support", 400, typ).Throw()
 	}
@@ -146,7 +148,7 @@ func ProcessRsa2Verify(process *process.Process) interface{} {
 	sign := process.ArgsString(3)
 	base64 := process.ArgsString(4)
 
-	h, has := HashTypes[typ]
+	h, has := HashTypes[strings.ToUpper(typ)]
 	if !has {
 		exception.New("%s does not support", 400, typ).Throw()
 	}
