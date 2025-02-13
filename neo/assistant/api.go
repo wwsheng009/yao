@@ -296,15 +296,15 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 		}
 		count := 0
 		for {
-			currentLine := contents.Data[contents.Current]
-			if len(contents.Data) == 0 || currentLine.Type != "tool" {
+			if len(contents.Data) == 0 || contents.Current < 0 || contents.Current > (len(contents.Data)-1) {
 				break
 			}
+			currentLine := contents.Data[contents.Current]
+
 			if currentLine.Type != "tool" || currentLine.Props == nil ||
 				currentLine.Props["result"] == nil {
 				break
 			}
-
 			result, ok := currentLine.Props["result"].(string)
 			if !ok {
 				break
@@ -365,7 +365,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				var msg chatMessage.Message
 				fname := currentLine.Props["function"].(string)
 				msg.Role = "system"
-				msg.Text = "function call is finished. " + fname
+				msg.Text = "function call is finished. don't call agan" + fname
 				msg.Hidden = true
 
 				messages = append(messages, msg)
@@ -381,7 +381,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			}
 			count++
 
-			if count > 2 {
+			if count > 5 {
 				contents = chatMessage.NewContents()
 				contents.AppendText([]byte("Too many function calls"))
 				err = fmt.Errorf("too many function calls")
