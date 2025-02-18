@@ -384,6 +384,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true, callback...)
 			if err != nil {
 				chatMessage.New().Error(err).Done().Write(c.Writer)
+				break
 			}
 			count++
 
