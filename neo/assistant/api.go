@@ -301,7 +301,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			}
 			currentLine := contents.Data[contents.Current]
 
-			if currentLine.Type != "tool" || currentLine.Props == nil ||
+			if currentLine.Type != "tool" ||
 				currentLine.Props["result"] == nil {
 				break
 			}
@@ -310,8 +310,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				break
 			}
 			// doubao function calling model call
-			if currentLine.Props != nil &&
-				currentLine.Props["function"] != nil &&
+			if currentLine.Props["function"] != nil &&
 				currentLine.Props["arguments"] != nil &&
 				currentLine.Props["id"] != nil {
 
@@ -691,7 +690,7 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 		if userMessage.Hidden {
 			data = []map[string]interface{}{data[1]}
 		}
-		if contents.Data[contents.Current].Props["function"] != "" {
+		if v,ok := contents.Data[contents.Current].Props["function"]; ok && v != ""{
 			data = []map[string]interface{}{data[0]}
 		}
 
