@@ -11,7 +11,6 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/kun/utils"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	chatMessage "github.com/yaoapp/yao/neo/message"
 )
@@ -47,17 +46,17 @@ func GetByConnector(connector string, name string) (*Assistant, error) {
 }
 
 // Execute implements the execute functionality
-func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string, options map[string]interface{}) error {
+func (ast *Assistant) Execute(c *gin.Context, ctx chatctx.Context, input string, options map[string]interface{}, callback ...interface{}) error {
 	contents := chatMessage.NewContents()
 	messages, err := ast.withHistory(ctx, input)
 	if err != nil {
 		return err
 	}
-	return ast.execute(c, ctx, messages, options, contents)
+	return ast.execute(c, ctx, messages, options, contents, callback...)
 }
 
 // Execute implements the execute functionality
-func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatMessage.Message, userOptions map[string]interface{}, contents *chatMessage.Contents) error {
+func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatMessage.Message, userOptions map[string]interface{}, contents *chatMessage.Contents, callback ...interface{}) error {
 
 	if contents == nil {
 		contents = chatMessage.NewContents()
@@ -126,11 +125,11 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatM
 
 		// Update assistant id
 		ctx.AssistantID = res.AssistantID
-		return newAst.handleChatStream(c, ctx, input, options, contents)
+		return newAst.handleChatStream(c, ctx, input, options, contents, callback...)
 	}
 
 	// Only proceed with chat stream if no specific next action was handled
-	return (*refAst).handleChatStream(c, ctx, input, options, contents)
+	return (*refAst).handleChatStream(c, ctx, input, options, contents, callback...)
 }
 
 // Execute the next action
@@ -191,6 +190,14 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *c
 		_, has := next.Payload["input"]
 		if !has {
 			return fmt.Errorf("input is required")
+		}
+
+		// Retry mode
+		retry := false
+		_, has = next.Payload["retry"]
+		if has {
+			retry = next.Payload["retry"].(bool)
+			ctx.Retry = retry
 		}
 
 		switch v := next.Payload["input"].(type) {
@@ -284,13 +291,13 @@ func (ast *Assistant) Call(c *gin.Context, payload APIPayload) (interface{}, err
 }
 
 // handleChatStream manages the streaming chat interaction with the AI
-func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, messages []chatMessage.Message, options map[string]interface{}, contents *chatMessage.Contents) error {
+func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, messages []chatMessage.Message, options map[string]interface{}, contents *chatMessage.Contents, callback ...interface{}) error {
 	clientBreak := make(chan bool, 1)
 	done := make(chan bool, 1)
 
 	// Chat with AI in background
 	go func() {
-		err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, false)
+		err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, false, callback...)
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
 		}
@@ -374,7 +381,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				messages = append(messages, msg)
 			}
 			contents = chatMessage.NewContents()
-			err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true)
+			err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true, callback...)
 			if err != nil {
 				chatMessage.New().Error(err).Done().Write(c.Writer)
 			}
@@ -409,7 +416,15 @@ func (ast *Assistant) streamChat(
 	options map[string]interface{},
 	clientBreak chan bool,
 	done chan bool,
-	contents *chatMessage.Contents, recall bool) error {
+	contents *chatMessage.Contents,
+	recall bool,
+	callback ...interface{},
+) error {
+
+	var cb interface{}
+	if len(callback) > 0 {
+		cb = callback[0]
+	}
 
 	errorRaw := ""
 	isFirst := true
@@ -436,6 +451,10 @@ func (ast *Assistant) streamChat(
 				return 1 // continue
 			}
 
+			// Retry mode
+			msg.Retry = ctx.Retry   // Retry mode
+			msg.Silent = ctx.Silent // Silent mode
+
 			// Handle error
 			if msg.Type == "error" {
 				value := msg.String()
@@ -446,7 +465,10 @@ func (ast *Assistant) streamChat(
 						value = res.Error
 					}
 				}
-				chatMessage.New().Error(value).Done().Write(c.Writer)
+				newMsg := chatMessage.New().Error(value).Done()
+				newMsg.Retry = ctx.Retry
+				newMsg.Silent = ctx.Silent
+				newMsg.Callback(cb).Write(c.Writer)
 				return 0 // break
 			}
 
@@ -463,8 +485,11 @@ func (ast *Assistant) streamChat(
 			if isThinking && msg.Type != "think" {
 				// add the think close tag
 				end := chatMessage.New().Map(map[string]interface{}{"text": "\n</think>\n", "type": "think", "delta": true})
-				end.Write(c.Writer)
 				end.ID = currentMessageID
+				end.Retry = ctx.Retry
+				end.Silent = ctx.Silent
+
+				end.Callback(cb).Write(c.Writer)
 				end.AppendTo(contents)
 				contents.UpdateType("think", map[string]interface{}{"text": contents.Text()}, currentMessageID)
 				isThinking = false
@@ -488,8 +513,10 @@ func (ast *Assistant) streamChat(
 
 				if msg.IsDone {
 					end := chatMessage.New().Map(map[string]interface{}{"text": "}\n</tool>\n", "type": "tool", "delta": true})
-					end.Write(c.Writer)
 					end.ID = currentMessageID
+					end.Retry = ctx.Retry
+					end.Silent = ctx.Silent
+					end.Callback(cb).Write(c.Writer)
 					end.AppendTo(contents)
 					contents.UpdateType("tool", map[string]interface{}{"text": contents.Text()}, currentMessageID)
 					isTool = false
@@ -580,13 +607,13 @@ func (ast *Assistant) streamChat(
 				})
 				isRecall = false
 
+				output.Retry = ctx.Retry   // Retry mode
+				output.Silent = ctx.Silent // Silent mode
 				if isFirst {
 					output.Assistant(ast.ID, ast.Name, ast.Avatar)
 					isFirst = false
 				}
-				// if msg.Type != "tool" {
-				output.Write(c.Writer)
-				// }
+				output.Callback(cb).Write(c.Writer)
 			}
 
 			// Complete the stream
@@ -602,8 +629,11 @@ func (ast *Assistant) streamChat(
 							"text":             delta,
 							"type":             "text",
 							"delta":            true,
-							"done":             msg.IsDone, //msg.Type != "tool",
+							"done":             true,
+							"retry":            ctx.Retry,
+							"silent":           ctx.Silent,
 						}).
+						Callback(cb).
 						Write(c.Writer)
 				}
 
@@ -639,8 +669,10 @@ func (ast *Assistant) streamChat(
 				output := chatMessage.New().Done()
 				if res != nil && res.Output != nil {
 					output = chatMessage.New().Map(map[string]interface{}{"text": res.Output, "done": true})
+					output.Retry = ctx.Retry
+					output.Silent = ctx.Silent
 				}
-				output.Write(c.Writer)
+				output.Callback(cb).Write(c.Writer)
 				done <- true
 				return 0 // break
 			}
@@ -660,7 +692,9 @@ func (ast *Assistant) streamChat(
 		if err != nil {
 			return fmt.Errorf("error: %s", err.Error())
 		}
-		msg.Done().Write(c.Writer)
+		msg.Retry = ctx.Retry
+		msg.Silent = ctx.Silent
+		msg.Done().Callback(cb).Write(c.Writer)
 	}
 
 	return nil
@@ -690,7 +724,7 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 		if userMessage.Hidden {
 			data = []map[string]interface{}{data[1]}
 		}
-		if v,ok := contents.Data[contents.Current].Props["function"]; ok && v != ""{
+		if v, ok := contents.Data[contents.Current].Props["function"]; ok && v != "" {
 			data = []map[string]interface{}{data[0]}
 		}
 
@@ -963,9 +997,10 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	// For debug environment, print the request messages
 	if os.Getenv("YAO_AGENT_PRINT_REQUEST_MESSAGES") == "true" {
-		fmt.Println("--- REQUEST_MESSAGES -----------------------------")
-		utils.Dump(newMessages)
-		fmt.Println("--- END REQUEST_MESSAGES -----------------------------")
+		for _, message := range newMessages {
+			raw, _ := jsoniter.MarshalToString(message)
+			log.Trace("[Request Message] %s", raw)
+		}
 	}
 
 	return newMessages, nil

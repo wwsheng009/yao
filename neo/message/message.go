@@ -47,6 +47,8 @@ type Message struct {
 	Data            map[string]interface{} `json:"-"`                          // data for the message
 	Pending         bool                   `json:"-"`                          // pending for the message
 	Hidden          bool                   `json:"hidden,omitempty"`           // hidden for the message (not show in the UI and history)
+	Retry           bool                   `json:"retry,omitempty"`            // retry for the message
+	Silent          bool                   `json:"silent,omitempty"`           // silent for the message (not show in the UI and history)
 	ToolCallId      string                 `json:"tool_call_id,omitempty"`
 	ToolCalls       []FunctionCall         `json:"tool_calls,omitempty"`
 }
@@ -201,10 +203,9 @@ func NewAny(content interface{}) (*Message, error) {
 // NewOpenAI create a new message from OpenAI response
 func NewOpenAI(data []byte, isThinking bool) *Message {
 
-	// For Debug
 	// For debug environment, print the response data
 	if os.Getenv("YAO_AGENT_PRINT_RESPONSE_DATA") == "true" {
-		fmt.Printf("%s\n", string(data))
+		log.Trace("[Response Data] %s", string(data))
 	}
 
 	if data == nil || len(data) == 0 {
@@ -715,6 +716,26 @@ func (m *Message) Bind(data map[string]interface{}) *Message {
 	return m
 }
 
+// Callback callback the message
+func (m *Message) Callback(fn interface{}) *Message {
+	if fn != nil {
+		switch v := fn.(type) {
+		case func(msg *Message):
+			v(m)
+			break
+
+		case func():
+			v()
+			break
+
+		default:
+			fmt.Println("no match callback")
+			break
+		}
+	}
+	return m
+}
+
 // Write writes the message to response writer
 func (m *Message) Write(w gin.ResponseWriter) bool {
 	defer func() {
@@ -723,6 +744,11 @@ func (m *Message) Write(w gin.ResponseWriter) bool {
 			color.Red(message, r)
 		}
 	}()
+
+	// Ignore silent messages
+	if m.Silent {
+		return true
+	}
 
 	data, err := jsoniter.Marshal(m)
 	if err != nil {
