@@ -63,23 +63,23 @@ func (ast *Assistant) HookInit(c *gin.Context, context chatctx.Context, input []
 				response.Next.Payload = payload
 			}
 		}
-		
+
 		if res, ok := v["options"].(map[string]interface{}); ok {
-			response.Options = res;
+			response.Options = res
 		}
 
 		if res, ok := v["input"].([]interface{}); ok {
 			// Marshal the []interface{} to JSON
 			jsonData, err := json.Marshal(res)
 			if err != nil {
-				return response,err
+				return response, err
 			}
 
 			// Unmarshal the JSON into []Message
 			var messages []message.Message
 			err = json.Unmarshal(jsonData, &messages)
 			if err != nil {
-				return response,err
+				return response, err
 			}
 
 			// Assign the converted []Message to response.Input
@@ -205,7 +205,7 @@ func (ast *Assistant) HookDone(c *gin.Context, context chatctx.Context, input []
 					if err != nil {
 						props["error"] = fmt.Sprintf("Can not parse the tool call: %s\n--original--\n%s", err.Error(), text)
 					}
-					contents.UpdateType("tool",props)
+					contents.UpdateType("tool", props)
 				}
 
 				output = append(output, message.Data{Type: "tool", Props: props})
@@ -413,23 +413,23 @@ func (ast *Assistant) run(c *gin.Context, context chatctx.Context) func(info *v8
 					}
 					defer p.Release()
 				}
-			}
-
-			// Call self method
-			cb = func(msg *chatMessage.Message) {
-				cbArgs := []interface{}{}
-				cbArgs = append(cbArgs, msg)
-				cbArgs = append(cbArgs, userArgs...)
-				ctx, err := ast.Script.NewContext(context.Sid, nil)
-				if err != nil {
-					return
-				}
-				defer ctx.Close()
-				_, err = ctx.CallWith(context, name, cbArgs...)
-				if err != nil {
-					log.Error("Failed to call the method: %s", err.Error())
-					color.Red("Failed to call the method: %s", err.Error())
-					return
+			} else {
+				// Call self method
+				cb = func(msg *chatMessage.Message) {
+					cbArgs := []interface{}{}
+					cbArgs = append(cbArgs, msg)
+					cbArgs = append(cbArgs, userArgs...)
+					ctx, err := ast.Script.NewContext(context.Sid, nil)
+					if err != nil {
+						return
+					}
+					defer ctx.Close()
+					_, err = ctx.CallWith(context, name, cbArgs...)
+					if err != nil {
+						log.Error("Failed to call the method: %s", err.Error())
+						color.Red("Failed to call the method: %s", err.Error())
+						return
+					}
 				}
 			}
 		}
