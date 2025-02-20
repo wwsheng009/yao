@@ -252,6 +252,11 @@ func (neo *DSL) handleChatList(c *gin.Context) {
 		c.Done()
 		return
 	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	// Create filter from query parameters
 	filter := store.ChatFilter{
 		Keywords: c.Query("keywords"),
@@ -287,6 +292,11 @@ func (neo *DSL) handleChatHistory(c *gin.Context) {
 	sid := c.GetString("__sid")
 	if sid == "" {
 		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
+		c.Done()
+		return
+	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
 		c.Done()
 		return
 	}
@@ -467,7 +477,11 @@ func (neo *DSL) handleChatLatest(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	// Get the chats
 	chats, err := neo.Store.GetChats(sid, store.ChatFilter{Page: 1})
 	if err != nil {
@@ -554,7 +568,11 @@ func (neo *DSL) handleChatDetail(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	chat, err := neo.Store.GetChat(sid, chatID)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -587,6 +605,11 @@ func (neo *DSL) handleMentions(c *gin.Context) {
 	sid := c.GetString("__sid")
 	if sid == "" {
 		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
+		c.Done()
+		return
+	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
 		c.Done()
 		return
 	}
@@ -631,6 +654,11 @@ func (neo *DSL) handleChatUpdate(c *gin.Context) {
 	sid := c.GetString("__sid")
 	if sid == "" {
 		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
+		c.Done()
+		return
+	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
 		c.Done()
 		return
 	}
@@ -692,7 +720,11 @@ func (neo *DSL) handleChatDelete(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	chatID := c.Param("id")
 	if chatID == "" {
 		c.JSON(400, gin.H{"message": "chat id is required", "code": 400})
@@ -719,7 +751,11 @@ func (neo *DSL) handleChatsDeleteAll(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	err := neo.Store.DeleteAllChats(sid)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -960,6 +996,11 @@ func (neo *DSL) handleGenerateCustom(c *gin.Context) {
 
 // handleAssistantList handles listing assistants
 func (neo *DSL) handleAssistantList(c *gin.Context) {
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	// Parse filter parameters
 	filter := store.AssistantFilter{
 		Page:     1,
@@ -1103,6 +1144,11 @@ func (neo *DSL) handleAssistantDetail(c *gin.Context) {
 		c.Done()
 		return
 	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 
 	filter := store.AssistantFilter{
 		AssistantID: assistantID,
@@ -1135,6 +1181,11 @@ func (neo *DSL) handleAssistantSave(c *gin.Context) {
 		c.Done()
 		return
 	}
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 
 	id, err := neo.Store.SaveAssistant(assistant)
 	if err != nil {
@@ -1160,7 +1211,11 @@ func (neo *DSL) handleAssistantDelete(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	err := neo.Store.DeleteAssistant(assistantID)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
@@ -1206,7 +1261,11 @@ func (neo *DSL) handleAssistantTags(c *gin.Context) {
 		c.Done()
 		return
 	}
-
+	if neo.Store == nil {
+		c.JSON(500, gin.H{"message": fmt.Errorf("Neo store is not initialized").Error(), "code": 500})
+		c.Done()
+		return
+	}
 	tags, err := neo.Store.GetAssistantTags()
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})

@@ -12,6 +12,7 @@ import (
 	"github.com/yaoapp/gou/process"
 	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/exception"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/aigc"
 	"github.com/yaoapp/yao/api"
 	"github.com/yaoapp/yao/cert"
@@ -582,7 +583,10 @@ func loadApp(root string) error {
 
 func printErr(mode, widget string, err error) {
 	message := fmt.Sprintf("[%s] %s", widget, err.Error())
-	if !strings.Contains(message, "does not exists") && !strings.Contains(message, "no such file or directory") && mode == "development" {
+	if !strings.Contains(message, "The system cannot find the file specified") &&
+		!strings.Contains(message, "does not exists") &&
+		!strings.Contains(message, "no such file or directory") { // && mode == "development"
+		log.Error("%s", message)
 		color.Red(message)
 	}
 }

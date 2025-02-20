@@ -239,7 +239,7 @@ func (conv *Xun) initAssistantTable() error {
 			table.JSON("flows").Null()                                // assistant flows
 			table.JSON("files").Null()                                // assistant files
 			table.JSON("tools").Null()                                // assistant tools
-			table.JSON("tags").Null()                                 // assistant tags
+			table.Text("tags").Null()                                 // assistant tags
 			table.Boolean("readonly").SetDefault(false).Index()       // assistant readonly
 			table.JSON("permissions").Null()                          // assistant permissions
 			table.Boolean("automated").SetDefault(true).Index()       // assistant autoable
