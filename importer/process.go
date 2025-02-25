@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"strings"
+
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/exception"
@@ -106,6 +108,35 @@ func ProcessMappingSetting(process *process.Process) interface{} {
 
 // 转换为映射表
 func anyToMapping(v interface{}) *Mapping {
+	// 判断空值
+	if v == nil {
+		return nil
+	}
+
+	// 判断空值类型
+	switch val := v.(type) {
+	case string:
+		if val == "" || strings.ToLower(val) == "null" {
+			return nil
+		}
+	case map[string]interface{}:
+		if len(val) == 0 {
+			return nil
+		}
+	case []interface{}:
+		if len(val) == 0 {
+			return nil
+		}
+	case map[interface{}]interface{}:
+		if len(val) == 0 {
+			return nil
+		}
+	case []map[string]interface{}:
+		if len(val) == 0 {
+			return nil
+		}
+	}
+
 	var mapping Mapping
 	bytes, err := jsoniter.Marshal(v)
 	if err != nil {

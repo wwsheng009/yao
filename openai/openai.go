@@ -507,11 +507,13 @@ func (openai OpenAI) stream(ctx context.Context, path string, payload map[string
 	req := http.New(url)
 	if openai.azure {
 		req.WithHeader(map[string][]string{
+			"Accept":       {"text/event-stream; charset=utf-8"},
 			"Content-Type": {"application/json; charset=utf-8"},
 			"api-key":      {openai.key},
 		})
 	} else {
 		req.WithHeader(map[string][]string{
+			"Accept":        {"text/event-stream; charset=utf-8"},
 			"Content-Type":  {"application/json; charset=utf-8"},
 			"Authorization": {fmt.Sprintf("Bearer %s", openai.key)},
 		})
@@ -528,6 +530,12 @@ func (openai OpenAI) isError(res *http.Response) *exception.Exception {
 
 	if res.Status != 200 {
 		message := "OpenAI Error"
+		if res.Message != "" {
+			message = res.Message
+		}
+		if res.Code != 200 {
+			message = fmt.Sprintf("OpenAI %d %s", res.Code, message)
+		}
 		if v, ok := res.Data.(string); ok {
 			message = v
 		}
