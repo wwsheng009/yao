@@ -123,7 +123,7 @@ func setLogLevel() {
 		level = int(log.FatalLevel)
 	default:
 		if Conf.Mode == "prodcution" {
-			level = int(log.InfoLevel)
+			level = int(log.ErrorLevel)
 		} else if Conf.Mode == "development" {
 			level = int(log.TraceLevel)
 		}

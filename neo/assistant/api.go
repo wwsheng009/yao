@@ -327,7 +327,7 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 				break
 			}
 			// doubao function calling model call
-			if  currentLine.Props["arguments"] != nil &&
+			if currentLine.Props["arguments"] != nil &&
 				currentLine.Props["tool_calls_native"] != nil {
 
 				args := ""
@@ -369,15 +369,15 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			} else {
 				// deepseek like call
 				var msg chatMessage.Message
-				
-				msg.Role = "system"
-				msg.Text = "function call for " + id + " is finished. don't call duplicate: " + fname
-				// msg.Hidden = true
+
+				msg.Role = "assistant"
+				msg.Text = contents.JSON()
+				// msg.Hidden = true 不需要隐藏，作为历史记录给用户参考，并不会再次发送给AI
 
 				messages = append(messages, msg)
 				msg.Role = "user"
-				msg.Text = "function call for " + id + " result is :" + result
-				msg.Hidden = true
+				msg.Text = "function call [" + id + "] result :" + result + "\"";
+				msg.Hidden = true//作为中间结果，发送给AI后，不需要显示给用户
 				messages = append(messages, msg)
 			}
 			contents = chatMessage.NewContents()
@@ -730,9 +730,9 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 		if userMessage.Hidden {
 			data = []map[string]interface{}{data[1]}
 		}
-		if v, ok := contents.Data[contents.Current].Props["function"]; ok && v != "" {
-			data = []map[string]interface{}{data[0]}
-		}
+		// if v, ok := contents.Data[contents.Current].Props["function"]; ok && v != "" {
+		// 	data = []map[string]interface{}{data[0]}
+		// }
 
 		err := storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
 		if err != nil {
@@ -766,7 +766,8 @@ func (ast *Assistant) withOptions(options map[string]interface{}) map[string]int
 	return options
 }
 
-func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.Message {
+func (ast *Assistant) withPrompts(messages_history []chatMessage.Message) []chatMessage.Message {
+	messages := make([]chatMessage.Message, 0)
 	if ast.Prompts != nil {
 		for _, prompt := range ast.Prompts {
 			name := strings.ReplaceAll(ast.ID, ".", "_") // OpenAI only supports underscore in the name
@@ -796,11 +797,10 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 
 			prompts := []map[string]interface{}{
 				{
-					"role":    "system",
-					"name":	"duplicate function call check",
-					"content":	"If the user reply the previous function call result and the corresponding function id,\n" + 
-						"don't make the duplicate function call for same question\n",
-
+					"role": "system",
+					"name": "duplicate function call check",
+					"content": "If the user reply the previous function call with result with same id,\n" +
+						"don't make the duplicate function call for same function id\n",
 				},
 				{
 					"role":    "system",
@@ -863,7 +863,7 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 
 		}
 	}
-
+	messages = append(messages, messages_history...)
 	return messages
 }
 
@@ -1008,7 +1008,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 		newMessages = append(newMessages, newMessage)
 	}
-	newMessages = MergeMessages(newMessages)
+	// newMessages = MergeMessages(newMessages)
 
 	// For debug environment, print the request messages
 	if os.Getenv("YAO_AGENT_PRINT_REQUEST_MESSAGES") == "true" {

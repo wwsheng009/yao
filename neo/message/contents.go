@@ -248,23 +248,34 @@ func (data *Data) MarshalJSON() ([]byte, error) {
 	return jsoniter.Marshal(v)
 }
 func (data *Data) UnmarshalJSON(input []byte) error {
-	origin := map[string]interface{}{}
-	err := jsoniter.Unmarshal(input, &origin)
-	if err != nil {
-		return err
-	}
-	*data = Data{}
-	if origin["id"] != nil {
-		data.ID = origin["id"].(string)
-	}
-	if origin["type"] != nil {
-		data.Type = origin["type"].(string)
-	}
-	if origin["text"] != nil {
-		data.Bytes = []byte(origin["text"].(string))
-	}
-	if origin["props"] != nil {
-		data.Props = origin["props"].(map[string]interface{})
-	}
-	return nil
+    origin := map[string]interface{}{}
+    err := jsoniter.Unmarshal(input, &origin)
+    if err != nil {
+        return err
+    }
+
+    // Initialize empty maps/slices
+    newData := Data{
+        Props: make(map[string]interface{}),
+    }
+
+    // Safe type assertions with default values
+    if id, ok := origin["id"].(string); ok {
+        newData.ID = id
+    }
+    
+    if typ, ok := origin["type"].(string); ok {
+        newData.Type = typ
+    }
+    
+    if text, ok := origin["text"].(string); ok {
+        newData.Bytes = []byte(text)
+    }
+    
+    if props, ok := origin["props"].(map[string]interface{}); ok {
+        newData.Props = props
+    }
+
+    *data = newData
+    return nil
 }

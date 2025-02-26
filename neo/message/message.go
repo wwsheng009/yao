@@ -221,7 +221,10 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 
 	msg := New()
 	text := string(data)
-	log.Debug("openai response:%s", text)
+	log.Trace("openai response:%s", text)
+	if text == ": keep-alive"{
+		return nil
+	}
 	data = []byte(strings.TrimPrefix(text, "data: "))
 
 	switch {
