@@ -147,13 +147,23 @@ func NewMoapi(model string) (*OpenAI, error) {
 	if key == "" {
 		return nil, fmt.Errorf("The moapi secret is empty")
 	}
+	host := url
+	baseURL := "/v1"
+	// Trim trailing slashes
+	host = strings.TrimRight(host, "/")
+	parts := strings.Split(host, "/")
+	if len(parts) > 3 {
+		host = strings.Join(parts[0:3], "/")
+		baseURL = "/" + strings.Join(parts[3:], "/")
+	}
+	
 
 	return &OpenAI{
 		key:          key,
 		model:        model,
-		host:         url,
+		host:         host,
 		organization: organization,
-		baseURL:      "/v1",
+		baseURL:      baseURL,
 		maxToken:     16384,
 	}, nil
 }
