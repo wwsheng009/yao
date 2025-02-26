@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,8 @@ type FunctionCall struct {
 	Type     string       `json:"type"`
 	Function FCAttributes `json:"function"`
 }
+
+var locker = sync.Mutex{}
 
 // Message the message
 type Message struct {
@@ -51,6 +54,10 @@ type Message struct {
 	Silent          bool                   `json:"silent,omitempty"`           // silent for the message (not show in the UI and history)
 	ToolCallId      string                 `json:"tool_call_id,omitempty"`
 	ToolCalls       []FunctionCall         `json:"tool_calls,omitempty"`
+	IsTool          bool                   `json:"-"`                // is tool for the message for native tool_calls
+	IsBeginTool     bool                   `json:"-"`                // is new tool for the message for native tool_calls
+	IsEndTool       bool                   `json:"-"`                // is end tool for the message for native tool_calls
+	Result          any                    `json:"result,omitempty"` // result for the message
 }
 
 // Mention represents a mention
@@ -236,22 +243,30 @@ func NewOpenAI(data []byte, isThinking bool) *Message {
 		}
 
 		// Tool calls
-		if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+		if len(chunk.Choices[0].Delta.ToolCalls) > 0 || chunk.Choices[0].FinishReason == "tool_calls" {
 			msg.Type = "tool_calls_native"
-			id := chunk.Choices[0].Delta.ToolCalls[0].ID
-			function := chunk.Choices[0].Delta.ToolCalls[0].Function.Name
-			arguments := chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments
-			msg.Props["function"] = function
-			msg.Props["arguments"] = arguments
-			msg.Props["id"] = id
-			text := arguments
-			if id != "" {
-				text = fmt.Sprintf(`{"id": "%s", "function": "%s", "arguments": %s`, id, function, arguments)
-				msg.IsNew = true // mark as a new message
+			text := ""
+			if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+				id := chunk.Choices[0].Delta.ToolCalls[0].ID
+				function := chunk.Choices[0].Delta.ToolCalls[0].Function.Name
+				arguments := chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments
+				msg.Props["function"] = function
+				msg.Props["arguments"] = arguments
+				msg.Props["id"] = id
+				msg.Props["tool_calls_native"] = true
+				text = arguments
+				if id != "" {
+					msg.IsBeginTool = true
+					msg.IsNew = true // mark as a new message
+					text = fmt.Sprintf(`{"id": "%s", "function": "%s", "arguments": %s`, id, function, arguments)
+				}
+			}
+
+			if chunk.Choices[0].FinishReason == "tool_calls" {
+				msg.IsEndTool = true
 			}
 
 			msg.Text = text
-			msg.IsDone = chunk.Choices[0].FinishReason == "tool_calls" // is done when tool calls are finished
 			return msg
 		}
 
@@ -543,11 +558,11 @@ func (m *Message) AppendTo(contents *Contents) *Message {
 		if m.Text != "" {
 			if m.IsNew {
 				contents.NewText([]byte(m.Text), m.ID)
-				contents.UpdateType("text",m.Props, m.ID)
+				contents.UpdateType("text", m.Props, m.ID)
 				return m
 			}
 			contents.AppendText([]byte(m.Text), m.ID)
-			contents.UpdateType("text",m.Props, m.ID)
+			contents.UpdateType("text", m.Props, m.ID)
 			return m
 		}
 
@@ -744,6 +759,11 @@ func (m *Message) Callback(fn interface{}) *Message {
 
 // Write writes the message to response writer
 func (m *Message) Write(w gin.ResponseWriter) bool {
+
+	// Sync write to response writer
+	locker.Lock()
+	defer locker.Unlock()
+
 	defer func() {
 		if r := recover(); r != nil {
 

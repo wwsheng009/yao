@@ -133,7 +133,7 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, input []chatM
 }
 
 // Execute the next action
-func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *chatMessage.Contents) error {
+func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *chatMessage.Contents, callback ...interface{}) error {
 	switch next.Action {
 
 	// It's not used, because the process could be executed in the hook script
@@ -244,19 +244,21 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *c
 
 		// Create a new Text
 		// Send loading message and mark as new
-		msg := chatMessage.New().Map(map[string]interface{}{
-			"new":   true,
-			"role":  "assistant",
-			"type":  "loading",
-			"props": map[string]interface{}{"placeholder": "Calling " + assistant.Name},
-		})
-		msg.Assistant(assistant.ID, assistant.Name, assistant.Avatar)
-		msg.Write(c.Writer)
+		if !ctx.Silent {
+			msg := chatMessage.New().Map(map[string]interface{}{
+				"new":   true,
+				"role":  "assistant",
+				"type":  "loading",
+				"props": map[string]interface{}{"placeholder": "Calling " + assistant.Name},
+			})
+			msg.Assistant(assistant.ID, assistant.Name, assistant.Avatar)
+			msg.Write(c.Writer)
+		}
 		newContents := chatMessage.NewContents()
 
 		// Update the context id
 		ctx.AssistantID = assistant.ID
-		return assistant.execute(c, ctx, messages, options, newContents)
+		return assistant.execute(c, ctx, messages, options, newContents, callback...)
 
 	case "exit":
 		return nil
@@ -316,20 +318,18 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			if !ok {
 				break
 			}
+			id, ok := currentLine.Props["id"].(string)
+			if !ok {
+				break
+			}
+			fname, ok := currentLine.Props["function"].(string)
+			if !ok {
+				break
+			}
 			// doubao function calling model call
-			if currentLine.Props["function"] != nil &&
-				currentLine.Props["arguments"] != nil &&
-				currentLine.Props["id"] != nil {
+			if  currentLine.Props["arguments"] != nil &&
+				currentLine.Props["tool_calls_native"] != nil {
 
-				id, ok := currentLine.Props["id"].(string)
-				if !ok {
-					break
-				}
-
-				fname, ok := currentLine.Props["function"].(string)
-				if !ok {
-					break
-				}
 				args := ""
 				arguments, ok := currentLine.Props["arguments"]
 				if !ok {
@@ -369,14 +369,14 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 			} else {
 				// deepseek like call
 				var msg chatMessage.Message
-				fname := currentLine.Props["function"].(string)
+				
 				msg.Role = "system"
-				msg.Text = "function call is finished. don't call agan" + fname
-				msg.Hidden = true
+				msg.Text = "function call for " + id + " is finished. don't call duplicate: " + fname
+				// msg.Hidden = true
 
 				messages = append(messages, msg)
 				msg.Role = "user"
-				msg.Text = "function call result is :" + result
+				msg.Text = "function call for " + id + " result is :" + result
 				msg.Hidden = true
 				messages = append(messages, msg)
 			}
@@ -432,8 +432,7 @@ func (ast *Assistant) streamChat(
 	isFirstThink := true
 	isThinking := false
 
-	isFirstTool := true
-	isTool := false
+	toolsCount := 0
 	currentMessageID := ""
 	isRecall := recall
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
@@ -500,35 +499,34 @@ func (ast *Assistant) streamChat(
 				contents.ClearToken()
 			}
 
-			// for native tool_calls response
+			// for native tool_calls response, keep the first tool_calls_native message
 			if msg.Type == "tool_calls_native" {
-				if isFirstTool {
-					msg.Text = "\n<tool>\n" + msg.Text // add the tool_calls begin tag
-					isFirstTool = false
-					isTool = true
-				}
-			}
 
-			// for tool response
-			if isTool && msg.Type != "tool_calls_native" {
-
-				if msg.IsDone {
-					end := chatMessage.New().Map(map[string]interface{}{"text": "}\n</tool>\n", "type": "tool", "delta": true})
-					end.ID = currentMessageID
-					end.Retry = ctx.Retry
-					end.Silent = ctx.Silent
-					end.Callback(cb).Write(c.Writer)
-					end.AppendTo(contents)
-					contents.UpdateType("tool", map[string]interface{}{"text": contents.Text()}, currentMessageID)
-					isTool = false
-				} else {
-					msg.Text = "\n</tool>\n" + msg.Text // add the tool_calls close tag
+				if toolsCount > 1 {
+					msg.Text = "" // clear the text
+					msg.Type = "text"
+					msg.IsNew = false
+					return 1 // continue
 				}
 
-				isTool = false
-			}
-			if isTool && msg.IsDone {
-				msg.Text += "}\n</tool>\n"
+				if msg.IsBeginTool {
+
+					if toolsCount == 1 {
+						msg.IsNew = false
+						msg.Text = "\n</tool>\n" // add the tool_calls close tag
+					}
+
+					if toolsCount == 0 {
+						msg.Text = "\n<tool>\n" + msg.Text // add the tool_calls begin tag
+					}
+
+					toolsCount++
+
+				}
+
+				if msg.IsEndTool {
+					msg.Text = msg.Text + "\n</tool>\n" // add the tool_calls close tag
+				}
 			}
 
 			delta := msg.String()
@@ -565,10 +563,10 @@ func (ast *Assistant) streamChat(
 				}
 				contents.ScanTokens(currentMessageID, callback)
 
-				if isTool && msg.IsDone {
-					contents.ScanTokens(currentMessageID, callback)
-					isTool = false
-				}
+				// if isTool && msg.IsDone {
+				// 	contents.ScanTokens(currentMessageID, callback)
+				// 	isTool = false
+				// }
 
 				// Handle stream
 				// The stream hook is not used, because there's no need to handle the stream output
@@ -644,7 +642,8 @@ func (ast *Assistant) streamChat(
 
 				// Some error occurred in the hook, return the error
 				if hookErr != nil {
-					chatMessage.New().Error(hookErr.Error()).Done().Write(c.Writer)
+					chatMessage.New().Error(hookErr.Error()).Done().Callback(cb).Write(c.Writer)
+
 					done <- true
 					return 0 // break
 				}
@@ -658,9 +657,9 @@ func (ast *Assistant) streamChat(
 				}
 				// If the hook is successful, execute the next action
 				if res != nil && res.Next != nil {
-					err := res.Next.Execute(c, ctx, contents)
+					err := res.Next.Execute(c, ctx, contents, cb)
 					if err != nil {
-						chatMessage.New().Error(err.Error()).Done().Write(c.Writer)
+						chatMessage.New().Error(err.Error()).Done().Callback(cb).Write(c.Writer)
 					}
 					done <- true
 					return 0 // break
@@ -673,6 +672,12 @@ func (ast *Assistant) streamChat(
 					output.Retry = ctx.Retry
 					output.Silent = ctx.Silent
 				}
+
+				// has result
+				if res != nil && res.Result != nil && cb != nil {
+					output.Result = res.Result // Add the result to the output  message
+				}
+
 				output.Callback(cb).Write(c.Writer)
 				done <- true
 				return 0 // break
@@ -792,6 +797,13 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 			prompts := []map[string]interface{}{
 				{
 					"role":    "system",
+					"name":	"duplicate function call check",
+					"content":	"If the user reply the previous function call result and the corresponding function id,\n" + 
+						"don't make the duplicate function call for same question\n",
+
+				},
+				{
+					"role":    "system",
 					"name":    "TOOL_CALLS_SCHEMA",
 					"content": raw,
 				},
@@ -802,6 +814,7 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 						"Each tool call is defined with:\n" +
 						"  - type: always 'function'\n" +
 						"  - function:\n" +
+						"    - id: the unique id of each call\n" +
 						"    - name: function name\n" +
 						"    - description: function description\n" +
 						"    - parameters: function parameters with type and validation rules\n",
@@ -813,10 +826,11 @@ func (ast *Assistant) withPrompts(messages []chatMessage.Message) []chatMessage.
 						"1. Only use tool calls when a function matches your task exactly\n" +
 						"2. Each tool call must be wrapped in <tool> and </tool> tags\n" +
 						"3. Tool call must be a valid JSON with:\n" +
-						"   {\"function\": \"function_name\", \"arguments\": {parameters}}\n" +
+						"   {\"id\": \"unique id of call\",\"function\": \"function_name\", \"arguments\": {parameters}}\n" +
 						"4. Return the function's result as your response\n" +
 						"5. One tool call per response\n" +
-						"6. Arguments must match parameter types, rules and description\n\n" +
+						"6. Arguments must match parameter types, rules and description\n" +
+						"7. Create unique IDs for each tool call if the call is new\n\n" +
 						examplesStr,
 				},
 				{

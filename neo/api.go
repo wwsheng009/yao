@@ -489,9 +489,25 @@ func (neo *DSL) handleChatLatest(c *gin.Context) {
 		c.Done()
 		return
 	}
+	//check if is new chat
+	isNew := false;
+	oldAssistantId := c.Query("assistant_id")
+	if oldAssistantId != "" && len(chats.Groups) != 0 && len(chats.Groups[0].Chats) != 0{
+		// Get the chat_id
+		chatID, ok := chats.Groups[0].Chats[0]["chat_id"].(string)
+		if ok {
+			chat, err := neo.Store.GetChat(sid, chatID)
+			if err == nil {
+				if chat.Chat["assistant_id"] != oldAssistantId {
+					isNew = true
+				}
+			}
+		}
+
+	}
 
 	// Create a new chat
-	if len(chats.Groups) == 0 || len(chats.Groups[0].Chats) == 0 {
+	if len(chats.Groups) == 0 || len(chats.Groups[0].Chats) == 0 || isNew{
 
 		assistantID := neo.Use
 		queryAssistantID := c.Query("assistant_id")

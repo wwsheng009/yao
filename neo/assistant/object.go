@@ -51,6 +51,51 @@ func (ast *Assistant) InitObject(v8ctx *v8.Context, c *gin.Context, context chat
 	v8ctx.WithFunction("Plan", jsPlan) // Create a new plan object
 	v8ctx.WithFunction("Send", jsSend)
 	v8ctx.WithFunction("Call", jsCall)
+	v8ctx.WithFunction("Assets", jsAssets)
+}
+
+// jsAssets function, get the assets content
+func jsAssets(info *v8go.FunctionCallbackInfo) *v8go.Value {
+
+	global, err := global(info)
+	if err != nil {
+		return bridge.JsException(info.Context(), err.Error())
+	}
+
+	// Get the message
+	args := info.Args()
+	if len(args) < 1 {
+		return bridge.JsException(info.Context(), "Assets requires at least one argument")
+	}
+
+	// Get the name
+	name := args[0].String()
+
+	data := map[string]interface{}{}
+	if len(args) > 1 {
+		raw, err := bridge.GoValue(args[1], info.Context())
+		if err != nil {
+			return bridge.JsException(info.Context(), err.Error())
+		}
+
+		v, ok := raw.(map[string]interface{})
+		if !ok {
+			return bridge.JsException(info.Context(), "Assets requires a map")
+		}
+		data = v
+	}
+
+	content, err := global.Assistant.Assets(name, data)
+	if err != nil {
+		return bridge.JsException(info.Context(), err.Error())
+	}
+
+	jsContent, err := bridge.JsValue(info.Context(), content)
+	if err != nil {
+		return bridge.JsException(info.Context(), err.Error())
+	}
+
+	return jsContent
 }
 
 // jsSend function, send a message to the http stream connection
@@ -141,6 +186,31 @@ func jsCall(info *v8go.FunctionCallbackInfo) *v8go.Value {
 	var cb func(msg *chatMessage.Message) = nil
 	if len(args) > 2 {
 
+		// Rest args
+		var jsArgs *v8go.Value
+		if len(args) > 3 {
+			jsArgs = args[3]
+		}
+
+		goArgs := []interface{}{}
+		if jsArgs.IsArray() {
+			v, err := bridge.GoValue(jsArgs, info.Context())
+			if err != nil {
+				return bridge.JsException(info.Context(), err.Error())
+			}
+			arr, ok := v.([]interface{})
+			if !ok {
+				return bridge.JsException(info.Context(), "Invalid arguments")
+			}
+			goArgs = arr
+		} else {
+			v, err := bridge.GoValue(jsArgs, info.Context())
+			if err != nil {
+				return bridge.JsException(info.Context(), err.Error())
+			}
+			goArgs = []interface{}{v}
+		}
+
 		// Parse the callback
 		funcType := "method"
 		name := ""
@@ -174,6 +244,7 @@ func jsCall(info *v8go.FunctionCallbackInfo) *v8go.Value {
 			source := args[2].String()
 			cb = func(msg *chatMessage.Message) {
 				cbArgs := []interface{}{msg}
+				cbArgs = append(cbArgs, goArgs...)
 				ctx, err := global.Assistant.Script.NewContext(global.ChatContext.Sid, nil)
 				if err != nil {
 					fmt.Println("Failed to create context", err.Error())
@@ -238,8 +309,8 @@ func jsCall(info *v8go.FunctionCallbackInfo) *v8go.Value {
 
 	// Parse the options
 	options := map[string]interface{}{}
-	if len(args) > 3 {
-		optionsRaw, err := bridge.GoValue(args[3], info.Context())
+	if len(args) > 4 {
+		optionsRaw, err := bridge.GoValue(args[4], info.Context())
 		if err != nil {
 			return bridge.JsException(info.Context(), err.Error())
 		}
@@ -283,7 +354,7 @@ func global(info *v8go.FunctionCallbackInfo) (global *GlobalVariables, err error
 
 	global, ok := goGlobal.(*GlobalVariables)
 	if !ok {
-		return nil, fmt.Errorf("global is not a valid GlobalVariables")
+		return nil, fmt.Errorf("global is not a valid GlobalVariables. %#v", goGlobal)
 	}
 
 	return global, nil
