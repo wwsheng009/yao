@@ -376,8 +376,8 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 
 				messages = append(messages, msg)
 				msg.Role = "user"
-				msg.Text = "function call [" + id + "] result :" + result + "\"";
-				msg.Hidden = true//作为中间结果，发送给AI后，不需要显示给用户
+				msg.Text = "function call [" + id + "] result :" + result + "\""
+				msg.Hidden = true //作为中间结果，发送给AI后，不需要显示给用户
 				messages = append(messages, msg)
 			}
 			contents = chatMessage.NewContents()
@@ -936,7 +936,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 	for index, message := range messages {
 
 		// Ignore the tool, think, error
-		if message.Type == "tool" || message.Type == "think" || message.Type == "error" {
+		if (message.Type == "tool" && len(message.ToolCalls) == 0) || message.Type == "think" || message.Type == "error" {
 			continue
 		}
 
@@ -954,14 +954,11 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		newMessage := map[string]interface{}{
 			"role": role,
 		}
-		if len(message.ToolCalls) == 0 {
-			if content != "" {
-				newMessage["content"] = content
-			} else {
-				continue
-			}
-		} else {
+		if role == "tool" {
 			newMessage["tool_calls"] = message.ToolCalls
+			newMessage["tool_call_id"] = message.ToolCallId
+		} else {
+			newMessage["content"] = content
 		}
 
 		// Keep the name for user messages
@@ -972,10 +969,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 				newMessage["name"] = name
 			}
 		}
-		if role == "tool" {
-			newMessage["tool_call_id"] = message.ToolCallId
-		}
-
+	
 		// Special handling for user messages with JSON content last message
 		if role == "user" && index == length-1 {
 			content = strings.TrimSpace(content)
@@ -1008,7 +1002,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 		newMessages = append(newMessages, newMessage)
 	}
-	newMessages  = MergeMessages(newMessages)
+	newMessages = MergeMessages(newMessages)
 	// For debug environment, print the request messages
 	if os.Getenv("YAO_AGENT_PRINT_REQUEST_MESSAGES") == "true" {
 		for _, message := range newMessages {
@@ -1022,45 +1016,45 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 // MergeMessages merges adjacent messages with the same role and moves system messages to the front
 func MergeMessages(messages []map[string]interface{}) []map[string]interface{} {
-    if len(messages) == 0 {
-        return messages
-    }
+	if len(messages) == 0 {
+		return messages
+	}
 
-    // Separate system messages and non-system messages
-    systemMsgs := []map[string]interface{}{}
-    otherMsgs := []map[string]interface{}{}
+	// Separate system messages and non-system messages
+	systemMsgs := []map[string]interface{}{}
+	otherMsgs := []map[string]interface{}{}
 
-    for _, msg := range messages {
-        if msg["role"] == "system" {
-            systemMsgs = append(systemMsgs, msg)
-        } else {
-            otherMsgs = append(otherMsgs, msg)
-        }
-    }
+	for _, msg := range messages {
+		if msg["role"] == "system" {
+			systemMsgs = append(systemMsgs, msg)
+		} else {
+			otherMsgs = append(otherMsgs, msg)
+		}
+	}
 
-    // Merge adjacent messages in the non-system messages
-    merged := []map[string]interface{}{}
-    if len(otherMsgs) > 0 {
-        merged = append(merged, otherMsgs[0])
-        for i := 1; i < len(otherMsgs); i++ {
-            last := merged[len(merged)-1]
-            current := otherMsgs[i]
+	// Merge adjacent messages in the non-system messages
+	merged := []map[string]interface{}{}
+	if len(otherMsgs) > 0 {
+		merged = append(merged, otherMsgs[0])
+		for i := 1; i < len(otherMsgs); i++ {
+			last := merged[len(merged)-1]
+			current := otherMsgs[i]
 
-            if last["role"] == current["role"] {
-                // Merge content of messages with same role
-                last["content"] = fmt.Sprintf("%v\n%v", last["content"], current["content"])
-            } else {
-                merged = append(merged, current)
-            }
-        }
-    }
+			if last["role"] == current["role"] {
+				// Merge content of messages with same role
+				last["content"] = fmt.Sprintf("%v\n%v", last["content"], current["content"])
+			} else {
+				merged = append(merged, current)
+			}
+		}
+	}
 
-    // Combine system messages and other messages
-    result := make([]map[string]interface{}, 0, len(systemMsgs)+len(merged))
-    result = append(result, systemMsgs...)
-    result = append(result, merged...)
+	// Combine system messages and other messages
+	result := make([]map[string]interface{}, 0, len(systemMsgs)+len(merged))
+	result = append(result, systemMsgs...)
+	result = append(result, merged...)
 
-    return result
+	return result
 }
 
 func (ast *Assistant) withAttachments(ctx context.Context, msg *chatMessage.Message) ([]map[string]interface{}, error) {
