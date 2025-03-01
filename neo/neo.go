@@ -25,7 +25,8 @@ func (neo *DSL) Answer(ctx chatctx.Context, question string, c *gin.Context) err
 	if ast == nil  {
 		return fmt.Errorf("neo assistant is not initialized");
 	}
-	return ast.Execute(c, ctx, question, nil)
+	_, err = ast.Execute(c, ctx, question, nil)
+	return err
 }
 
 // Select select an assistant
