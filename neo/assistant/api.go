@@ -316,113 +316,123 @@ func (ast *Assistant) Call(c *gin.Context, payload APIPayload) (interface{}, err
 func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, messages []chatMessage.Message, options map[string]interface{}, contents *chatMessage.Contents, callback ...interface{}) (interface{}, error) {
 	clientBreak := make(chan bool, 1)
 	done := make(chan bool, 1)
+	var result interface{} = nil
+	var err error = nil
 
 	// Chat with AI in background
 	go func() {
-		err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, false, callback...)
+		var res interface{} = nil
+		res, err = ast.streamChat(c, ctx, messages, options, clientBreak, contents, false, callback...)
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
-		}
-		count := 0
-		for {
-			if len(contents.Data) == 0 || contents.Current < 0 || contents.Current > (len(contents.Data)-1) {
-				break
-			}
-			currentLine := contents.Data[contents.Current]
+			err = fmt.Errorf("stream chat error %s", err.Error())
+		} else {
+			count := 0
+			for {
+				if len(contents.Data) == 0 || contents.Current < 0 || contents.Current > (len(contents.Data)-1) {
+					break
+				}
+				currentLine := contents.Data[contents.Current]
 
-			if currentLine.Type != "tool" ||
-				currentLine.Props["result"] == nil {
-				break
-			}
-			result, ok := currentLine.Props["result"].(string)
-			if !ok {
-				break
-			}
-			id, ok := currentLine.Props["id"].(string)
-			if !ok {
-				break
-			}
-			fname, ok := currentLine.Props["function"].(string)
-			if !ok {
-				break
-			}
-			// doubao function calling model call
-			if currentLine.Props["arguments"] != nil &&
-				currentLine.Props["tool_calls_native"] != nil {
-
-				args := ""
-				arguments, ok := currentLine.Props["arguments"]
+				if currentLine.Type != "tool" ||
+					currentLine.Props["result"] == nil {
+					break
+				}
+				result, ok := currentLine.Props["result"].(string)
 				if !ok {
 					break
 				}
-				if args, ok = arguments.(string); !ok {
-					args, err = jsoniter.MarshalToString(arguments)
-					if err != nil {
-						chatMessage.New().Error(err).Done().Write(c.Writer)
+				id, ok := currentLine.Props["id"].(string)
+				if !ok {
+					break
+				}
+				fname, ok := currentLine.Props["function"].(string)
+				if !ok {
+					break
+				}
+				// doubao function calling model call
+				if currentLine.Props["arguments"] != nil &&
+					currentLine.Props["tool_calls_native"] != nil {
+
+					args := ""
+					arguments, ok := currentLine.Props["arguments"]
+					if !ok {
 						break
 					}
-				}
+					if args, ok = arguments.(string); !ok {
+						args, err = jsoniter.MarshalToString(arguments)
+						if err != nil {
+							chatMessage.New().Error(err).Done().Write(c.Writer)
+							break
+						}
+					}
 
-				var asstMmsg chatMessage.Message
-				asstMmsg.Role = "assistant"
-				asstMmsg.Name = fname
-				asstMmsg.Text = ""
-				asstMmsg.ToolCalls = []chatMessage.FunctionCall{
-					{
-						Index: 0,
-						ID:    id,
-						Type:  "function",
-						Function: chatMessage.FCAttributes{
-							Name:      fname,
-							Arguments: args,
+					var asstMmsg chatMessage.Message
+					asstMmsg.Role = "assistant"
+					asstMmsg.Name = fname
+					asstMmsg.Text = ""
+					asstMmsg.ToolCalls = []chatMessage.FunctionCall{
+						{
+							Index: 0,
+							ID:    id,
+							Type:  "function",
+							Function: chatMessage.FCAttributes{
+								Name:      fname,
+								Arguments: args,
+							},
 						},
-					},
+					}
+					asstMmsg.Hidden = true
+					messages = append(messages, asstMmsg)
+					var msg chatMessage.Message
+					msg.Role = "tool"
+					msg.ToolCallId = id
+					msg.Text = result
+					msg.Hidden = true
+					messages = append(messages, msg)
+				} else {
+					// deepseek like call
+					var msg chatMessage.Message
+
+					msg.Role = "assistant"
+					msg.Text = contents.JSON()
+					// msg.Hidden = true 不需要隐藏，作为历史记录给用户参考，并不会再次发送给AI
+
+					messages = append(messages, msg)
+					msg.Role = "user"
+					msg.Text = "function call [" + id + "] result :" + result + "\""
+					msg.Hidden = true //作为中间结果，发送给AI后，不需要显示给用户
+					messages = append(messages, msg)
 				}
-				asstMmsg.Hidden = true
-				messages = append(messages, asstMmsg)
-				var msg chatMessage.Message
-				msg.Role = "tool"
-				msg.ToolCallId = id
-				msg.Text = result
-				msg.Hidden = true
-				messages = append(messages, msg)
-			} else {
-				// deepseek like call
-				var msg chatMessage.Message
-
-				msg.Role = "assistant"
-				msg.Text = contents.JSON()
-				// msg.Hidden = true 不需要隐藏，作为历史记录给用户参考，并不会再次发送给AI
-
-				messages = append(messages, msg)
-				msg.Role = "user"
-				msg.Text = "function call [" + id + "] result :" + result + "\""
-				msg.Hidden = true //作为中间结果，发送给AI后，不需要显示给用户
-				messages = append(messages, msg)
-			}
-			contents = chatMessage.NewContents()
-			err := ast.streamChat(c, ctx, messages, options, clientBreak, done, contents, true, callback...)
-			if err != nil {
-				chatMessage.New().Error(err).Done().Write(c.Writer)
-				break
-			}
-			count++
-
-			if count > 5 {
 				contents = chatMessage.NewContents()
-				contents.AppendText([]byte("Too many function calls"))
-				err = fmt.Errorf("too many function calls")
-				chatMessage.New().Error(err).Done().Write(c.Writer)
-				break
+				res, err = ast.streamChat(c, ctx, messages, options, clientBreak, contents, true, callback...)
+				if err != nil {
+					chatMessage.New().Error(err).Done().Write(c.Writer)
+					err = fmt.Errorf("stream chat error %s", err.Error())
+					break
+				}
+				count++
+
+				if count > 5 {
+					contents = chatMessage.NewContents()
+					contents.AppendText([]byte("Too many function calls"))
+					err = fmt.Errorf("too many function calls")
+					chatMessage.New().Error(err).Done().Write(c.Writer)
+					break
+				}
 			}
 		}
+		result = res
 		done <- true
 	}()
 
 	// Wait for completion or client disconnect
 	select {
 	case <-done:
-		return nil, nil
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
 	case <-c.Writer.CloseNotify():
 		clientBreak <- true
 		return nil, nil
@@ -436,11 +446,10 @@ func (ast *Assistant) streamChat(
 	messages []chatMessage.Message,
 	options map[string]interface{},
 	clientBreak chan bool,
-	done chan bool,
 	contents *chatMessage.Contents,
 	recall bool,
 	callback ...interface{},
-) error {
+) (interface{}, error) {
 
 	var cb interface{}
 	if len(callback) > 0 {
@@ -455,6 +464,9 @@ func (ast *Assistant) streamChat(
 	toolsCount := 0
 	currentMessageID := ""
 	isRecall := recall
+
+	var result interface{} = nil // To save the result
+	var content string = ""      // To save the content
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
 		select {
 		case <-clientBreak:
@@ -617,6 +629,11 @@ func (ast *Assistant) streamChat(
 					msgType = "tool"
 				}
 
+				// Add the text content to the content
+				if msgType == "text" || msgType == "" {
+					content += msg.Text // Save the content
+				}
+
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
 					"type":  msgType,
@@ -663,8 +680,6 @@ func (ast *Assistant) streamChat(
 				// Some error occurred in the hook, return the error
 				if hookErr != nil {
 					chatMessage.New().Error(hookErr.Error()).Done().Callback(cb).Write(c.Writer)
-
-					done <- true
 					return 0 // break
 				}
 				ast.saveChatHistory(ctx, messages, contents)
@@ -681,8 +696,12 @@ func (ast *Assistant) streamChat(
 					if err != nil {
 						chatMessage.New().Error(err.Error()).Done().Callback(cb).Write(c.Writer)
 					}
-					done <- true
 					return 0 // break
+				}
+
+				// if the result is not nil, save the result
+				if res != nil && res.Result != nil {
+					result = res.Result
 				}
 
 				// The default output
@@ -699,7 +718,6 @@ func (ast *Assistant) streamChat(
 				}
 
 				output.Callback(cb).Write(c.Writer)
-				done <- true
 				return 0 // break
 			}
 
@@ -709,21 +727,27 @@ func (ast *Assistant) streamChat(
 
 	// Handle error
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// raw error
 	if errorRaw != "" {
 		msg, err := chatMessage.NewStringError(errorRaw)
 		if err != nil {
-			return fmt.Errorf("error: %s", err.Error())
+			return nil, fmt.Errorf("stream chat error %s", err.Error())
 		}
 		msg.Retry = ctx.Retry
 		msg.Silent = ctx.Silent
 		msg.Done().Callback(cb).Write(c.Writer)
 	}
 
-	return nil
+	// If the result is not nil, return the result
+	if result != nil {
+		return result, nil
+	}
+
+	// Return the content
+	return strings.TrimSpace(content), nil
 }
 
 // saveChatHistory saves the chat history if storage is available
@@ -1144,7 +1168,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 				newMessage["name"] = name
 			}
 		}
-	
+
 		// Special handling for user messages with JSON content last message
 		if role == "user" && index == length-1 {
 			content = strings.TrimSpace(content)
