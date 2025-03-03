@@ -16,18 +16,6 @@ import (
 	"github.com/yaoapp/yao/openai"
 )
 
-type FCAttributes struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type FunctionCall struct {
-	Index    int          `json:"index"`
-	ID       string       `json:"id"`
-	Type     string       `json:"type"`
-	Function FCAttributes `json:"function"`
-}
-
 var locker = sync.Mutex{}
 
 // Message the message
@@ -52,12 +40,10 @@ type Message struct {
 	Hidden          bool                   `json:"hidden,omitempty"`           // hidden for the message (not show in the UI and history)
 	Retry           bool                   `json:"retry,omitempty"`            // retry for the message
 	Silent          bool                   `json:"silent,omitempty"`           // silent for the message (not show in the UI and history)
-	ToolCallId      string                 `json:"tool_call_id,omitempty"`
-	ToolCalls       []FunctionCall         `json:"tool_calls,omitempty"`
-	IsTool          bool                   `json:"-"`                // is tool for the message for native tool_calls
-	IsBeginTool     bool                   `json:"-"`                // is new tool for the message for native tool_calls
-	IsEndTool       bool                   `json:"-"`                // is end tool for the message for native tool_calls
-	Result          any                    `json:"result,omitempty"` // result for the message
+	IsTool          bool                   `json:"-"`                          // is tool for the message for native tool_calls
+	IsBeginTool     bool                   `json:"-"`                          // is new tool for the message for native tool_calls
+	IsEndTool       bool                   `json:"-"`                          // is end tool for the message for native tool_calls
+	Result          any                    `json:"result,omitempty"`           // result for the message
 }
 
 // Mention represents a mention

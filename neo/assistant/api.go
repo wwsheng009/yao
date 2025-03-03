@@ -7,9 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/gin-gonic/gin"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/fs"
+	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/kun/log"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	chatMessage "github.com/yaoapp/yao/neo/message"
@@ -97,7 +99,6 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, userInput int
 			Write(c.Writer)
 		return nil, err
 	}
-	refAst := &ast
 
 	// Update options if provided
 	if res != nil && res.Options != nil {
@@ -126,7 +127,6 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, userInput int
 				Write(c.Writer)
 			return nil, err
 		}
-		refAst = &newAst
 
 		// Reset Message Contents
 		last := input[len(input)-1]
@@ -149,7 +149,7 @@ func (ast *Assistant) execute(c *gin.Context, ctx chatctx.Context, userInput int
 	}
 
 	// Only proceed with chat stream if no specific next action was handled
-	return (*refAst).handleChatStream(c, ctx, input, options, contents, callback...)
+	return ast.handleChatStream(c, ctx, input, options, contents, callback...)
 }
 
 // Execute the next action
@@ -322,105 +322,10 @@ func (ast *Assistant) handleChatStream(c *gin.Context, ctx chatctx.Context, mess
 	// Chat with AI in background
 	go func() {
 		var res interface{} = nil
-		res, err = ast.streamChat(c, ctx, messages, options, clientBreak, contents, false, callback...)
+		res, err = ast.streamChat(c, ctx, messages, options, clientBreak, contents, callback...)
 		if err != nil {
 			chatMessage.New().Error(err).Done().Write(c.Writer)
 			err = fmt.Errorf("stream chat error %s", err.Error())
-		} else {
-			count := 0
-			for {
-				if len(contents.Data) == 0 || contents.Current < 0 || contents.Current > (len(contents.Data)-1) {
-					break
-				}
-				currentLine := contents.Data[contents.Current]
-
-				if currentLine.Type != "tool" ||
-					currentLine.Props["result"] == nil {
-					break
-				}
-				result, ok := currentLine.Props["result"].(string)
-				if !ok {
-					break
-				}
-				id, ok := currentLine.Props["id"].(string)
-				if !ok {
-					break
-				}
-				fname, ok := currentLine.Props["function"].(string)
-				if !ok {
-					break
-				}
-				// doubao function calling model call
-				if currentLine.Props["arguments"] != nil &&
-					currentLine.Props["tool_calls_native"] != nil {
-
-					args := ""
-					arguments, ok := currentLine.Props["arguments"]
-					if !ok {
-						break
-					}
-					if args, ok = arguments.(string); !ok {
-						args, err = jsoniter.MarshalToString(arguments)
-						if err != nil {
-							chatMessage.New().Error(err).Done().Write(c.Writer)
-							break
-						}
-					}
-
-					var asstMmsg chatMessage.Message
-					asstMmsg.Role = "assistant"
-					asstMmsg.Name = fname
-					asstMmsg.Text = ""
-					asstMmsg.ToolCalls = []chatMessage.FunctionCall{
-						{
-							Index: 0,
-							ID:    id,
-							Type:  "function",
-							Function: chatMessage.FCAttributes{
-								Name:      fname,
-								Arguments: args,
-							},
-						},
-					}
-					asstMmsg.Hidden = true
-					messages = append(messages, asstMmsg)
-					var msg chatMessage.Message
-					msg.Role = "tool"
-					msg.ToolCallId = id
-					msg.Text = result
-					msg.Hidden = true
-					messages = append(messages, msg)
-				} else {
-					// deepseek like call
-					var msg chatMessage.Message
-
-					msg.Role = "assistant"
-					msg.Text = contents.JSON()
-					// msg.Hidden = true 不需要隐藏，作为历史记录给用户参考，并不会再次发送给AI
-
-					messages = append(messages, msg)
-					msg.Role = "user"
-					msg.Text = "function call [" + id + "] result :" + result + "\""
-					msg.Hidden = true //作为中间结果，发送给AI后，不需要显示给用户
-					messages = append(messages, msg)
-				}
-				contents = chatMessage.NewContents()
-				res, err = ast.streamChat(c, ctx, messages, options, clientBreak, contents, true, callback...)
-				if err != nil {
-					chatMessage.New().Error(err).Done().Write(c.Writer)
-					err = fmt.Errorf("stream chat error %s", err.Error())
-					break
-				}
-				count++
-
-				if count > 5 {
-					contents = chatMessage.NewContents()
-					contents.AppendText([]byte("Too many function calls"))
-					err = fmt.Errorf("too many function calls")
-					chatMessage.New().Error(err).Done().Write(c.Writer)
-					break
-				}
-			}
 		}
 		result = res
 		done <- true
@@ -447,7 +352,6 @@ func (ast *Assistant) streamChat(
 	options map[string]interface{},
 	clientBreak chan bool,
 	contents *chatMessage.Contents,
-	recall bool,
 	callback ...interface{},
 ) (interface{}, error) {
 
@@ -463,11 +367,11 @@ func (ast *Assistant) streamChat(
 
 	toolsCount := 0
 	currentMessageID := ""
-	isRecall := recall
-
+	var retry error = nil
 	var result interface{} = nil // To save the result
 	var content string = ""      // To save the content
 	err := ast.Chat(c.Request.Context(), messages, options, func(data []byte) int {
+
 		select {
 		case <-clientBreak:
 			return 0 // break
@@ -562,22 +466,19 @@ func (ast *Assistant) streamChat(
 			}
 
 			delta := msg.String()
+
 			// Chunk the delta
 			if delta != "" {
 
 				msg.AppendTo(contents) // Append content and send message
 
 				// Scan the tokens
-				callback := func(token string, id string, begin bool, text string, tails string) {
+				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
 					currentMessageID = id
 					msg.ID = id
 					msg.Type = token
-					msg.Text = "" // clear the text
-					if msg.Props == nil {
-						msg.Props = map[string]interface{}{"text": text} // Update props
-					} else {
-						msg.Props["text"] = text
-					}
+					msg.Text = ""                                    // clear the text
+					msg.Props = map[string]interface{}{"text": text} // Update props
 
 					// End of the token clear the text
 					if begin {
@@ -592,13 +493,7 @@ func (ast *Assistant) streamChat(
 						}
 						messages = append(messages, *newMsg)
 					}
-				}
-				contents.ScanTokens(currentMessageID, callback)
-
-				// if isTool && msg.IsDone {
-				// 	contents.ScanTokens(currentMessageID, callback)
-				// 	isTool = false
-				// }
+				})
 
 				// Handle stream
 				// The stream hook is not used, because there's no need to handle the stream output
@@ -637,11 +532,9 @@ func (ast *Assistant) streamChat(
 				output := chatMessage.New().Map(map[string]interface{}{
 					"text":  delta,
 					"type":  msgType,
-					"new":   isRecall,
-					"done":  msg.IsDone && msg.Type != "tool",
+					"done":  msg.IsDone,
 					"delta": true,
 				})
-				isRecall = false
 
 				output.Retry = ctx.Retry   // Retry mode
 				output.Silent = ctx.Silent // Silent mode
@@ -656,7 +549,7 @@ func (ast *Assistant) streamChat(
 			if msg.IsDone {
 
 				// Send the last message to the client
-				if delta != "" && msg.Type != "tool" {
+				if delta != "" {
 					chatMessage.New().
 						Map(map[string]interface{}{
 							"assistant_id":     ast.ID,
@@ -679,17 +572,13 @@ func (ast *Assistant) streamChat(
 
 				// Some error occurred in the hook, return the error
 				if hookErr != nil {
-					chatMessage.New().Error(hookErr.Error()).Done().Callback(cb).Write(c.Writer)
+					retry = hookErr
 					return 0 // break
 				}
+
+				// Save the chat history
 				ast.saveChatHistory(ctx, messages, contents)
 
-				if len(res.Output) > 0 {
-					if contents.Data[contents.Current].Type == "tool" {
-						contents.Data[contents.Current].Props["result"] = string(res.Output[len(res.Output)-1].Bytes)
-						return 0
-					}
-				}
 				// If the hook is successful, execute the next action
 				if res != nil && res.Next != nil {
 					_, err := res.Next.Execute(c, ctx, contents, cb)
@@ -725,6 +614,39 @@ func (ast *Assistant) streamChat(
 		}
 	})
 
+	// retry
+	if retry != nil {
+
+		// Update the retry times
+		ctx.RetryTimes = ctx.RetryTimes + 1 // Increment the retry times
+		ctx.Retry = true                    // Set the retry mode
+
+		// Hook retry
+		prompt, retryErr := ast.HookRetry(c, ctx, messages, contents, exception.Trim(retry))
+		if retryErr != nil {
+			color.Red("%s, try to fix the error %d times, but failed with %s", exception.Trim(retry), ctx.RetryTimes, exception.Trim(retryErr))
+			chatMessage.New().Error(retry.Error()).Done().Callback(cb).Write(c.Writer)
+			return nil, retry
+		}
+
+		// if the prompt is empty, return the error
+		if prompt == "" {
+			chatMessage.New().Error(retry.Error()).Done().Callback(cb).Write(c.Writer)
+			return nil, retry
+		}
+
+		// Add the prompt to the messages
+		retryMessages, retryErr := ast.retryMessages(messages, prompt)
+		if retryErr != nil {
+			color.Red("%s, try to fix the error %d times, but failed with %s", exception.Trim(retry), ctx.RetryTimes, exception.Trim(retryErr))
+			chatMessage.New().Error(retry.Error()).Done().Callback(cb).Write(c.Writer)
+			return nil, retry
+		}
+
+		// Retry the chat
+		return ast.streamChat(c, ctx, retryMessages, options, clientBreak, contents, cb)
+	}
+
 	// Handle error
 	if err != nil {
 		return nil, err
@@ -748,6 +670,27 @@ func (ast *Assistant) streamChat(
 
 	// Return the content
 	return strings.TrimSpace(content), nil
+}
+
+func (ast *Assistant) retryMessages(messages []chatMessage.Message, prompt string) ([]chatMessage.Message, error) {
+
+	// Get the last user message
+	var lastIndex int
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			messages[i].Text = prompt
+			lastIndex = i
+			break
+		}
+	}
+
+	if lastIndex == 0 {
+		return nil, fmt.Errorf("no user message found")
+	}
+
+	// Remove the messages after the last user message
+	messages = messages[:lastIndex+1]
+	return messages, nil
 }
 
 // saveChatHistory saves the chat history if storage is available
@@ -774,9 +717,6 @@ func (ast *Assistant) saveChatHistory(ctx chatctx.Context, messages []chatMessag
 		if userMessage.Hidden {
 			data = []map[string]interface{}{data[1]}
 		}
-		// if v, ok := contents.Data[contents.Current].Props["function"]; ok && v != "" {
-		// 	data = []map[string]interface{}{data[0]}
-		// }
 
 		err := storage.SaveHistory(ctx.Sid, data, ctx.ChatID, ctx.Map())
 		if err != nil {
@@ -841,12 +781,6 @@ func (ast *Assistant) withPrompts(messages_history []chatMessage.Message) []chat
 
 			prompts := []map[string]interface{}{
 				{
-					"role": "system",
-					"name": "duplicate function call check",
-					"content": "If the user reply the previous function call with result with same id,\n" +
-						"don't make the duplicate function call for same function id\n",
-				},
-				{
 					"role":    "system",
 					"name":    "TOOL_CALLS_SCHEMA",
 					"content": raw,
@@ -858,7 +792,6 @@ func (ast *Assistant) withPrompts(messages_history []chatMessage.Message) []chat
 						"Each tool call is defined with:\n" +
 						"  - type: always 'function'\n" +
 						"  - function:\n" +
-						"    - id: the unique id of each call\n" +
 						"    - name: function name\n" +
 						"    - description: function description\n" +
 						"    - parameters: function parameters with type and validation rules\n",
@@ -870,11 +803,10 @@ func (ast *Assistant) withPrompts(messages_history []chatMessage.Message) []chat
 						"1. Only use tool calls when a function matches your task exactly\n" +
 						"2. Each tool call must be wrapped in <tool> and </tool> tags\n" +
 						"3. Tool call must be a valid JSON with:\n" +
-						"   {\"id\": \"unique id of call\",\"function\": \"function_name\", \"arguments\": {parameters}}\n" +
+						"   {\"function\": \"function_name\", \"arguments\": {parameters}}\n" +
 						"4. Return the function's result as your response\n" +
 						"5. One tool call per response\n" +
-						"6. Arguments must match parameter types, rules and description\n" +
-						"7. Create unique IDs for each tool call if the call is new\n\n" +
+						"6. Arguments must match parameter types, rules and description\n\n" +
 						examplesStr,
 				},
 				{
@@ -1135,29 +1067,23 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	for index, message := range messages {
 		// Ignore the tool, think, error
-		if (message.Type == "tool" && len(message.ToolCalls) == 0) || message.Type == "think" || message.Type == "error" {
+		if message.Type == "tool" || message.Type == "think" || message.Type == "error" {
 			continue
 		}
 
 		role := message.Role
 		if role == "" {
-			continue
-			// return nil, fmt.Errorf("role must be string")
+			return nil, fmt.Errorf("role must be string")
 		}
 
 		content := message.String()
-		// if content == "" {
-		// 	return nil, fmt.Errorf("content must be string")
-		// }
+		if content == "" {
+			return nil, fmt.Errorf("content must be string")
+		}
 
 		newMessage := map[string]interface{}{
-			"role": role,
-		}
-		if role == "tool" {
-			newMessage["tool_calls"] = message.ToolCalls
-			newMessage["tool_call_id"] = message.ToolCallId
-		} else {
-			newMessage["content"] = content
+			"role":    role,
+			"content": content,
 		}
 
 		// Keep the name for user messages

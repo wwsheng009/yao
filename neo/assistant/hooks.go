@@ -2,7 +2,6 @@ package assistant
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -57,28 +56,6 @@ func (ast *Assistant) HookCreate(c *gin.Context, context chatctx.Context, input 
 			if payload, ok := res["payload"].(map[string]interface{}); ok {
 				response.Next.Payload = payload
 			}
-		}
-
-		if res, ok := v["options"].(map[string]interface{}); ok {
-			response.Options = res
-		}
-
-		if res, ok := v["input"].([]interface{}); ok {
-			// Marshal the []interface{} to JSON
-			jsonData, err := json.Marshal(res)
-			if err != nil {
-				return response, err
-			}
-
-			// Unmarshal the JSON into []Message
-			var messages []message.Message
-			err = json.Unmarshal(jsonData, &messages)
-			if err != nil {
-				return response, err
-			}
-
-			// Assign the converted []Message to response.Input
-			response.Input = messages
 		}
 
 	case string:
@@ -157,6 +134,38 @@ func (ast *Assistant) HookStream(c *gin.Context, context chatctx.Context, input 
 	return response, nil
 }
 
+// HookRetry Handle retry of assistant response
+func (ast *Assistant) HookRetry(c *gin.Context, context chatctx.Context, input []message.Message, contents *chatMessage.Contents, errmsg string) (string, error) {
+	ctx := ast.createBackgroundContext()
+	output := []message.Data{}
+	if len(input) < 1 {
+		return "", fmt.Errorf("no input")
+	}
+
+	var lastInput message.Message = input[len(input)-1]
+	for _, data := range contents.Data {
+		if data.Type == "think" {
+			continue
+		}
+		output = append(output, data)
+	}
+
+	v, err := ast.call(ctx, "Retry", c, contents, context, lastInput.String(), output, errmsg)
+	if err != nil {
+		if err.Error() == HookErrorMethodNotFound {
+			return "", nil
+		}
+		return "", err
+	}
+
+	res, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid return type: %T", v)
+	}
+
+	return res, nil
+}
+
 // HookDone Handle completion of assistant response
 func (ast *Assistant) HookDone(c *gin.Context, context chatctx.Context, input []message.Message, contents *chatMessage.Contents) (*ResHookDone, error) {
 	// Create timeout context
@@ -200,7 +209,6 @@ func (ast *Assistant) HookDone(c *gin.Context, context chatctx.Context, input []
 					if err != nil {
 						props["error"] = fmt.Sprintf("Can not parse the tool call: %s\n--original--\n%s", err.Error(), text)
 					}
-					contents.UpdateType("tool", props)
 				}
 
 				output = append(output, message.Data{Type: "tool", Props: props})

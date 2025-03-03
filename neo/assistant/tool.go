@@ -33,7 +33,7 @@ type Parameter struct {
 
 // Example returns a formatted example of how to use this tool
 func (tool Tool) Example() string {
-	return fmt.Sprintf("<tool>\n{\"id\":\"e40ce25d-e354-5fd3-d99f-208680a25555\",\"function\":\"%s\",\"arguments\":%s}\n</tool>",
+	return fmt.Sprintf("<tool>\n{\"function\":\"%s\",\"arguments\":%s}\n</tool>",
 		tool.Function.Name,
 		jsoniter.Wrap(tool.ExampleArguments()).ToString())
 }
