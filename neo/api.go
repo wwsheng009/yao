@@ -236,10 +236,11 @@ func (neo *DSL) handleChat(c *gin.Context) {
 	if assistantId != "" && ctx.AssistantID == "" {
 		ctx.AssistantID = assistantId
 	}
-
 	err := neo.Answer(ctx, content, c)
+
+	// Error handling
 	if err != nil {
-		message.New().Error(err).Done().Write(c.Writer)
+		message.New().Done().Error(err).Write(c.Writer)
 		c.Done()
 		return
 	}
