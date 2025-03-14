@@ -1,6 +1,6 @@
 module github.com/yaoapp/yao
 
-go 1.23.0
+go 1.23.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.1

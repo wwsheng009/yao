@@ -1,5 +1,5 @@
 # ===========================================
-#  Yao Build Environment (Ubuntu 23.04 AMD64)
+#  Yao Build Environment (Ubuntu 24.04 AMD64)
 #
 #  Build:
 #  docker build --platform linux/amd64 -t yaoapp/yao-build:0.10.4 .
@@ -17,12 +17,6 @@ WORKDIR /app
 ADD build.sh /app/build.sh
 ENV PATH=$PATH:/usr/local/go/bin:/root/go/bin
 
-# RUN cp /etc/apt/sources.list /etc/apt/sources.list.backup && \
-#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
-#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
-#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
-#     echo "deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse" | tee -a /etc/apt/sources.list
-
 RUN apt-get update && \
     apt-get install -y libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi libncurses5-dev build-essential bison flex libssl-dev bc && \
     apt-get install -y gcc-arm-linux-gnueabi g++-arm-linux-gnueabi && \
@@ -36,9 +30,11 @@ RUN apt-get update && \
     apt-get install -y unzip
 
 
-RUN wget https://golang.org/dl/go1.21.1.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.21.1.linux-amd64.tar.gz && \
-    rm go1.21.1.linux-amd64.tar.gz
+# Install Go 1.23.3 
+RUN wget https://golang.org/dl/go1.23.3.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.23.3.linux-amd64.tar.gz && \
+    rm go1.23.3.linux-amd64.tar.gz
+
 
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs 
