@@ -55,7 +55,7 @@ func SpecName(root string, file string) string {
 	names := strings.Split(basename, ".") // ["bar", "http", "json"], ["bar2", "0", "http", "json"]
 	namelen := len(names)
 	extcnt := 1
-	if names[namelen-1] == "yao" || names[namelen-1] == "json" || names[namelen-1] == "jsonc" {
+	if namelen > 2 && (names[namelen-1] == "yao" || names[namelen-1] == "json" || names[namelen-1] == "jsonc") {
 		extcnt = 2
 	}
 	names = names[:len(names)-extcnt]                 // ["bar"], ["bar2", "0"]
