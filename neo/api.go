@@ -1021,6 +1021,7 @@ func (neo *DSL) handleAssistantList(c *gin.Context) {
 	}
 	// Parse filter parameters
 	filter := store.AssistantFilter{
+		Type:     "assistant",
 		Page:     1,
 		PageSize: 20,
 	}
@@ -1170,6 +1171,7 @@ func (neo *DSL) handleAssistantDetail(c *gin.Context) {
 
 	filter := store.AssistantFilter{
 		AssistantID: assistantID,
+		Type:        "assistant",
 		Page:        1,
 		PageSize:    1,
 	}
