@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/yaoapp/yao/config"
 )
@@ -12,6 +14,13 @@ import (
 func InYaoApp(root string) bool {
 	// Check current directory and parent directories
 	for root != "/" {
+		// Check if it's a Windows root directory (e.g., C:\, D:\)
+		if runtime.GOOS == "windows" {
+			volume := filepath.VolumeName(root)
+			if strings.EqualFold(filepath.Clean(root), volume+"\\") {
+				break
+			}
+		}
 		if IsYaoApp(root) {
 			return true
 		}

@@ -931,7 +931,7 @@ func (conv *Xun) parseJSONFields(data map[string]interface{}, fields []string) {
 // SaveAssistant saves assistant information
 func (conv *Xun) SaveAssistant(assistant map[string]interface{}) (interface{}, error) {
 	// Validate required fields
-	requiredFields := []string{"name", "connector"}
+	requiredFields := []string{"name", "type", "connector"}
 	for _, field := range requiredFields {
 		if _, ok := assistant[field]; !ok {
 			return nil, fmt.Errorf("field %s is required", field)
@@ -944,13 +944,7 @@ func (conv *Xun) SaveAssistant(assistant map[string]interface{}) (interface{}, e
 	// Create a copy of the assistant map to avoid modifying the original
 	assistantCopy := make(map[string]interface{})
 	for k, v := range assistant {
-		// Check if the key is "option" and assign it to "options"
-		if k == "option" {
-			assistantCopy["options"] = v
-			delete(assistant, "option")
-		} else {
-			assistantCopy[k] = v
-		}
+		assistantCopy[k] = v
 	}
 
 	// Process JSON fields
@@ -974,9 +968,6 @@ func (conv *Xun) SaveAssistant(assistant map[string]interface{}) (interface{}, e
 		if err != nil {
 			return nil, err
 		}
-	}
-	if _, ok := assistantCopy["type"]; !ok {
-		assistantCopy["type"] = "assistant"
 	}
 
 	// Check if assistant exists

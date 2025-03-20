@@ -288,14 +288,14 @@ debug1: clean
 # echo "BASE=yao" > ../xgen-v1.0/packages/xgen/.env
 
 #	Checkout init
-# git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
-	rm -rf .tmp/yao-init
-	cp -r ../yao-init .tmp/yao-init
-	rm -rf .tmp/yao-init/.git
-	rm -rf .tmp/yao-init/node_modules
-	rm -rf .tmp/yao-init/.gitignore
-	rm -rf .tmp/yao-init/LICENSE
-	rm -rf .tmp/yao-init/README.md
+
+#	rm -rf .tmp/yao-init
+#	cp -r ../yao-init .tmp/yao-init
+#	rm -rf .tmp/yao-init/.git
+#	rm -rf .tmp/yao-init/node_modules
+#	rm -rf .tmp/yao-init/.gitignore
+#	rm -rf .tmp/yao-init/LICENSE
+#	rm -rf .tmp/yao-init/README.md
 	
 #   Yao Builder
 # mkdir -p ../yao-builder
@@ -313,7 +313,15 @@ debug1: clean
 	cp -r .tmp/xgen/v0.9/dist .tmp/data/xgen/v0.9
 	cp -r ../xgen-v1.0/packages/xgen/dist .tmp/data/xgen/v1.0
 #	cp -r ../xgen-v1.0/packages/setup/build .tmp/data/xgen/setup
-	cp -r .tmp/yao-init .tmp/data/init
+# 	git clone https://github.com/wwsheng009/yao-init .tmp/data/init
+	rm -rf .tmp/data/init
+	cp -r ../yao-init .tmp/data/init
+	rm -rf .tmp/data/init/.git
+	rm -rf .tmp/data/init/node_modules
+	rm -rf .tmp/data/init/.gitignore
+	rm -rf .tmp/data/init/LICENSE
+	rm -rf .tmp/data/init/README.md
+
 	cp -r sui/libsui .tmp/data/
 	find .tmp/data -name ".DS_Store" -type f -delete
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...

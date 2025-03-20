@@ -43,9 +43,17 @@ Copy-Item -Path '..\xgen-v1.0\packages\xgen\dist' -Destination .tmp\data\xgen\v1
 # Copy ..\xgen-v1.0\packages\setup\build directory to .tmp\data\xgen\setup
 # Copy-Item -Path '..\xgen-v1.0\packages\setup\build' -Destination .tmp\data\xgen\setup -Recurse
 
-Copy-Item -Path ".tmp\yao-init" -Destination ".tmp\data\init" -Recurse -Force
+Copy-Item -Path "..\yao-init" -Destination ".tmp\data\init" -Recurse -Force
+
+Remove-Item .tmp\data\init\.git -Recurse -Force
+Remove-Item .tmp\data\init\node_modules -Recurse -Force
+Remove-Item .tmp\data\init\.gitignore -Force
+Remove-Item .tmp\data\init\LICENSE -Force
+Remove-Item .tmp\data\init\README.md -Force
 
 Copy-Item -Path "sui\libsui" -Destination ".tmp\data\libsui" -Recurse -Force
+# 删除 .tmp/data 目录下所有的 .DS_Store 文件
+Get-ChildItem -Path ".tmp/data" -Filter ".DS_Store" -Recurse -File | Remove-Item -Force
 
 # Generate data/bindata.go with go-bindata
 go-bindata -fs -pkg data -o data/bindata.go -prefix '.tmp/data/' .tmp/data/...
