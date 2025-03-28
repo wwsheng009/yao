@@ -268,10 +268,18 @@ func (data *Data) UnmarshalJSON(input []byte) error {
         newData.Type = typ
     }
     
-    if text, ok := origin["text"].(string); ok {
-        newData.Bytes = []byte(text)
+    // 处理text字段,支持string和interface{}类型
+    if text, ok := origin["text"]; ok {
+        switch v := text.(type) {
+        case string:
+            newData.Bytes = []byte(v)
+        default:
+            // 将interface{}转换为json字符串
+            if bytes, err := jsoniter.Marshal(v); err == nil {
+                newData.Bytes = bytes
+            }
+        }
     }
-    
     if props, ok := origin["props"].(map[string]interface{}); ok {
         newData.Props = props
     }

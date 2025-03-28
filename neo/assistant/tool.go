@@ -26,10 +26,10 @@ type SchemaProperty struct {
 
 // Parameter represents the parameters field in function calling format
 type Parameter struct {
-	Type                 string                    `json:"type"`
+	Type                 string                    `json:"type,omitempty"`
 	Properties           map[string]SchemaProperty `json:"properties,omitempty"`
 	Required             []string                  `json:"required,omitempty"`
-	AdditionalProperties bool                      `json:"additionalProperties"`
+	AdditionalProperties bool                      `json:"additionalProperties,omitempty"`
 	Strict               bool                      `json:"strict,omitempty"`
 }
 

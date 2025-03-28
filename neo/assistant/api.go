@@ -592,8 +592,8 @@ func (ast *Assistant) streamChat(
 
 				// The default output
 				output := chatMessage.New().Done()
-				if res != nil && res.Output != nil {
-					output = chatMessage.New().Map(map[string]interface{}{"text": res.Output, "done": true})
+				if res != nil && res.Output != nil && len(res.Output) > 0 {
+					output = chatMessage.New().Map(map[string]interface{}{"text": string(res.Output[0].Bytes), "done": true})
 					output.Retry = ctx.Retry
 					output.Silent = ctx.Silent
 				}
