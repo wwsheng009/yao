@@ -3,13 +3,13 @@ package local
 import (
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/sui/core"
+	"github.com/yaoapp/yao/utils"
 )
 
 // Pages get the pages
@@ -395,9 +395,7 @@ func (tmpl *Template) getPage(route, file string) (core.IPage, error) {
 
 func (tmpl *Template) getPageRoute(file string) string {
 	route := filepath.Dir(file[len(tmpl.Root):])
-	if runtime.GOOS == "windows" {
-		route = strings.ReplaceAll(route, "\\", "/")
-	}
+	route = utils.RepalcePath(route)
 
 	return route
 }

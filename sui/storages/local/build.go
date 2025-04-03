@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/sui/core"
+	"github.com/yaoapp/yao/utils"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 )
@@ -54,7 +54,7 @@ func (tmpl *Template) Build(option *core.BuildOption) ([]string, error) {
 	}
 
 	if option.AssetRoot == "" {
-		option.AssetRoot = filepath.Join(root, "assets")
+		option.AssetRoot = utils.RepalcePath(filepath.Join(root, "assets"))
 	}
 
 	// Write the global script
@@ -392,10 +392,8 @@ func (page *Page) Build(globalCtx *core.GlobalBuildContext, option *core.BuildOp
 	}
 
 	if option.AssetRoot == "" {
-		option.AssetRoot = filepath.Join(root, "assets")
-		if runtime.GOOS == "windows" {
-			option.AssetRoot = strings.ReplaceAll(option.AssetRoot, "\\", "/")
-		}
+		option.AssetRoot = utils.RepalcePath(filepath.Join(root, "assets"))
+		
 	}
 	page.Root = root
 
@@ -474,7 +472,7 @@ func (page *Page) BuildAsComponent(globalCtx *core.GlobalBuildContext, option *c
 			log.Error("SyncAssets: Get the public root error: %s. use %s", err.Error(), page.tmpl.local.DSL.Public.Root)
 			root = page.tmpl.local.DSL.Public.Root
 		}
-		option.AssetRoot = filepath.Join(root, "assets")
+		option.AssetRoot = utils.RepalcePath(filepath.Join(root, "assets"))
 	}
 
 	html, messages, err := page.Page.CompileAsComponent(ctx, option)

@@ -15,6 +15,7 @@ import (
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
 	"github.com/yaoapp/yao/sui/core"
+	"github.com/yaoapp/yao/utils"
 	"golang.org/x/text/language"
 )
 
@@ -71,6 +72,7 @@ var TransCmd = &cobra.Command{
 		localeRoot := filepath.Join(tmpl.GetRoot(), "__locales")
 		definedLocales := tmpl.Locales()
 		assetRoot := filepath.Join(publicRoot, "assets")
+		assetRoot = utils.RepalcePath(assetRoot)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
 			return

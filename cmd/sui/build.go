@@ -15,6 +15,7 @@ import (
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
 	"github.com/yaoapp/yao/sui/core"
+	"github.com/yaoapp/yao/utils"
 )
 
 // BuildCmd command
@@ -68,6 +69,7 @@ var BuildCmd = &cobra.Command{
 		// -
 		publicRoot, err := sui.PublicRootWithSid(sid)
 		assetRoot := filepath.Join(publicRoot, "assets")
+		assetRoot = utils.RepalcePath(assetRoot)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, color.RedString(err.Error()))
 			return
