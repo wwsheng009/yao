@@ -17,8 +17,6 @@ func getTimestamp(v interface{}) (int64, error) {
 		return v, nil
 	case int:
 		return int64(v), nil
-	case time.Time:
-		return v.UnixNano(), nil
 	case string:
 		if ts, err := time.Parse(time.RFC3339, v); err == nil {
 			return ts.UnixNano(), nil
