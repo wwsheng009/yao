@@ -34,6 +34,9 @@ func getTimestamp(v interface{}) (int64, error) {
 			return ts, nil
 		}
 
+	case time.Time:
+		return v.UnixNano(), nil
+
 	case nil:
 		return 0, nil
 	}
