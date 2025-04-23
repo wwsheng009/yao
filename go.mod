@@ -19,11 +19,12 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-contrib/pprof v1.5.2
 	github.com/gin-gonic/gin v1.10.0
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
+	github.com/mozillazg/go-pinyin v0.20.0
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	github.com/spf13/cast v1.7.1
@@ -102,7 +103,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
-	github.com/mozillazg/go-pinyin v0.20.0 // indirect
 	github.com/oklog/run v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

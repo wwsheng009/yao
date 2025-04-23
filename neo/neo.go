@@ -131,6 +131,8 @@ func (neo *DSL) GenerateWithAI(ctx chatctx.Context, input string, messageType st
 		isFirstThink := true
 		isThinking := false
 		currentMessageID := ""
+		tokenID := ""
+		beganAt := int64(0)
 		err := ast.Chat(c.Request.Context(), msgList, neo.Option, func(data []byte) int {
 			select {
 			case <-clientBreak:
@@ -172,32 +174,41 @@ func (neo *DSL) GenerateWithAI(ctx chatctx.Context, input string, messageType st
 					isThinking = false
 
 					// Clear the token and make a new line
-					contents.NewText([]byte{}, currentMessageID)
-					contents.ClearToken()
+					contents.NewText([]byte{}, message.Extra{ID: currentMessageID})
+					contents.ClearToken(currentMessageID)
 				}
 
 				// Append content and send message
 				msg.AppendTo(contents)
 
 				// Scan the tokens
-				contents.ScanTokens(currentMessageID, func(token string, id string, begin bool, text string, tails string) {
-					currentMessageID = id
-					msg.ID = id
-					msg.Type = token
-					msg.Text = ""                                    // clear the text
-					msg.Props = map[string]interface{}{"text": text} // Update props
+				contents.ScanTokens(currentMessageID, tokenID, beganAt, func(params message.ScanCallbackParams) {
+					currentMessageID = params.MessageID
+					msg.ID = params.MessageID
+					msg.Type = params.Token
+					msg.Text = ""                                           // clear the text
+					msg.Props = map[string]interface{}{"text": params.Text} // Update props
 
 					// End of the token clear the text
-					if begin {
+					if params.Begin {
+						msg.Begin = beganAt
+						return
+					}
+
+					// End of the token clear the text
+					if params.End {
+						msg.End = params.EndAt
 						return
 					}
 
 					// New message with the tails
-					newMsg, err := message.NewString(tails, id)
-					if err != nil {
-						return
+					if params.Tails != "" {
+						newMsg, err := message.NewString(params.Tails, params.MessageID)
+						if err != nil {
+							return
+						}
+						msgList = append(msgList, *newMsg)
 					}
-					msgList = append(msgList, *newMsg)
 				})
 
 				if !silent {
