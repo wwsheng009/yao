@@ -78,7 +78,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// load the application engine
-		err := engine.Load(config.Conf, engine.LoadOption{Action: "start"})
+		loadWarnings, err := engine.Load(config.Conf, engine.LoadOption{Action: "start"})
 		if err != nil {
 			fmt.Println(color.RedString(L("Load: %s"), err.Error()))
 			os.Exit(1)
@@ -238,6 +238,17 @@ var startCmd = &cobra.Command{
 			printStores(true)
 		}
 
+		// Print the warnings
+		if len(loadWarnings) > 0 {
+			fmt.Println(color.YellowString("---------------------------------"))
+			fmt.Println(color.YellowString(L("Warnings")))
+			fmt.Println(color.YellowString("---------------------------------"))
+			for _, warning := range loadWarnings {
+				fmt.Println(color.YellowString("[%s] %s", warning.Widget, warning.Error))
+			}
+			fmt.Printf("\n")
+		}
+
 		for {
 			select {
 			case v := <-srv.Event():
@@ -281,9 +292,17 @@ func install() error {
 	Boot()
 
 	// load the application engine
-	err = engine.Load(config.Conf, engine.LoadOption{Action: "start"})
+	loadWarnings, err := engine.Load(config.Conf, engine.LoadOption{Action: "start"})
 	if err != nil {
 		return err
+	}
+
+	// Print the warnings
+	if len(loadWarnings) > 0 {
+		for _, warning := range loadWarnings {
+			fmt.Println(color.YellowString("[%s] %s", warning.Widget, warning.Error))
+		}
+		fmt.Printf("\n\n")
 	}
 
 	err = setup.Initialize(config.Conf.Root, config.Conf)
