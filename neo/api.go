@@ -564,7 +564,7 @@ func (neo *DSL) handleChatLatest(c *gin.Context) {
 
 	// assistant_id is nil return the default assistant
 	if chat.Chat["assistant_id"] == nil {
-		chat.Chat["assistant_id"] = neo.Use
+		chat.Chat["assistant_id"] = neo.Use.Default
 
 		// Get the assistant info
 		ast, err := assistant.Get(neo.Use.Default)
@@ -577,7 +577,7 @@ func (neo *DSL) handleChatLatest(c *gin.Context) {
 		chat.Chat["assistant_avatar"] = ast.Avatar
 	}
 
-	chat.Chat["assistant_deleteable"] = neo.Use != chat.Chat["assistant_id"]
+	chat.Chat["assistant_deleteable"] = neo.Use.Default != chat.Chat["assistant_id"]
 	c.JSON(200, map[string]interface{}{"data": chat})
 	c.Done()
 }
@@ -611,7 +611,7 @@ func (neo *DSL) handleChatDetail(c *gin.Context) {
 
 	// assistant_id is nil return the default assistant
 	if chat.Chat["assistant_id"] == nil {
-		chat.Chat["assistant_id"] = neo.Use
+		chat.Chat["assistant_id"] = neo.Use.Default
 
 		// Get the assistant info
 		ast, err := assistant.Get(neo.Use.Default)

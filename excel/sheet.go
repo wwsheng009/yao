@@ -76,6 +76,92 @@ func (excel *Excel) ReadSheet(name string) ([][]interface{}, error) {
 	return result, nil
 }
 
+// GetSheetDimension returns the number of rows and columns in a sheet
+func (excel *Excel) GetSheetDimension(name string) (rows int, cols int, err error) {
+	// Check if sheet exists
+	if idx, _ := excel.GetSheetIndex(name); idx == -1 {
+		return 0, 0, fmt.Errorf("sheet %s does not exist", name)
+	}
+	rows = 0
+	cols = 0
+	ri, err := excel.File.Rows(name)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer ri.Close()
+	for ri.Next() {
+		rows++
+	}
+
+	// Get column count
+	ci, err := excel.File.Cols(name)
+	if err != nil {
+		return 0, 0, err
+	}
+	for ci.Next() {
+		cols++
+	}
+	return rows, cols, nil
+
+}
+
+// ReadSheetRows reads all data from a sheet by rows
+func (excel *Excel) ReadSheetRows(name string, start int, size int) ([][]string, error) {
+	// Validate parameters
+	if start < 0 {
+		return nil, fmt.Errorf("start position cannot be negative")
+	}
+	if size < 0 {
+		return nil, fmt.Errorf("size cannot be negative")
+	}
+
+	// Check if sheet exists
+	if idx, _ := excel.GetSheetIndex(name); idx == -1 {
+		return nil, fmt.Errorf("sheet %s does not exist", name)
+	}
+
+	// If size is 0, return empty slice
+	if size == 0 {
+		return [][]string{}, nil
+	}
+
+	// Get rows iterator
+	rows, err := excel.File.Rows(name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Skip to start position
+	currentRow := -1
+	for rows.Next() {
+		currentRow++
+		if currentRow >= start {
+			break
+		}
+	}
+
+	// Read requested number of rows
+	result := make([][]string, 0, size)
+	if currentRow == start {
+		row, err := rows.Columns()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+
+	for i := 1; i < size && rows.Next(); i++ {
+		row, err := rows.Columns()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+
+	return result, nil
+}
+
 // UpdateSheet updates an existing sheet with new data
 // If the sheet doesn't exist, it will be created
 func (excel *Excel) UpdateSheet(name string, data [][]interface{}) error {
