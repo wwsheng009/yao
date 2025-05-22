@@ -10,14 +10,36 @@
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
+      // "dlvFlags": [
+      //   "--log"
+      // ],
       "args": [
         "start"
       ],
       // "cwd": "/mnt/d/projects/go/yao/wwsheng009/yao-bench",
-      "cwd": "D:/projects/go/yao/wwsheng009/yao-amis-admin"
+      // "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
+      // "cwd": "E:/projects/yao/yao-projects/yao-chatgpt",
+      "cwd": "E:/projects/yao/wwsheng009/yao-init"
+      // "cwd": "E:/projects/yao/demos/yao-dev-app"
+      // "cwd": "E:/projects/yao/demos/yao-website"
+      // "cwd": "E:/projects/yao/yao-projects/yao-wms"
+      // "cwd": "E:/projects/yao/temp/x1"
     },
     {
-      "name": "test run",
+      "name": "test ai",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "scripts.ai.deepseek.Call",
+        "你好",
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
+    },
+    {
+      "name": "test sui build",
       "type": "go",
       "request": "launch",
       "mode": "auto",
@@ -26,11 +48,53 @@
         "--log"
       ],
       "args": [
-        "run",
-        "scripts.ddic.model.AfterFind2",
-        "::{\"id\":1}"
+        "sui",
+        "build",
+        "web",
+        "default"
       ],
-      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
+      "cwd": "E:/projects/yao/demos/yao-website"
+    },
+    {
+      "name": "test run",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "model.list",
+        "::{\"metadata\": true, \"columns\":true}"
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
+    },
+    {
+      "name": "test import",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "xiang.import.Run",
+        "sku",
+        "sku.xlsx",
+        ""
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-wms"
+    },
+    {
+      "name": "test pipe",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "pipes.cli.translator",
+        "::{\"placeholder\":\"translate\\nhello world\"}"
+      ],
+      "cwd": "E:/projects/yao/demos/yao-dev-app"
     },
     {
       "name": "Launch migrate",
@@ -42,9 +106,22 @@
         "migrate",
         "--reset",
         "-n",
-        "admin.user"
+        "doc.vector"
       ],
-      "cwd": "D:/projects/go/yao/wwsheng009/yao-bench"
+      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
+    },
+    {
+      "name": "Launch stream",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "scripts.ai.bot.Call",
+        "你是什么模型"
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
     },
     {
       "name": "Launch search",
@@ -61,18 +138,18 @@
       "cwd": "/data/projects/yao/demos-v1.0/yao-node-client/"
     },
     {
-      "name": "Launch find",
+      "name": "Studio test",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "args": [
+        "studio",
         "run",
-        "yao.form.Find",
-        "mard",
-        "TG10"
+        "convert.writeDslFile",
+        "User"
       ],
-      "cwd": "/tmp/saphanatest2"
+      "cwd": "E:/projects/metalowcode/Yao-MetaLowCode"
     },
     {
       "name": "Launch flows.image1",
@@ -88,7 +165,7 @@
       "cwd": "/home/go/projects/yao/demos-v1.0/xgen-dev-app/"
     },
     {
-      "name": "schema",
+      "name": "TableGet",
       "type": "go",
       "request": "launch",
       "mode": "auto",
@@ -96,9 +173,9 @@
       "args": [
         "run",
         "schemas.default.TableGet",
-        "admin_user"
+        "doc_vector"
       ],
-      "cwd": "D:/projects/go/yao/yao-temp/yao-test"
+      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
     },
     {
       "name": "print hash",

@@ -245,7 +245,7 @@ debug: clean
 #	Packing
 	mkdir -p .tmp/data
 	cp -r ui .tmp/data/ui
-	cp -r xgen .tmp/data/
+	cp -r cui .tmp/data/
 	cp -r yao .tmp/data/
 	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
 	rm -rf .tmp/data
@@ -399,6 +399,7 @@ debug1: clean
 # echo "BASE=__yao_admin_root" > ../cui-v1.0/packages/cui/.env
 # cd ../cui-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
 # echo "BASE=yao" > ../cui-v1.0/packages/cui/.env
+# cd ../cui-v1.0/packages/setup  && pnpm install --no-frozen-lockfile && pnpm run build
 
 #	Checkout init
 # git clone https://github.com/wwsheng009/yao-init-0.10.3.git .tmp/yao-init
@@ -425,7 +426,7 @@ debug1: clean
 # cp -r ../yao-builder .tmp/data/builder
 	cp -r .tmp/cui/v0.9/dist .tmp/data/cui/v0.9
 	cp -r ../cui-v1.0/packages/cui/dist .tmp/data/cui/v1.0
-#	cp -r ../cui-v1.0/packages/setup/build .tmp/data/cui/setup
+	cp -r ../cui-v1.0/packages/setup/build .tmp/data/cui/setup
 	cp -r .tmp/yao-init .tmp/data/init
 	cp -r sui/libsui .tmp/data/
 	find .tmp/data -name ".DS_Store" -type f -delete

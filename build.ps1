@@ -13,20 +13,20 @@ New-Item -ItemType Directory -Force -Path dist\release
 # Create directory .tmp
 New-Item -ItemType Directory -Force -Path .tmp
 
-# Create directory .tmp\xgen\v0.9\dist
-New-Item -ItemType Directory -Force -Path .tmp\xgen\v0.9\dist
+# Create directory .tmp\cui\v0.9\dist
+New-Item -ItemType Directory -Force -Path .tmp\cui\v0.9\dist
 
-# Write 'XGEN v0.9' to a file called index.html in the directory .tmp\xgen\v0.9\dist
-Set-Content -Path .tmp\xgen\v0.9\dist\index.html -Value 'XGEN v0.9'
+# Write 'CUI v0.9' to a file called index.html in the directory .tmp\cui\v0.9\dist
+Set-Content -Path .tmp\cui\v0.9\dist\index.html -Value 'CUI v0.9'
 
 # echo "yao init"
 # & "./build_init.ps1"
 
-# echo "build xgen"
+# echo "build cui"
 # & "./build_xgen.ps1"
 
-# Create directory .tmp\data\xgen
-New-Item -ItemType Directory -Force -Path .tmp\data\xgen
+# Create directory .tmp\data\cui
+New-Item -ItemType Directory -Force -Path .tmp\data\cui
 
 # Copy ui directory to .tmp\data\ui
 Copy-Item -Path ui -Destination .tmp\data\ui -Recurse
@@ -34,14 +34,14 @@ Copy-Item -Path ui -Destination .tmp\data\ui -Recurse
 # Copy yao directory to .tmp\data\yao
 Copy-Item -Path yao -Destination .tmp\data\yao -Recurse
 
-# Copy .tmp\xgen\v0.9\dist directory to .tmp\data\xgen\v0.9
-Copy-Item -Path .tmp\xgen\v0.9\dist -Destination .tmp\data\xgen\v0.9 -Recurse
+# Copy .tmp\cui\v0.9\dist directory to .tmp\data\cui\v0.9
+Copy-Item -Path .tmp\cui\v0.9\dist -Destination .tmp\data\cui\v0.9 -Recurse
 
-# Copy ..\xgen-v1.0\packages\xgen\dist directory to .tmp\data\xgen\v1.0
-Copy-Item -Path '..\xgen-v1.0\packages\xgen\dist' -Destination .tmp\data\xgen\v1.0 -Recurse
+# Copy ..\cui-v1.0\packages\cui\dist directory to .tmp\data\cui\v1.0
+Copy-Item -Path '..\cui-v1.0\packages\cui\dist' -Destination .tmp\data\cui\v1.0 -Recurse
 
-# Copy ..\xgen-v1.0\packages\setup\build directory to .tmp\data\xgen\setup
-# Copy-Item -Path '..\xgen-v1.0\packages\setup\build' -Destination .tmp\data\xgen\setup -Recurse
+# Copy ..\cui-v1.0\packages\setup\build directory to .tmp\data\cui\setup
+Copy-Item -Path '..\cui-v1.0\packages\setup\build' -Destination .tmp\data\cui\setup -Recurse
 
 Copy-Item -Path "..\yao-init" -Destination ".tmp\data\init" -Recurse -Force
 
@@ -61,8 +61,8 @@ go-bindata -fs -pkg data -o data/bindata.go -prefix '.tmp/data/' .tmp/data/...
 # Remove directory .tmp\data
 Remove-Item .tmp\data -Recurse -Force
 
-# Remove directory .tmp\xgen
-Remove-Item .tmp\xgen -Recurse -Force
+# Remove directory .tmp\cui
+Remove-Item .tmp\cui -Recurse -Force
 
 # Create directory dist
 New-Item -ItemType Directory -Force -Path dist
