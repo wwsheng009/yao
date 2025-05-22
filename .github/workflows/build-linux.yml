@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: "ubuntu-latest"
     container:
-      image: yaoapp/yao-build:0.10.4
+      image: yaoapp/yao-build:0.10.5
 
     env:
       CF_ACCESS_KEY_ID: ${{ secrets.CF_ACCESS_KEY_ID }}
@@ -26,6 +26,7 @@ jobs:
           aws configure set default.region us-east-1 # Update with your R2 region if different
           aws configure set default.s3.signature_version s3v4
           aws configure set default.s3.endpoint_url https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
+          aws --version
 
       - name: Build
         run: |
