@@ -28,45 +28,27 @@ jobs:
         run: |
           echo VERSION=$(cat share/const.go  |grep 'const VERSION' | awk '{print $4}' | sed "s/\"//g")  >> $GITHUB_ENV
 
-      - name: Tar files
+      - name: Tar files (arm64)
         run: |
           mv /data/yao-$VERSION-unstable-linux-arm64 /data/yao-$VERSION-linux-arm64
-          mv /data/yao-$VERSION-unstable-linux-amd64 /data/yao-$VERSION-linux-amd64
-          tar -czvf yao-linux-${{ env.VERSION }}-release.tar.gz -C /data/ .
+          tar -czvf yao-${{ env.VERSION }}-linux-arm64.tar.gz -C /data yao-$VERSION-linux-arm64
 
-      - name: Archive production artifacts
+      - name: Tar files (amd64)
+        run: |
+          mv /data/yao-$VERSION-unstable-linux-amd64 /data/yao-$VERSION-linux-amd64
+          tar -czvf yao-${{ env.VERSION }}-linux-amd64.tar.gz -C /data yao-$VERSION-linux-amd64
+
+      - name: Archive production artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: yao-linux
-          path: |
-            yao-linux-${{ env.VERSION }}-release.tar.gz
-            /data/*
+          name: yao-linux-arm64
+          path: yao-${{ env.VERSION }}-linux-arm64.tar.gz
 
-      # - name: Create Draft Release
-      #   id: create_release
-      #   uses: actions/create-release@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     tag_name: yao-${{ env.VERSION }}
-      #     release_name: yao-${{ env.VERSION }}
-      #     draft: true
-      #     prerelease: false
-
-      # - uses: actions/upload-release-asset@v1.0.1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-      #     asset_path: yao-linux-${{ env.VERSION }}-release.tar.gz
-      #     asset_name: yao-linux-${{ env.VERSION }}-release.tar.gz
-      #     asset_content_type: application/gzip
-
-      # - uses: eregon/publish-release@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     release_id: ${{ steps.create_release.outputs.id }}
+      - name: Archive production artifacts (amd64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: yao-linux-amd64
+          path: yao-${{ env.VERSION }}-linux-amd64.tar.gz
 
       - name: Create Release
         id: create_release
@@ -74,7 +56,8 @@ jobs:
         with:
           tag_name: yao-${{ env.VERSION }}
           files: |
-            yao-linux-${{ env.VERSION }}-release.tar.gz
+            yao-${{ env.VERSION }}-linux-arm64.tar.gz
+            yao-${{ env.VERSION }}-linux-amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
