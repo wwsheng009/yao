@@ -54,11 +54,14 @@ func SpecName(root string, file string) string {
 	}
 	names := strings.Split(basename, ".") // ["bar", "http", "json"], ["bar2", "0", "http", "json"]
 	namelen := len(names)
-	extcnt := 1
-	if namelen > 2 && (names[namelen-1] == "yao" || names[namelen-1] == "json" || names[namelen-1] == "jsonc") {
-		extcnt = 2
+	// extcnt := 1
+	// if namelen > 2 && (names[namelen-1] == "yao" || names[namelen-1] == "json" || names[namelen-1] == "jsonc") {
+	// 	extcnt = 2
+	// }
+	// names = names[:len(names)-extcnt]                 // ["bar"], ["bar2", "0"]
+	if namelen > 0  {
+		names = names[:1]
 	}
-	names = names[:len(names)-extcnt]                 // ["bar"], ["bar2", "0"]
 	basename = strings.Join(names, ".")               // "bar", "bar2.0"
 	basename = strings.ReplaceAll(basename, ".", "_") // "bar", "bar2_0"
 	paths = append(paths, basename)                   // ["foo", "bar"], ["foo", "bar2_0"]

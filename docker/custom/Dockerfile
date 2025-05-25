@@ -16,7 +16,7 @@
 # ===========================================
 FROM alpine:latest AS builder
 ARG VERSION
-ARG ARCH
+ARG ARCH=amd64
 RUN apk --no-cache add curl 
 # curl -fSL https://github.com/wwsheng009/yao/releases/download/yao-0.10.5/yao-linux-0.10.5-release.tar.gz --output "yao-linux-release.tar.gz"
 RUN curl -fSL "https://github.com/wwsheng009/yao/releases/download/yao-${VERSION}/yao-${VERSION}-linux-${ARCH}.tar.gz" \
