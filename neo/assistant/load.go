@@ -25,7 +25,7 @@ import (
 var loaded = NewCache(200) // 200 is the default capacity
 var storage store.Store = nil
 var rag *RAG = nil
-var search *Search = nil
+var search interface{} = nil
 var connectorSettings map[string]ConnectorSetting = map[string]ConnectorSetting{}
 var vision *neovision.Vision = nil
 var defaultConnector string = "" // default connector
@@ -315,8 +315,12 @@ func LoadPath(path string) (*Assistant, error) {
 		updatedAt = max(updatedAt, ts)
 	}
 
-	// load flow
-
+	// i18ns
+	locales, err := GetI18n(path)
+	if err != nil {
+		return nil, err
+	}
+	data["locales"] = locales
 	return loadMap(data)
 }
 
@@ -455,6 +459,40 @@ func loadMap(data map[string]interface{}) (*Assistant, error) {
 	// description
 	if v, ok := data["description"].(string); ok {
 		assistant.Description = v
+	}
+
+	// locales
+	if locales, ok := data["locales"].(map[string]I18n); ok {
+		Locales[id] = locales
+	}
+
+	// Search options
+	if v, ok := data["search"].(map[string]interface{}); ok {
+		assistant.Search = &SearchOption{}
+		raw, err := jsoniter.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unmarshal the raw data
+		err = jsoniter.Unmarshal(raw, assistant.Search)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Knowledge options
+	if v, ok := data["knowledge"].(map[string]interface{}); ok {
+		assistant.Knowledge = &KnowledgeOption{}
+		raw, err := jsoniter.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		// Unmarshal the raw data
+		err = jsoniter.Unmarshal(raw, assistant.Knowledge)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// prompts
