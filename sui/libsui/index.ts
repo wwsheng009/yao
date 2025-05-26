@@ -170,9 +170,11 @@ function __sui_event_init(elm: Element) {
     let cn = eventElm.getAttribute("s:event-cn") || "";
 
     // If has parent component, use the parent component name
-    const parent = eventElm.closest(`[s\\:cn]`);
-    if (parent) {
-      cn = parent.getAttribute("s:cn") || "";
+    if (cn == "") {//如果存在多个嵌套的，不能直接使用父节点的事件处理
+      const parent = eventElm.closest(`[s\\:cn]`);
+      if (parent){
+        cn = parent.getAttribute("s:cn") || "";
+      }
     }
 
     if (cn == "") {

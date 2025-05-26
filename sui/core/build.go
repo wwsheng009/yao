@@ -174,6 +174,7 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 		{Key: "s:ns", Val: namespace},
 		{Key: "s:cn", Val: component},
 		{Key: "s:ready", Val: component + "()"},
+		{Key: "s:route", Val: name},//后台事件的初始化BeforeRender的调用与动态渲染render都依赖于s:route属性
 		{Key: "s:parent", Val: page.parent.namespace},
 	}
 
