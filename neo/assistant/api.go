@@ -262,6 +262,13 @@ func (next *NextAction) Execute(c *gin.Context, ctx chatctx.Context, contents *c
 func (ast *Assistant) GetPlaceholder(locale string) *Placeholder {
 
 	prompts := []string{}
+	if ast.Placeholder == nil {
+		return &Placeholder{
+			Title:       ast.GetName(locale),
+			Description: ast.GetDescription(locale),
+			Prompts:     prompts,
+		}
+	}
 	if ast.Placeholder.Prompts != nil {
 		prompts = i18n.Translate(ast.ID, locale, ast.Placeholder.Prompts).([]string)
 	}
