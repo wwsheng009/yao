@@ -244,14 +244,6 @@ func (parser *TemplateParser) parseNode(node *html.Node) {
 		// Skip children if the node is a loop node、element component or JIT component
 		skipChildren = parser.hasForStatement(sel) || parser.isElementComponent(sel) || parser.isJitComponent(sel)
 
-		// replace the attributes
-		// for idx, A := range node.Attr {
-		// 	if !strings.HasPrefix(A.Key, "s:") && stmtRe.Match([]byte(A.Val)) {
-		// 		replace, _ := parser.data.Replace(A.Val)
-		// 		node.Attr[idx].Val = replace
-		// 	}
-		// }
-
 	case html.TextNode:
 		parser.parseTextNode(node)
 	}
@@ -575,10 +567,6 @@ func (parser *TemplateParser) parseElementAttrs(sel *goquery.Selection, force ..
 	if sel.AttrOr("parsed", "false") == "true" && !forceParse {
 		return
 	}
-	// if the attributes has if statement,it will cause the attributes not be processed
-	// if sel.AttrOr("parsed", "false") == "true" {
-	// 	return
-	// }
 
 	attrs := sel.Nodes[0].Attr
 	for _, attr := range attrs {
