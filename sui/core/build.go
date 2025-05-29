@@ -174,7 +174,7 @@ func (page *Page) BuildAsComponent(sel *goquery.Selection, ctx *BuildContext, op
 		{Key: "s:ns", Val: namespace},
 		{Key: "s:cn", Val: component},
 		{Key: "s:ready", Val: component + "()"},
-		{Key: "s:route", Val: name},//后台事件的初始化BeforeRender的调用与动态渲染render都依赖于s:route属性
+		{Key: "s:route", Val: name}, //后台事件的初始化BeforeRender的调用与动态渲染render都依赖于s:route属性
 		{Key: "s:parent", Val: page.parent.namespace},
 	}
 
@@ -615,7 +615,7 @@ func (page *Page) buildComponents(doc *goquery.Document, ctx *BuildContext, opti
 		// Get the translation
 
 		name, has := sel.Attr("is")
-		if ! has {
+		if !has {
 			return
 		}
 
@@ -686,7 +686,7 @@ func (page *Page) BuildStyles(ctx *BuildContext, option *BuildOption, component 
 
 	if option.ComponentName != "" {
 		code = cssRe.ReplaceAllStringFunc(code, func(css string) string {
-			return fmt.Sprintf("[s\\:cn=%s] %s", option.ComponentName, css)
+			return fmt.Sprintf("[s\\:cn=%s],[s\\:cn=%s] %s",option.ComponentName, option.ComponentName, css)
 		})
 		res, err := page.CompileCSS([]byte(code), option.StyleMinify)
 		if err != nil {
@@ -703,6 +703,10 @@ func (page *Page) BuildStyles(ctx *BuildContext, option *BuildOption, component 
 			},
 		})
 		return styles, nil
+	} else if component != "" && component != "__page" {
+		code = cssRe.ReplaceAllStringFunc(code, func(css string) string {
+			return fmt.Sprintf("[s\\:cn=%s],[s\\:cn=%s] %s", component, component, css)
+		})
 	}
 
 	res, err := page.CompileCSS([]byte(code), option.StyleMinify)
