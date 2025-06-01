@@ -3,6 +3,7 @@ package neo
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/yao/neo/assistant"
+	"github.com/yaoapp/yao/neo/attachment"
 	"github.com/yaoapp/yao/neo/rag"
 	"github.com/yaoapp/yao/neo/store"
 	"github.com/yaoapp/yao/neo/vision"
@@ -67,7 +68,7 @@ type AuthModels struct {
 type AuthSessionFields struct {
 	ID    string `json:"id,omitempty" yaml:"id,omitempty"`       // the field name of the user id, default is user_id
 	Roles string `json:"roles,omitempty" yaml:"roles,omitempty"` // the field name of the user roles, default is user_roles. the value must be an JSON array string.
-	Guest string `json:"guest,omitempty" yaml:"guest,omitempty"` // the field name of the guest user, default is guest
+	Guest string `json:"guest,omitempty" yaml:"guest,omitempty"` // the field name of the guest user, default is guest_id
 }
 
 // AuthFields the auth field
@@ -80,11 +81,17 @@ type AuthFields struct {
 // Upload the upload setting
 // ===============================
 type Upload struct {
-	Driver       string                 `json:"driver" yaml:"driver"`                                   // local, s3, default is local
-	Options      map[string]interface{} `json:"options" yaml:"options"`                                 // the options of the upload, it is used to configure the upload driver.
-	Compression  bool                   `json:"compression,omitempty" yaml:"compression,omitempty"`     // Compress the image/video to a smaller size, if the image/video is too large, it will be compressed to a smaller size.
-	ChunkSize    string                 `json:"chunk_size,omitempty" yaml:"chunk_size,omitempty"`       // the chunk size of the file, if the file is too large, it will be chunked into smaller chunks.
-	AllowedTypes []string               `json:"allowed_types,omitempty" yaml:"allowed_types,omitempty"` // the allowed types of the file, if the file is not in the allowed types, it will be rejected.
+	Chat      *attachment.ManagerOption `json:"chat,omitempty" yaml:"chat,omitempty"`           // Chat conversation upload setting, if not set use the local and root path is `/attachments`.
+	Assets    *attachment.ManagerOption `json:"assets,omitempty" yaml:"assets,omitempty"`       // Asset upload setting, if not set use the chat upload setting.
+	Knowledge *attachment.ManagerOption `json:"knowledge,omitempty" yaml:"knowledge,omitempty"` // Knowledge base upload setting, if not set use the chat upload setting.
+}
+
+// UploadOption the upload option
+type UploadOption struct {
+	attachment.UploadOption
+	Public       bool        `json:"public,omitempty" yaml:"public,omitempty, form:public"`                      // The public of the file, default is false
+	Scope        interface{} `json:"scope,omitempty" yaml:"scope,omitempty, form:scope"`                         // The scope of the file, default is private
+	CollectionID string      `json:"collection_id,omitempty" yaml:"collection_id,omitempty, form:collection_id"` // The collection id of the file, default is empty
 }
 
 // Knowledge base Settings

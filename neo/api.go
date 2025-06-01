@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"path/filepath"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/yao/helper"
 	"github.com/yaoapp/yao/neo/assistant"
+	"github.com/yaoapp/yao/neo/attachment"
 	chatctx "github.com/yaoapp/yao/neo/context"
 	"github.com/yaoapp/yao/neo/message"
 	"github.com/yaoapp/yao/neo/store"
@@ -36,7 +37,7 @@ func (neo *DSL) API(router *gin.Engine, path string) error {
 	router.OPTIONS(path+"/chats", neo.optionsHandler)
 	router.OPTIONS(path+"/chats/:id", neo.optionsHandler)
 	router.OPTIONS(path+"/history", neo.optionsHandler)
-	router.OPTIONS(path+"/upload", neo.optionsHandler)
+	router.OPTIONS(path+"/upload/:storage", neo.optionsHandler)
 	router.OPTIONS(path+"/download", neo.optionsHandler)
 	router.OPTIONS(path+"/mentions", neo.optionsHandler)
 	router.OPTIONS(path+"/generate", neo.optionsHandler)
@@ -122,7 +123,7 @@ func (neo *DSL) API(router *gin.Engine, path string) error {
 	// Upload file example:
 	// curl -X POST 'http://localhost:5099/api/__yao/neo/upload?chat_id=chat_123&token=xxx' \
 	//   -F 'file=@/path/to/file.txt'
-	router.POST(path+"/upload", append(middlewares, neo.handleUpload)...)
+	router.POST(path+"/upload/:storage", append(middlewares, neo.handleUpload)...)
 
 	// Download file example:
 	// curl -X GET 'http://localhost:5099/api/__yao/neo/download?file_id=file_123&disposition=attachment&token=xxx' \
@@ -177,20 +178,226 @@ func (neo *DSL) handleUpload(c *gin.Context) {
 		sid = uuid.New().String()
 	}
 
-	// Set the context
-	ctx, cancel := chatctx.NewWithCancel(sid, c.Query("chat_id"), "")
-	defer cancel()
+	uid, isGuest, err := neo.UserOrGuestID(sid)
+	if err != nil {
+		c.JSON(401, gin.H{"message": fmt.Sprintf("Unauthorized, %s", err.Error()), "code": 401})
+		c.Done()
+		return
+	}
+
+	if uid == nil || uid == "" {
+		c.JSON(401, gin.H{"message": "Unauthorized", "code": 401})
+		c.Done()
+		return
+	}
+
+	// Storage name must be chat, knowledge or assets
+	storage := c.Param("storage")
+	if storage != "chat" && storage != "knowledge" && storage != "assets" {
+		c.JSON(400, gin.H{"message": "Invalid storage", "code": 400})
+		c.Done()
+		return
+	}
+
+	// Get the manager
+	var manager, ok = attachment.Managers[storage]
+	if !ok {
+		c.JSON(400, gin.H{"message": "Invalid storage: " + storage, "code": 400})
+		c.Done()
+		return
+	}
+
+	// Get Option from form data
+	var option UploadOption
+	err = c.ShouldBind(&option)
+	if err != nil {
+		c.JSON(400, gin.H{"message": err.Error(), "code": 400})
+		c.Done()
+		return
+	}
+
+	// Validate the option with the storage
+	option.UserID = fmt.Sprintf("%v", uid)
+
+	if storage == "chat" {
+		if option.ChatID == "" {
+			c.JSON(400, gin.H{"message": "chat_id is required", "code": 400})
+			c.Done()
+			return
+		}
+
+	} else if storage == "knowledge" {
+		if option.CollectionID == "" {
+			c.JSON(400, gin.H{"message": "collection_id is required", "code": 400})
+			c.Done()
+			return
+		}
+	}
+
+	// Get the file
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(400, gin.H{"message": err.Error(), "code": 400})
+		c.Done()
+		return
+	}
+
+	// Open the file
+	reader, err := file.Open()
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
+		c.Done()
+		return
+	}
+	defer func() {
+		reader.Close()
+		os.Remove(file.Filename)
+	}()
 
 	// Upload the file
-	file, err := neo.Upload(ctx, c)
+	header := attachment.GetHeader(c.Request.Header, file.Header, file.Size)
+	res, err := manager.Upload(c.Request.Context(), header, reader, option.UploadOption)
 	if err != nil {
 		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
 		c.Done()
 		return
 	}
 
-	c.JSON(200, file)
+	// if storage is chat or knowledge, save the file to the store
+	if storage == "chat" || storage == "knowledge" {
+
+		attachment := map[string]interface{}{
+			"file_id":      res.ID,
+			"uid":          uid,
+			"guest":        isGuest,
+			"manager":      storage,
+			"public":       option.Public,
+			"name":         option.OriginalFilename,
+			"content_type": res.ContentType,
+			"bytes":        res.Bytes,
+			"gzip":         option.Gzip,
+			"status":       res.Status,
+		}
+
+		// Set the scope
+		if option.Scope != nil {
+			attachment["scope"] = option.Scope
+		}
+
+		// Set the collection_id
+		if option.CollectionID != "" {
+			attachment["collection_id"] = option.CollectionID
+		}
+
+		_, err = neo.Store.SaveAttachment(attachment)
+		if err != nil {
+			c.JSON(500, gin.H{"message": err.Error(), "code": 500})
+			c.Done()
+			return
+		}
+	}
+
+	c.JSON(200, map[string]interface{}{"data": res})
 	c.Done()
+}
+
+// handleDownload handles the download request
+func (neo *DSL) handleDownload(c *gin.Context) {
+	sid := c.GetString("__sid")
+	if sid == "" {
+		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
+		c.Done()
+		return
+	}
+
+	uid, _, err := neo.UserOrGuestID(sid)
+	if err != nil {
+		c.JSON(401, gin.H{"message": fmt.Sprintf("Unauthorized, %s", err.Error()), "code": 401})
+		c.Done()
+		return
+	}
+
+	if uid == nil || uid == "" {
+		c.JSON(401, gin.H{"message": "Unauthorized", "code": 401})
+		c.Done()
+		return
+	}
+
+	fileID := c.Query("file_id")
+	if fileID == "" {
+		c.JSON(400, gin.H{"message": "file_id is required", "code": 400})
+		c.Done()
+		return
+	}
+
+	// Get the attachment
+	attach, err := neo.Store.GetAttachment(fileID)
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
+		c.Done()
+		return
+	}
+
+	// Validate the permission ( Will be supported scope validation in the future )
+	if (attach["public"] == 0 || attach["public"] == false) && attach["uid"] != uid {
+		c.JSON(403, gin.H{"message": "Forbidden", "code": 403})
+		c.Done()
+		return
+	}
+
+	storage, ok := attach["manager"].(string)
+	if !ok {
+		c.JSON(400, gin.H{"message": "Invalid storage", "code": 400})
+		c.Done()
+		return
+	}
+
+	// Get the manager
+	manager, ok := attachment.Managers[storage]
+	if !ok {
+		c.JSON(400, gin.H{"message": "Invalid storage", "code": 400})
+		c.Done()
+		return
+	}
+
+	name, ok := attach["name"].(string)
+	if !ok {
+		c.JSON(400, gin.H{"message": "Invalid name", "code": 400})
+		c.Done()
+		return
+	}
+
+	name = strings.TrimSuffix(name, ".gz")
+	contentType, ok := attach["content_type"].(string)
+	if !ok {
+		c.JSON(400, gin.H{"message": "Invalid content type", "code": 400})
+		c.Done()
+		return
+	}
+
+	handle, err := manager.Download(c.Request.Context(), fileID)
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
+		c.Done()
+		return
+	}
+	defer handle.Reader.Close()
+
+	// Set the response headers
+	encoded := url.PathEscape(name)
+	disposition := fmt.Sprintf(`attachment; filename="%s"`, encoded)
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", disposition)
+
+	// Copy the file content to response
+	_, err = io.Copy(c.Writer, handle.Reader)
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
+		return
+	}
+	c.Done()
+	return
+
 }
 
 // handleChat handles the chat request
@@ -330,49 +537,6 @@ func (neo *DSL) handleChatHistory(c *gin.Context) {
 	c.Done()
 }
 
-// handleDownload handles the download request
-func (neo *DSL) handleDownload(c *gin.Context) {
-	sid := c.GetString("__sid")
-	if sid == "" {
-		c.JSON(400, gin.H{"message": "sid is required", "code": 400})
-		c.Done()
-		return
-	}
-
-	fileID := c.Query("file_id")
-	if fileID == "" {
-		c.JSON(400, gin.H{"message": "file_id is required", "code": 400})
-		c.Done()
-		return
-	}
-
-	// Set the context
-	ctx, cancel := chatctx.NewWithCancel(sid, c.Query("chat_id"), "")
-	defer cancel()
-
-	// Download the file
-	fileResponse, err := neo.Download(ctx, c)
-	if err != nil {
-		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
-		c.Done()
-		return
-	}
-	defer fileResponse.Reader.Close()
-
-	// Set response headers
-	c.Header("Content-Type", fileResponse.ContentType)
-	if disposition := c.Query("disposition"); disposition == "attachment" {
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(fileID)+fileResponse.Extension))
-	}
-
-	// Copy the file content to response
-	_, err = io.Copy(c.Writer, fileResponse.Reader)
-	if err != nil {
-		c.JSON(500, gin.H{"message": err.Error(), "code": 500})
-		return
-	}
-}
-
 // getCorsHandlers returns CORS middleware handlers
 func (neo *DSL) getCorsHandlers() ([]gin.HandlerFunc, error) {
 	if len(neo.Allows) == 0 {
@@ -410,8 +574,9 @@ func (neo *DSL) corsMiddleware(allowsMap map[string]bool) gin.HandlerFunc {
 		// Set CORS headers
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, Content-Sync, Content-Fingerprint, Content-Uid, Content-Range")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Header("Access-Control-Expose-Headers", "Content-Type, Content-Disposition, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, Content-Sync, Content-Fingerprint, Content-Uid, Content-Range")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -428,9 +593,10 @@ func (neo *DSL) optionsHandler(c *gin.Context) {
 	if origin != "" {
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Disposition, Authorization, Accept, Content-Sync, Content-Fingerprint, Content-Uid, Content-Range")
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400") // 24 hours
+		c.Header("Access-Control-Expose-Headers", "Content-Type, Content-Disposition, Authorization, Accept, Content-Sync, Content-Fingerprint, Content-Uid, Content-Range")
 	}
 	c.AbortWithStatus(204)
 }

@@ -6,8 +6,10 @@ import (
 
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/connector"
+	"github.com/yaoapp/gou/model"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/neo/assistant"
+	"github.com/yaoapp/yao/neo/attachment"
 	"github.com/yaoapp/yao/neo/i18n"
 	"github.com/yaoapp/yao/neo/store"
 )
@@ -76,12 +78,172 @@ func Load(cfg config.Config) error {
 		return err
 	}
 
+	// Initialize Auth
+	err = initAuth()
+	if err != nil {
+		return err
+	}
+
+	// Initialize Upload
+	err = initUpload()
+	if err != nil {
+		return err
+	}
+
 	// Initialize Assistant
 	err = initAssistant()
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// initAuth initialize the auth
+func initAuth() error {
+	if Neo.AuthSetting == nil {
+		Neo.AuthSetting = &Auth{
+			Models:        &AuthModels{User: "admin.user", Guest: "guest"},
+			Fields:        &AuthFields{ID: "id", Roles: "roles", Permission: "permission"},
+			SessionFields: &AuthSessionFields{ID: "user_id", Roles: "user_roles", Guest: "guest_id"},
+		}
+	}
+
+	if Neo.AuthSetting.Models == nil {
+		Neo.AuthSetting.Models = &AuthModels{User: "admin.user", Guest: "guest"}
+	}
+
+	if Neo.AuthSetting.Fields == nil {
+		Neo.AuthSetting.Fields = &AuthFields{ID: "id", Roles: "roles", Permission: "permission"}
+	}
+
+	if Neo.AuthSetting.SessionFields == nil {
+		Neo.AuthSetting.SessionFields = &AuthSessionFields{ID: "user_id", Roles: "user_roles", Guest: "guest_id"}
+	}
+
+	if Neo.AuthSetting.Models.User == "" {
+		Neo.AuthSetting.Models.User = "admin.user"
+	}
+
+	if Neo.AuthSetting.Models.Guest == "" {
+		Neo.AuthSetting.Models.Guest = "guest"
+	}
+
+	if Neo.AuthSetting.Fields.Roles == "" {
+		Neo.AuthSetting.Fields.Roles = "roles"
+	}
+
+	if Neo.AuthSetting.Fields.Permission == "" {
+		Neo.AuthSetting.Fields.Permission = "permission"
+	}
+
+	if Neo.AuthSetting.Fields.ID == "" {
+		Neo.AuthSetting.Fields.ID = "id"
+	}
+
+	if Neo.AuthSetting.Fields.ID == "" {
+		Neo.AuthSetting.Fields.ID = "id"
+	}
+
+	if Neo.AuthSetting.SessionFields.ID == "" {
+		Neo.AuthSetting.SessionFields.ID = "user_id"
+	}
+
+	if Neo.AuthSetting.SessionFields.Roles == "" {
+		Neo.AuthSetting.SessionFields.Roles = "user_roles"
+	}
+
+	if Neo.AuthSetting.SessionFields.Guest == "" {
+		Neo.AuthSetting.SessionFields.Guest = "guest_id"
+	}
+
+	// Validate User Model and Fields
+	if !model.Exists(Neo.AuthSetting.Models.User) {
+		return fmt.Errorf("model %s not found", Neo.AuthSetting.Models.User)
+	}
+	user := model.Select(Neo.AuthSetting.Models.User)
+	shouldHave := []string{Neo.AuthSetting.Fields.ID, Neo.AuthSetting.Fields.Roles, Neo.AuthSetting.Fields.Permission}
+	for _, name := range shouldHave {
+		if _, has := user.Columns[name]; !has {
+			return fmt.Errorf("model %s should have column %s", Neo.AuthSetting.Models.User, name)
+		}
+	}
+
+	return nil
+}
+
+// initUpload initialize the upload
+func initUpload() error {
+
+	if Neo.UploadSetting == nil {
+		_, err := attachment.RegisterDefault("chat")
+		if err != nil {
+			return err
+		}
+		_, err = attachment.RegisterDefault("knowledge")
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// If the chat upload setting is not set, use the default chat upload setting.
+	if Neo.UploadSetting.Chat == nil {
+		_, err := attachment.RegisterDefault("chat")
+		if err != nil {
+			return err
+		}
+	}
+
+	// Use the chat upload setting for knowledge upload, if the knowledge upload setting is not set.
+	if Neo.UploadSetting.Knowledge == nil {
+		if Neo.UploadSetting.Chat == nil {
+			_, err := attachment.RegisterDefault("knowledge")
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err := attachment.Register("knowledge", Neo.UploadSetting.Chat.Driver, *Neo.UploadSetting.Chat)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Use custom chat upload setting
+	if Neo.UploadSetting.Chat != nil {
+		Neo.UploadSetting.Chat.ReplaceEnv(config.Conf.DataRoot)
+		_, err := attachment.Register("chat", Neo.UploadSetting.Chat.Driver, *Neo.UploadSetting.Chat) // Register the chat upload manager
+		if err != nil {
+			return err
+		}
+	}
+
+	// Use custom knowledge upload setting
+	if Neo.UploadSetting.Knowledge != nil {
+		Neo.UploadSetting.Knowledge.ReplaceEnv(config.Conf.DataRoot)
+		_, err := attachment.Register("knowledge", Neo.UploadSetting.Knowledge.Driver, *Neo.UploadSetting.Knowledge)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Use the chat upload setting for asset upload, if the asset upload setting is not set. (public assets)
+	if Neo.UploadSetting.Assets == nil {
+		_, err := attachment.RegisterDefault("assets")
+		if err != nil {
+			return err
+		}
+	}
+
+	// Use custom asset upload setting
+	if Neo.UploadSetting.Assets != nil {
+		Neo.UploadSetting.Assets.ReplaceEnv(config.Conf.DataRoot)
+		_, err := attachment.Register("assets", Neo.UploadSetting.Assets.Driver, *Neo.UploadSetting.Assets)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

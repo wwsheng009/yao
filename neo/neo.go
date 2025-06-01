@@ -1,11 +1,8 @@
 package neo
 
 import (
-	"fmt"
-	"os"
-	"strings"
-
 	"github.com/gin-gonic/gin"
+	"github.com/yaoapp/gou/session"
 	"github.com/yaoapp/yao/neo/assistant"
 	chatctx "github.com/yaoapp/yao/neo/context"
 )
@@ -35,66 +32,33 @@ func (neo *DSL) Select(id string) (assistant.API, error) {
 	return assistant.Get(id)
 }
 
-// Upload upload a file
-func (neo *DSL) Upload(ctx chatctx.Context, c *gin.Context) (*assistant.File, error) {
-	// Get the file
-	tmpfile, err := c.FormFile("file")
-	if err != nil {
-		return nil, err
-	}
-
-	reader, err := tmpfile.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		reader.Close()
-		os.Remove(tmpfile.Filename)
-	}()
-
-	// Get option from form data option_xxx
-	option := map[string]interface{}{}
-	for key := range c.Request.Form {
-		if strings.HasPrefix(key, "option_") {
-			option[strings.TrimPrefix(key, "option_")] = c.PostForm(key)
-		}
-	}
-
-	// Default use the assistant in context
-	ast := neo.Assistant
-	if ctx.ChatID == "" {
-		if ctx.AssistantID == "" {
-			return nil, fmt.Errorf("assistant_id is required")
-		}
-		ast, err = neo.Select(ctx.AssistantID)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return ast.Upload(ctx, tmpfile, reader, option)
+// UserID get the user id from the session
+func (neo *DSL) UserID(sid string) (interface{}, error) {
+	fieldID := neo.AuthSetting.SessionFields.ID
+	return session.Global().ID(sid).Get(fieldID)
 }
 
-// Download downloads a file
-func (neo *DSL) Download(ctx chatctx.Context, c *gin.Context) (*assistant.FileResponse, error) {
-	// Get file_id from query string
-	fileID := c.Query("file_id")
-	if fileID == "" {
-		return nil, fmt.Errorf("file_id is required")
-	}
+// GuestID get the guest id from the session
+func (neo *DSL) GuestID(sid string) (interface{}, error) {
+	fieldGuest := neo.AuthSetting.SessionFields.Guest
+	return session.Global().ID(sid).Get(fieldGuest)
+}
 
-	// Get assistant_id from context or query
-	// res, err := neo.HookCreate(ctx, []map[string]interface{}{}, c)
-	// if err != nil {
-	// 	return nil, err
-	// }
+// UserRoles get the user roles from the session
+func (neo *DSL) UserRoles(sid string) (interface{}, error) {
+	fieldRoles := neo.AuthSetting.SessionFields.Roles
+	return session.Global().ID(sid).Get(fieldRoles)
+}
 
-	// Select Assistant
-	ast, err := neo.Select(neo.Use.Default)
+// UserOrGuestID get the user id or guest id from the session
+func (neo *DSL) UserOrGuestID(sid string) (interface{}, bool, error) {
+	userID, err := neo.UserID(sid)
 	if err != nil {
-		return nil, err
+		guestID, err := neo.GuestID(sid)
+		if err != nil {
+			return nil, false, err
+		}
+		return guestID, true, nil
 	}
-
-	// Download file using the assistant
-	return ast.Download(ctx.Context, fileID)
+	return userID, false, nil
 }
