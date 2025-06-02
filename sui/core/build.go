@@ -686,7 +686,7 @@ func (page *Page) BuildStyles(ctx *BuildContext, option *BuildOption, component 
 
 	if option.ComponentName != "" {
 		code = cssRe.ReplaceAllStringFunc(code, func(css string) string {
-			return fmt.Sprintf("[s\\:cn=%s],[s\\:cn=%s] %s",option.ComponentName, option.ComponentName, css)
+			return fmt.Sprintf("[s\\:cn=%s] %s", option.ComponentName, css)
 		})
 		res, err := page.CompileCSS([]byte(code), option.StyleMinify)
 		if err != nil {
@@ -705,7 +705,7 @@ func (page *Page) BuildStyles(ctx *BuildContext, option *BuildOption, component 
 		return styles, nil
 	} else if component != "" && component != "__page" {
 		code = cssRe.ReplaceAllStringFunc(code, func(css string) string {
-			return fmt.Sprintf("[s\\:cn=%s],[s\\:cn=%s] %s", component, component, css)
+			return fmt.Sprintf("[s\\:cn=%s] %s", component, css)
 		})
 	}
 

@@ -66,25 +66,25 @@ func (page *Page) Compile(ctx *BuildContext, option *BuildOption) (string, strin
 	config := ""
 	if page.Config != nil {
 		config = page.ExportConfig()
-		body.AppendHtml("\n\n" + `<script name="config" type="json">` + "\n" +
+		body.AppendHtml("\n" + `<script name="config" type="json">` + "\n" +
 			config +
-			"\n</script>\n\n",
+			"\n</script>\n",
 		)
 	}
 
 	// Page Data
 	if page.Codes.DATA.Code != "" {
-		body.AppendHtml("\n\n" + `<script name="data" type="json">` + "\n" +
+		body.AppendHtml(`<script name="data" type="json">` + "\n" +
 			page.Codes.DATA.Code +
-			"\n</script>\n\n",
+			"\n</script>\n",
 		)
 	}
 
 	// Page Global Data
 	if page.GlobalData != nil && len(page.GlobalData) > 0 {
-		body.AppendHtml("\n\n" + `<script name="global" type="json">` + "\n" +
+		body.AppendHtml(`<script name="global" type="json">` + "\n" +
 			string(page.GlobalData) +
-			"\n</script>\n\n",
+			"\n</script>\n",
 		)
 	}
 
@@ -110,7 +110,7 @@ func (page *Page) Compile(ctx *BuildContext, option *BuildOption) (string, strin
 		}
 
 		rawComponents, _ := jsoniter.MarshalToString(components)
-		body.AppendHtml("\n\n" + `<script name="imports" type="json">` + "\n" + rawComponents + "\n</script>\n\n")
+		body.AppendHtml(`<script name="imports" type="json">` + "\n" + rawComponents + "\n</script>\n")
 	}
 
 	page.ReplaceDocument(doc)
