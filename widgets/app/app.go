@@ -563,22 +563,29 @@ func processXgen(process *process.Process) interface{} {
 		agent["connectors"] = connector.AIConnectors
 
 		// Available storages
-		agent["storages"] = map[string]interface{}{
-			"chat": map[string]interface{}{
-				"max_size":      neo.Neo.UploadSetting.Chat.MaxSize,
-				"chunk_size":    neo.Neo.UploadSetting.Chat.ChunkSize,
-				"allowed_types": neo.Neo.UploadSetting.Chat.AllowedTypes,
-			},
-			"assets": map[string]interface{}{
-				"max_size":      neo.Neo.UploadSetting.Assets.MaxSize,
-				"chunk_size":    neo.Neo.UploadSetting.Assets.ChunkSize,
-				"allowed_types": neo.Neo.UploadSetting.Assets.AllowedTypes,
-			},
-			"knowledge": map[string]interface{}{
-				"max_size":      neo.Neo.UploadSetting.Knowledge.MaxSize,
-				"chunk_size":    neo.Neo.UploadSetting.Knowledge.ChunkSize,
-				"allowed_types": neo.Neo.UploadSetting.Knowledge.AllowedTypes,
-			},
+		if neo.Neo.UploadSetting != nil {
+			agent["storages"] = map[string]interface{}{}
+			if neo.Neo.UploadSetting.Chat != nil {
+				agent["storages"].(map[string]interface{})["chat"] = map[string]interface{}{
+					"max_size":      neo.Neo.UploadSetting.Chat.MaxSize,
+					"chunk_size":    neo.Neo.UploadSetting.Chat.ChunkSize,
+					"allowed_types": neo.Neo.UploadSetting.Chat.AllowedTypes,
+				}
+			}
+			if neo.Neo.UploadSetting.Assets != nil {
+				agent["storages"].(map[string]interface{})["assets"] = map[string]interface{}{
+					"max_size":      neo.Neo.UploadSetting.Assets.MaxSize,
+					"chunk_size":    neo.Neo.UploadSetting.Assets.ChunkSize,
+					"allowed_types": neo.Neo.UploadSetting.Assets.AllowedTypes,
+				}
+			}
+			if neo.Neo.UploadSetting.Knowledge != nil {
+				agent["storages"].(map[string]interface{})["knowledge"] = map[string]interface{}{
+					"max_size":      neo.Neo.UploadSetting.Knowledge.MaxSize,
+					"chunk_size":    neo.Neo.UploadSetting.Knowledge.ChunkSize,
+					"allowed_types": neo.Neo.UploadSetting.Knowledge.AllowedTypes,
+				}
+			}
 		}
 	}
 

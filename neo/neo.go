@@ -1,6 +1,8 @@
 package neo
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/session"
 	"github.com/yaoapp/yao/neo/assistant"

@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
+	"github.com/yaoapp/gou/application/ignore"
 	"github.com/yaoapp/gou/session"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
@@ -153,7 +154,16 @@ func watch(root string, handler func(event string, name string), interrupt chan 
 	defer watcher.Close()
 	shutdown := make(chan bool, 1)
 
+	ignoreRoot := config.Conf.Root
+	if _, err = os.Stat(filepath.Join(root, ".gitignore")); err == nil {
+		ignoreRoot = root
+	}
+	gitignore := ignore.Compile(filepath.Join(ignoreRoot, ".gitignore"), []string{"node_modules"}...)
 	err = filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
+		rel := strings.TrimPrefix(path, string(os.PathSeparator))
+		if gitignore.MatchesPath(rel) {
+			return nil
+		}
 		if info.IsDir() {
 			if filepath.Base(path) == ".tmp" {
 				return filepath.SkipDir

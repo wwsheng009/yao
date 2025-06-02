@@ -176,37 +176,49 @@ func initAuth() error {
 func initUpload() error {
 
 	if Neo.UploadSetting == nil {
-		_, err := attachment.RegisterDefault("chat")
+		c, err := attachment.RegisterDefault("chat")
 		if err != nil {
 			return err
 		}
-		_, err = attachment.RegisterDefault("knowledge")
+		k, err := attachment.RegisterDefault("knowledge")
 		if err != nil {
 			return err
+		}
+		a, err := attachment.RegisterDefault("assets")
+		if err != nil {
+			return err
+		}
+		Neo.UploadSetting = &Upload{
+			Chat:      &c.ManagerOption,
+			Assets:    &a.ManagerOption,
+			Knowledge: &k.ManagerOption,
 		}
 		return nil
 	}
 
 	// If the chat upload setting is not set, use the default chat upload setting.
 	if Neo.UploadSetting.Chat == nil {
-		_, err := attachment.RegisterDefault("chat")
+		c, err := attachment.RegisterDefault("chat")
 		if err != nil {
 			return err
 		}
+		Neo.UploadSetting.Chat = &c.ManagerOption
 	}
 
 	// Use the chat upload setting for knowledge upload, if the knowledge upload setting is not set.
 	if Neo.UploadSetting.Knowledge == nil {
 		if Neo.UploadSetting.Chat == nil {
-			_, err := attachment.RegisterDefault("knowledge")
+			k, err := attachment.RegisterDefault("knowledge")
 			if err != nil {
 				return err
 			}
+			Neo.UploadSetting.Knowledge = &k.ManagerOption
 		} else {
-			_, err := attachment.Register("knowledge", Neo.UploadSetting.Chat.Driver, *Neo.UploadSetting.Chat)
+			k, err := attachment.Register("knowledge", Neo.UploadSetting.Chat.Driver, *Neo.UploadSetting.Chat)
 			if err != nil {
 				return err
 			}
+			Neo.UploadSetting.Knowledge = &k.ManagerOption
 		}
 	}
 
@@ -230,10 +242,11 @@ func initUpload() error {
 
 	// Use the chat upload setting for asset upload, if the asset upload setting is not set. (public assets)
 	if Neo.UploadSetting.Assets == nil {
-		_, err := attachment.RegisterDefault("assets")
+		a, err := attachment.RegisterDefault("assets")
 		if err != nil {
 			return err
 		}
+		Neo.UploadSetting.Assets = &a.ManagerOption
 	}
 
 	// Use custom asset upload setting

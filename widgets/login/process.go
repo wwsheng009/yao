@@ -12,6 +12,7 @@ import (
 	"github.com/yaoapp/kun/maps"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/helper"
+	"github.com/yaoapp/yao/neo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -112,6 +113,12 @@ func auth(field string, value string, password string, sid string) maps.Map {
 	session.Global().Expire(time.Duration(token.ExpiresAt)*time.Second).ID(sid).Set("user_id", id)
 	session.Global().Expire(time.Duration(token.ExpiresAt)*time.Second).ID(sid).Set("user", row)
 	session.Global().Expire(time.Duration(token.ExpiresAt)*time.Second).ID(sid).Set("issuer", "yao")
+
+	if neo.Neo!= nil && neo.Neo.AuthSetting != nil && 
+		neo.Neo.AuthSetting.SessionFields != nil &&
+	 	neo.Neo.AuthSetting.SessionFields.ID != "" {
+		session.Global().Expire(time.Duration(token.ExpiresAt)*time.Second).ID(sid).Set(neo.Neo.AuthSetting.SessionFields.ID, id)
+	}
 
 	studio := map[string]interface{}{}
 	if config.Conf.Mode == "development" {
