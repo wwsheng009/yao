@@ -32,8 +32,11 @@ func init() {
 
 // Init setting
 func Init() {
-
-	filename, _ := filepath.Abs(filepath.Join(".", ".env"))
+	root := os.Getenv("YAO_ROOT")
+	if root == "" {
+		root = "."
+	}
+	filename, _ := filepath.Abs(filepath.Join(root, ".env"))
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
 		Conf = Load()
 		if Conf.Mode == "production" {

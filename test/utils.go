@@ -129,8 +129,8 @@ func Prepare(t *testing.T, cfg config.Config, rootEnv ...string) {
 
 	utils.Init()
 	dbconnect(t, cfg)
-	load(t, cfg)
 	startRuntime(t, cfg)
+	load(t, cfg)
 }
 
 // Clean the test environment

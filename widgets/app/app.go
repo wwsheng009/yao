@@ -411,6 +411,7 @@ func processSetting(process *process.Process) interface{} {
 	sid := process.Sid
 	if sid == "" {
 		sid = session.ID()
+		process = process.WithSID(sid)
 	}
 
 	// Set User ENV
@@ -423,6 +424,7 @@ func processSetting(process *process.Process) interface{} {
 
 		if v, ok := payload["sid"].(string); ok && v != "" {
 			sid = v
+			process = process.WithSID(sid)
 		}
 
 		lang := strings.ToLower(fmt.Sprintf("%v", payload["lang"]))
@@ -447,6 +449,7 @@ func processXgen(process *process.Process) interface{} {
 	sid := process.Sid
 	if sid == "" {
 		sid = session.ID()
+		process = process.WithSID(sid)
 	}
 
 	// Set User ENV
@@ -460,6 +463,7 @@ func processXgen(process *process.Process) interface{} {
 
 		if v, ok := payload["sid"].(string); ok && v != "" {
 			sid = v
+			process = process.WithSID(sid)
 		}
 		lang = strings.ToLower(fmt.Sprintf("%v", payload["lang"]))
 		session.Global().ID(sid).Set("__yao_lang", lang)
