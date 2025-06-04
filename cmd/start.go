@@ -147,12 +147,6 @@ var startCmd = &cobra.Command{
 			// printStudio(false, host)
 
 		}
-		// custom startup
-		err = engine.CustomStartUp(config.Conf, mode)
-		if err != nil {
-			log.Error("Custom Startup: %s", err.Error())
-		}
-		
 		root, _ := adminRoot()
 		endpoints := []setup.Endpoint{{URL: fmt.Sprintf("http://%s%s", "127.0.0.1", port), Interface: "localhost"}}
 		switch host {

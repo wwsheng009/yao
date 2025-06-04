@@ -17,7 +17,6 @@ type DSL struct {
 	Token       OptionalDSL `json:"token,omitempty"`
 	Setting     string      `json:"setting,omitempty"` // custom setting process
 	Setup       string      `json:"setup,omitempty"`   // setup process
-	Startup     string      `json:"startup,omitempty"` // startup process
 }
 
 // MenuDSL the menu DSL

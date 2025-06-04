@@ -7,10 +7,8 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/uuid"
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/process"
-	v8 "github.com/yaoapp/gou/runtime/v8"
 	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/aigc"
@@ -40,7 +38,6 @@ import (
 	"github.com/yaoapp/yao/websocket"
 	"github.com/yaoapp/yao/widget"
 	"github.com/yaoapp/yao/widgets"
-	"github.com/yaoapp/yao/widgets/app"
 )
 
 // LoadHooks used to load custom widgets/processes
@@ -300,12 +297,6 @@ func Load(cfg config.Config, options LoadOption) (warnings []Warning, err error)
 		}
 	}
 
-	// custom startup
-	err = CustomStartUp(cfg, "load")
-	if err != nil {
-		printErr(cfg.Mode, "Custom Startup", err)
-		warnings = append(warnings, Warning{Widget: "Custom Startup", Error: err})
-	}
 	return warnings, nil
 }
 
@@ -510,11 +501,6 @@ func Reload(cfg config.Config, options LoadOption) (err error) {
 	if err != nil {
 		printErr(cfg.Mode, "Moapi", err)
 	}
-	//custom startup
-	err = CustomStartUp(cfg, "reload")
-	if err != nil {
-		printErr(cfg.Mode, "Custom Startup", err)
-	}
 	return err
 }
 
@@ -638,48 +624,4 @@ func printErr(mode, widget string, err error) {
 		log.Error("%s", message)
 		color.Red(message)
 	}
-}
-
-// 自定义启动
-func CustomStartUp(cfg config.Config, action string) error {
-
-	if app.Setting != nil && app.Setting.Startup != "" {
-
-		// studio只有在开发环境才能生效
-		if strings.HasPrefix(app.Setting.Startup, "studio.") {
-			names := strings.Split(app.Setting.Startup, ".")
-			if len(names) < 3 {
-				return fmt.Errorf("startup studio script %s error", app.Setting.Startup)
-			}
-
-			service := strings.Join(names[1:len(names)-1], ".")
-			method := names[len(names)-1]
-
-			script, err := v8.SelectRoot(service)
-			if err != nil {
-				return err
-			}
-
-			sid := uuid.NewString()
-			ctx, err := script.NewContext(fmt.Sprintf("%v", sid), nil)
-			if err != nil {
-				return err
-			}
-			defer ctx.Close()
-
-			_, err = ctx.Call(method, cfg, action)
-			return err
-		}
-
-		p, err := process.Of(app.Setting.Startup, cfg, action)
-		if err != nil {
-			return err
-		}
-		_, err = p.Exec()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
