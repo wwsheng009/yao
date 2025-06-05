@@ -113,12 +113,11 @@ func (dsl *DSL) translate(name string, process *gouProcess.Process, data interfa
 	}
 
 	widgets := []string{}
-	if dsl.Action.Bind.Model != "" {
+	if dsl.Action != nil && dsl.Action.Bind != nil && dsl.Action.Bind.Model != "" {
 		m := model.Select(dsl.Action.Bind.Model)
 		widgets = append(widgets, fmt.Sprintf("model.%s", m.ID))
 	}
-
-	if dsl.Action.Bind.Table != "" {
+	if dsl.Action != nil && dsl.Action.Bind != nil && dsl.Action.Bind.Table != "" {
 		widgets = append(widgets, fmt.Sprintf("table.%s", dsl.Action.Bind.Table))
 	}
 
