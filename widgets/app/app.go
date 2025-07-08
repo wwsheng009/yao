@@ -574,6 +574,7 @@ func processXgen(process *process.Process) interface{} {
 					"max_size":      neo.Neo.UploadSetting.Chat.MaxSize,
 					"chunk_size":    neo.Neo.UploadSetting.Chat.ChunkSize,
 					"allowed_types": neo.Neo.UploadSetting.Chat.AllowedTypes,
+					"gzip":          neo.Neo.UploadSetting.Chat.Gzip,
 				}
 			}
 			if neo.Neo.UploadSetting.Assets != nil {
@@ -581,6 +582,7 @@ func processXgen(process *process.Process) interface{} {
 					"max_size":      neo.Neo.UploadSetting.Assets.MaxSize,
 					"chunk_size":    neo.Neo.UploadSetting.Assets.ChunkSize,
 					"allowed_types": neo.Neo.UploadSetting.Assets.AllowedTypes,
+					"gzip":          neo.Neo.UploadSetting.Assets.Gzip,
 				}
 			}
 			if neo.Neo.UploadSetting.Knowledge != nil {
@@ -588,6 +590,7 @@ func processXgen(process *process.Process) interface{} {
 					"max_size":      neo.Neo.UploadSetting.Knowledge.MaxSize,
 					"chunk_size":    neo.Neo.UploadSetting.Knowledge.ChunkSize,
 					"allowed_types": neo.Neo.UploadSetting.Knowledge.AllowedTypes,
+					"gzip":          neo.Neo.UploadSetting.Knowledge.Gzip,
 				}
 			}
 		}
