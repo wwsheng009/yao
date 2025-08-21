@@ -20,9 +20,11 @@ import (
 	"github.com/yaoapp/yao/flow"
 	"github.com/yaoapp/yao/fs"
 	"github.com/yaoapp/yao/i18n"
+	"github.com/yaoapp/yao/kb"
 	"github.com/yaoapp/yao/moapi"
 	"github.com/yaoapp/yao/model"
 	"github.com/yaoapp/yao/neo"
+	"github.com/yaoapp/yao/openapi"
 	"github.com/yaoapp/yao/pack"
 	"github.com/yaoapp/yao/pipe"
 	"github.com/yaoapp/yao/plugin"
@@ -265,6 +267,13 @@ func Load(cfg config.Config, options LoadOption) (warnings []Warning, err error)
 		warnings = append(warnings, Warning{Widget: "Pipe", Error: err})
 	}
 
+	// Load Knowledge Base
+	_, err = kb.Load(cfg)
+	if err != nil {
+		// printErr(cfg.Mode, "Knowledge Base", err)
+		warnings = append(warnings, Warning{Widget: "Knowledge Base", Error: err})
+	}
+
 	// Load Neo
 	err = neo.Load(cfg)
 	if err != nil {
@@ -278,6 +287,13 @@ func Load(cfg config.Config, options LoadOption) (warnings []Warning, err error)
 			// printErr(cfg.Mode, name, err)
 			warnings = append(warnings, Warning{Widget: name, Error: err})
 		}
+	}
+
+	// Load OpenAPI
+	_, err = openapi.Load(cfg)
+	if err != nil {
+		// printErr(cfg.Mode, "OpenAPI", err)
+		warnings = append(warnings, Warning{Widget: "OpenAPI", Error: err})
 	}
 
 	// Execute AfterLoad Process if exists
@@ -468,10 +484,23 @@ func Reload(cfg config.Config, options LoadOption) (err error) {
 		printErr(cfg.Mode, "AIGC", err)
 	}
 
+	// Load Knowledge Base
+	_, err = kb.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "Knowledge Base", err)
+
+	}
+
 	// Load Neo
 	err = neo.Load(cfg)
 	if err != nil {
 		printErr(cfg.Mode, "Neo", err)
+	}
+
+	// Load OpenAPI
+	_, err = openapi.Load(cfg)
+	if err != nil {
+		printErr(cfg.Mode, "OpenAPI", err)
 	}
 
 	// Execute AfterLoad Process if exists
@@ -612,8 +641,20 @@ func loadApp(root string) error {
 		}
 		return []byte(val)
 	})
+
+	// Parse app.yao
 	share.App = share.AppInfo{}
-	return application.Parse(appFile, appData, &share.App)
+	err = application.Parse(appFile, appData, &share.App)
+	if err != nil {
+		return err
+	}
+
+	// Set default prefix
+	if share.App.Prefix == "" {
+		share.App.Prefix = "yao_"
+	}
+
+	return nil
 }
 
 func printErr(mode, widget string, err error) {

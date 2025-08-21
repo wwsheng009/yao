@@ -14,6 +14,7 @@ import (
 	"github.com/yaoapp/xun"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/neo"
+	"github.com/yaoapp/yao/openapi"
 	"github.com/yaoapp/yao/share"
 )
 
@@ -72,6 +73,11 @@ func Start(cfg config.Config) (*http.Server, error) {
 			})
 		})
 
+	}
+
+	// OpenAPI Server
+	if openapi.Server != nil {
+		openapi.Server.Attach(router)
 	}
 
 	go func() {
