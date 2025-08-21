@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/yaoapp/yao/openapi/oauth/types"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -242,7 +243,79 @@ func (s *Service) ValidateTokenBinding(ctx context.Context, token string, bindin
 	return result, nil
 }
 
+// ============================================================================
+// Public Token helper methods for internal use
+// ============================================================================
+
+// MakeAccessToken generates a new access token with specific parameters and stores it
+func (s *Service) MakeAccessToken(clientID, scope, subject string, expiresIn int) (string, error) {
+	return s.generateAccessTokenWithScope(clientID, scope, subject, expiresIn)
+}
+
+// MakeRefreshToken generates a new refresh token with specific parameters and stores it
+func (s *Service) MakeRefreshToken(clientID, scope, subject string, expiresIn ...int) (string, error) {
+	return s.generateRefreshToken(clientID, scope, subject, expiresIn...)
+}
+
+// Subject converts a userID to a subject using NanoID fingerprint
+func (s *Service) Subject(clientID, userID string) (string, error) {
+	// Check if mapping already exists for this clientID+userID
+	mappingKey := s.userMappingKey(clientID, userID)
+	if existingNanoID, exists := s.store.Get(mappingKey); exists {
+		if nanoIDStr, ok := existingNanoID.(string); ok {
+			return nanoIDStr, nil
+		}
+	}
+
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		// Generate 16-character NanoID
+		nanoID, err := generateNumericID(16)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate NanoID: %w", err)
+		}
+
+		// Check if this NanoID already exists for this client
+		key := s.userFingerprintKey(clientID, nanoID)
+		_, exists := s.store.Get(key)
+		if !exists {
+			// Store both mappings
+			// 1. clientID:nanoID -> userID
+			if err := s.store.Set(key, userID, 0); err != nil {
+				return "", fmt.Errorf("failed to store user fingerprint: %w", err)
+			}
+			// 2. clientID:userID -> nanoID (for checking existing mapping)
+			if err := s.store.Set(mappingKey, nanoID, 0); err != nil {
+				return "", fmt.Errorf("failed to store user mapping: %w", err)
+			}
+			return nanoID, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to generate unique NanoID after %d retries", maxRetries)
+}
+
+// UserID converts a subject to a userID using fingerprint lookup
+func (s *Service) UserID(clientID, subject string) (string, error) {
+	key := s.userFingerprintKey(clientID, subject)
+	userID, exists := s.store.Get(key)
+	if !exists {
+		return "", fmt.Errorf("fingerprint not found")
+	}
+
+	userIDStr, ok := userID.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid userID format")
+	}
+
+	return userIDStr, nil
+}
+
+// MakeAuthorizationCode generates a new authorization code with specific parameters and stores it
+
+// ============================================================================
 // Helper methods
+// ============================================================================
 
 // validateAudience validates if an audience is valid
 func (s *Service) validateAudience(audience string) error {
@@ -342,14 +415,14 @@ func (s *Service) revokeAccessToken(accessToken string) error {
 }
 
 // generateRefreshToken generates and stores a new refresh token with scope and subject
-func (s *Service) generateRefreshToken(clientID, scope, subject string) (string, error) {
+func (s *Service) generateRefreshToken(clientID, scope, subject string, expiresIn ...int) (string, error) {
 	refreshToken, err := s.generateToken("rfk", clientID)
 	if err != nil {
 		return "", err
 	}
 
 	// Store refresh token with metadata
-	err = s.storeRefreshTokenWithScope(refreshToken, clientID, scope, subject)
+	err = s.storeRefreshTokenWithScope(refreshToken, clientID, scope, subject, expiresIn...)
 	if err != nil {
 		return "", err
 	}
@@ -456,7 +529,7 @@ func (s *Service) storeRefreshToken(refreshToken, clientID string) error {
 }
 
 // storeRefreshTokenWithScope stores refresh token with metadata including scope and subject
-func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subject string) error {
+func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subject string, expiresIn ...int) error {
 	tokenData := map[string]interface{}{
 		"client_id": clientID,
 		"scope":     scope,
@@ -465,7 +538,12 @@ func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subj
 		"issued_at": time.Now().Unix(),
 	}
 
-	return s.store.Set(s.refreshTokenKey(refreshToken), tokenData, s.config.Token.RefreshTokenLifetime)
+	expires := s.config.Token.RefreshTokenLifetime
+	if len(expiresIn) > 0 && expiresIn[0] > 0 {
+		expires = time.Duration(expiresIn[0]) * time.Second
+	}
+
+	return s.store.Set(s.refreshTokenKey(refreshToken), tokenData, expires)
 }
 
 // getRefreshTokenData retrieves refresh token data
@@ -520,6 +598,16 @@ func (s *Service) accessTokenKey(accessToken string) string {
 	return fmt.Sprintf("%soauth:access_token:%s", s.prefix, accessToken)
 }
 
+// userFingerprintKey generates a key for user fingerprint storage
+func (s *Service) userFingerprintKey(clientID, nanoID string) string {
+	return fmt.Sprintf("%soauth:user_fingerprint:%s:%s", s.prefix, clientID, nanoID)
+}
+
+// userMappingKey generates a key for reverse user mapping (clientID+userID -> nanoID)
+func (s *Service) userMappingKey(clientID, userID string) string {
+	return fmt.Sprintf("%soauth:user_mapping:%s:%s", s.prefix, clientID, userID)
+}
+
 // generateExchangedToken generates a new token for token exchange
 func (s *Service) generateExchangedToken(subjectToken string, audience string) (string, error) {
 	// Extract token prefix for tracking purposes
@@ -555,4 +643,27 @@ func (s *Service) generateToken(tokenType string, clientID string) (string, erro
 	timestamp := time.Now().Format("20060102150405")
 
 	return fmt.Sprintf("%s_%s_%s_%s", tokenType, clientID, timestamp, randomPart), nil
+}
+
+// ============================================================================
+// User Fingerprint Methods
+// ============================================================================
+
+// generateNumericID generates a deterministic numeric ID using simple hash mapping
+func generateNumericID(length int) (string, error) {
+	if length <= 0 || length > 16 {
+		return "", fmt.Errorf("length must be between 1 and 16")
+	}
+	// Use only digits 0-9 for numeric ID
+	// This provides 10^length possible combinations
+	// For 16 digits, that's 10^16 = 10,000,000,000,000,000 possibilities
+	const numericAlphabet = "0123456789"
+	return gonanoid.Generate(numericAlphabet, length)
+}
+
+// DeleteUserFingerprint removes a fingerprint mapping
+func (s *Service) DeleteUserFingerprint(clientID, nanoID string) error {
+	key := s.userFingerprintKey(clientID, nanoID)
+	s.store.Del(key)
+	return nil
 }

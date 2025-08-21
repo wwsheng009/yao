@@ -41,17 +41,16 @@ func TestCreateCollection(t *testing.T) {
 		createData := map[string]interface{}{
 			"id": testCollectionID,
 			"metadata": map[string]interface{}{
+				"name":       "Test Collection " + testCollectionID, // Required: collection display name
 				"category":   "test",
 				"created_by": "test_user",
 			},
 			"config": map[string]interface{}{
-				"collection_name": testCollectionID + "_vector", // Required: collection name
-				"embedding_model": "text-embedding-ada-002",
-				"chunk_size":      1000,
-				"chunk_overlap":   200,
-				"index_type":      "hnsw",   // Required: valid index type
-				"distance":        "cosine", // Required: distance metric
-				"dimension":       1536,     // Required: embedding dimensions (note: singular not plural)
+				"embedding_provider": "__yao.openai",           // Required: embedding provider ID
+				"embedding_option":   "text-embedding-3-small", // Required: embedding option value
+				"locale":             "en",                     // Optional: locale for provider reading
+				"index_type":         "hnsw",                   // Required: valid index type
+				"distance":           "cosine",                 // Required: distance metric
 			},
 		}
 
@@ -168,14 +167,15 @@ func TestRemoveCollection(t *testing.T) {
 		createData := map[string]interface{}{
 			"id": testCollectionID,
 			"metadata": map[string]interface{}{
+				"name":     "Test Remove Collection " + testCollectionID, // Required: collection display name
 				"category": "test_remove",
 			},
 			"config": map[string]interface{}{
-				"collection_name": testCollectionID + "_vector",
-				"embedding_model": "text-embedding-ada-002",
-				"index_type":      "hnsw",
-				"distance":        "cosine",
-				"dimension":       1536,
+				"embedding_provider": "__yao.openai",           // Required: embedding provider ID
+				"embedding_option":   "text-embedding-3-small", // Required: embedding option value
+				"locale":             "en",                     // Optional: locale for provider reading
+				"index_type":         "hnsw",                   // Required: valid index type
+				"distance":           "cosine",                 // Required: distance metric
 			},
 		}
 
@@ -499,17 +499,16 @@ func TestCollectionIntegration(t *testing.T) {
 		createData := map[string]interface{}{
 			"id": testCollectionID,
 			"metadata": map[string]interface{}{
+				"name":     "Integration Test Collection " + testCollectionID, // Required: collection display name
 				"category": "integration_test",
 				"purpose":  "full_lifecycle_test",
 			},
 			"config": map[string]interface{}{
-				"collection_name": testCollectionID + "_vector",
-				"embedding_model": "text-embedding-ada-002",
-				"chunk_size":      1000,
-				"chunk_overlap":   200,
-				"index_type":      "hnsw",
-				"distance":        "cosine",
-				"dimension":       1536,
+				"embedding_provider": "__yao.openai",           // Required: embedding provider ID
+				"embedding_option":   "text-embedding-3-small", // Required: embedding option value
+				"locale":             "en",                     // Optional: locale for provider reading
+				"index_type":         "hnsw",                   // Required: valid index type
+				"distance":           "cosine",                 // Required: distance metric
 			},
 		}
 

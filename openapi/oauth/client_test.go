@@ -74,7 +74,7 @@ func TestRegister(t *testing.T) {
 	t.Run("register client with existing ID", func(t *testing.T) {
 		// Use one of the pre-existing test clients
 		clientInfo := &types.ClientInfo{
-			ClientID:      testClients[0].ClientID, // This client already exists
+			ClientID:      GetActualClientID(testClients[0].ClientID), // This client already exists
 			ClientSecret:  "new-secret",
 			ClientName:    "Duplicate Client",
 			ClientType:    types.ClientTypeConfidential,
@@ -97,8 +97,8 @@ func TestUpdateClient(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("update existing client successfully", func(t *testing.T) {
-		// Use first test client
-		clientID := testClients[0].ClientID
+		// Use first test client with actual ID (includes suffix for parallel test isolation)
+		clientID := GetActualClientID(testClients[0].ClientID)
 		updatedInfo := &types.ClientInfo{
 			ClientID:      clientID,
 			ClientSecret:  "updated-secret",
@@ -132,7 +132,7 @@ func TestUpdateClient(t *testing.T) {
 	})
 
 	t.Run("update with nil client info", func(t *testing.T) {
-		clientID := testClients[0].ClientID
+		clientID := GetActualClientID(testClients[0].ClientID)
 
 		result, err := service.UpdateClient(ctx, clientID, nil)
 		assert.Error(t, err)
@@ -201,7 +201,7 @@ func TestValidateScope(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("validate valid scopes", func(t *testing.T) {
-		clientID := testClients[0].ClientID
+		clientID := GetActualClientID(testClients[0].ClientID)
 		requestedScopes := []string{"openid", "profile"}
 
 		result, err := service.ValidateScope(ctx, requestedScopes, clientID)
@@ -220,7 +220,7 @@ func TestValidateScope(t *testing.T) {
 	})
 
 	t.Run("validate with empty scopes", func(t *testing.T) {
-		clientID := testClients[0].ClientID
+		clientID := GetActualClientID(testClients[0].ClientID)
 		requestedScopes := []string{}
 
 		result, err := service.ValidateScope(ctx, requestedScopes, clientID)
@@ -356,6 +356,7 @@ func TestDynamicClientRegistration(t *testing.T) {
 		request := &types.DynamicClientRegistrationRequest{
 			ClientName:   "Invalid Client",
 			RedirectURIs: []string{}, // Empty redirect URIs should cause error
+			Scope:        "openid profile email",
 		}
 
 		response, err := service.DynamicClientRegistration(ctx, request)
@@ -417,7 +418,7 @@ func TestGenerateClientID(t *testing.T) {
 	defer cleanup()
 
 	t.Run("generate client ID with default length", func(t *testing.T) {
-		clientID, err := service.generateClientID()
+		clientID, err := service.GenerateClientID()
 		assert.NoError(t, err)
 		assert.NotEmpty(t, clientID)
 		assert.Greater(t, len(clientID), 0)
@@ -432,7 +433,7 @@ func TestGenerateClientID(t *testing.T) {
 		clientIDs := make(map[string]bool)
 
 		for i := 0; i < 100; i++ {
-			clientID, err := service.generateClientID()
+			clientID, err := service.GenerateClientID()
 			assert.NoError(t, err)
 			assert.NotEmpty(t, clientID)
 
@@ -450,7 +451,7 @@ func TestGenerateClientID(t *testing.T) {
 			service.config.Client.ClientIDLength = originalLength
 		}()
 
-		clientID, err := service.generateClientID()
+		clientID, err := service.GenerateClientID()
 		assert.NoError(t, err)
 		assert.NotEmpty(t, clientID)
 
@@ -465,7 +466,7 @@ func TestGenerateClientSecret(t *testing.T) {
 	defer cleanup()
 
 	t.Run("generate client secret with default length", func(t *testing.T) {
-		clientSecret, err := service.generateClientSecret()
+		clientSecret, err := service.GenerateClientSecret()
 		assert.NoError(t, err)
 		assert.NotEmpty(t, clientSecret)
 		assert.Greater(t, len(clientSecret), 0)
@@ -480,7 +481,7 @@ func TestGenerateClientSecret(t *testing.T) {
 		clientSecrets := make(map[string]bool)
 
 		for i := 0; i < 100; i++ {
-			clientSecret, err := service.generateClientSecret()
+			clientSecret, err := service.GenerateClientSecret()
 			assert.NoError(t, err)
 			assert.NotEmpty(t, clientSecret)
 
@@ -498,7 +499,7 @@ func TestGenerateClientSecret(t *testing.T) {
 			service.config.Client.ClientSecretLength = originalLength
 		}()
 
-		clientSecret, err := service.generateClientSecret()
+		clientSecret, err := service.GenerateClientSecret()
 		assert.NoError(t, err)
 		assert.NotEmpty(t, clientSecret)
 
@@ -533,6 +534,7 @@ func TestValidateDynamicClientRegistrationRequest(t *testing.T) {
 		request := &types.DynamicClientRegistrationRequest{
 			ClientName:   "No Redirect URIs",
 			RedirectURIs: []string{},
+			Scope:        "openid profile email",
 		}
 
 		err := service.validateDynamicClientRegistrationRequest(request)
@@ -548,6 +550,7 @@ func TestValidateDynamicClientRegistrationRequest(t *testing.T) {
 		request := &types.DynamicClientRegistrationRequest{
 			ClientName:   "Invalid Redirect URI",
 			RedirectURIs: []string{"://invalid-uri"},
+			Scope:        "openid profile email",
 		}
 
 		err := service.validateDynamicClientRegistrationRequest(request)

@@ -22,27 +22,32 @@ func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 	// Collection Management
 	group.POST("/collections", CreateCollection)
 	group.DELETE("/collections/:collectionID", RemoveCollection)
+	group.GET("/collections/:collectionID", GetCollection)
 	group.GET("/collections/:collectionID/exists", CollectionExists)
 	group.GET("/collections", GetCollections)
+	group.PUT("/collections/:collectionID/metadata", UpdateCollectionMetadata)
 
 	// Document Management
 	group.POST("/collections/:collectionID/documents/file", AddFile)
+	group.POST("/collections/:collectionID/documents/file/async", AddFileAsync)
 	group.POST("/collections/:collectionID/documents/text", AddText)
+	group.POST("/collections/:collectionID/documents/text/async", AddTextAsync)
 	group.POST("/collections/:collectionID/documents/url", AddURL)
+	group.POST("/collections/:collectionID/documents/url/async", AddURLAsync)
 	group.GET("/documents", ListDocuments)
-	group.GET("/documents/scroll", ScrollDocuments)
 	group.GET("/documents/:docID", GetDocument)
 	group.DELETE("/documents", RemoveDocs)
 
 	// Segment Management
 	group.POST("/documents/:docID/segments", AddSegments)
-	group.PUT("/segments", UpdateSegments)
-	group.DELETE("/segments", RemoveSegments)
+	group.PUT("/documents/:docID/segments", UpdateSegments)
 	group.DELETE("/documents/:docID/segments", RemoveSegmentsByDocID)
+	group.GET("/documents/:docID/segments", ScrollSegments)
+
+	// Global segment operations (not tied to specific document)
+	group.DELETE("/segments", RemoveSegments)
 	group.GET("/segments", GetSegments)
 	group.GET("/segments/:segmentID", GetSegment)
-	group.GET("/documents/:docID/segments", ListSegments)
-	group.GET("/documents/:docID/segments/scroll", ScrollSegments)
 
 	// Segment Voting, Scoring, Weighting
 	group.PUT("/segments/vote", UpdateVote)
@@ -56,4 +61,8 @@ func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 	// Collection Backup and Restore
 	group.POST("/collections/:collectionID/backup", Backup)
 	group.POST("/collections/:collectionID/restore", Restore)
+
+	// Provider Management (Chunking, Converter, Embedding, Extraction, Fetcher ...)
+	group.GET("/providers/:providerType", GetProviders)
+	group.GET("/providers/:providerType/:providerID/schema", GetProviderSchema)
 }

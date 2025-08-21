@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yaoapp/yao/helper"
-	"github.com/yaoapp/yao/utils"
+	"github.com/yaoapp/yao/openapi"
+	"github.com/yaoapp/yao/openapi/oauth"
 
 	"github.com/yaoapp/yao/widgets/chart"
 	"github.com/yaoapp/yao/widgets/dashboard"
@@ -42,11 +43,18 @@ func guardCookieTrace(c *gin.Context) {
 		return
 	}
 	c.Set("__sid", sid)
-	return
 }
 
 // Cookie Cookie JWT
 func guardCookieJWT(c *gin.Context) {
+
+	// OpenAPI OAuth
+	if openapi.Server != nil {
+		guardOpenapiOauth(c)
+		return
+	}
+
+	// Backward compatibility
 	tokenString, err := c.Cookie("__tk")
 	if err != nil {
 		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
@@ -62,11 +70,18 @@ func guardCookieJWT(c *gin.Context) {
 
 	claims := helper.JwtValidate(tokenString)
 	c.Set("__sid", claims.SID)
-	return
 }
 
 // JWT Bearer JWT
 func guardBearerJWT(c *gin.Context) {
+
+	// OpenAPI OAuth
+	if openapi.Server != nil {
+		guardOpenapiOauth(c)
+		return
+	}
+
+	// Backward compatibility
 	tokenString := c.Request.Header.Get("Authorization")
 	tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
 	if tokenString == "" {
@@ -111,4 +126,53 @@ func guardCrossOrigin(c *gin.Context) {
 		return
 	}
 	c.Next()
+}
+
+// Openapi Oauth
+func guardOpenapiOauth(c *gin.Context) {
+	s := oauth.OAuth
+	token := getAccessToken(c)
+	if token == "" {
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
+		c.Abort()
+		return
+	}
+
+	// Validate the token
+	_, err := s.VerifyToken(token)
+	if err != nil {
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
+		c.Abort()
+		return
+	}
+
+	// Get the session ID
+	sid := getSessionID(c)
+	if sid == "" {
+		c.JSON(403, gin.H{"code": 403, "message": "Not Authorized"})
+		c.Abort()
+		return
+	}
+
+	c.Set("__sid", sid)
+}
+
+func getAccessToken(c *gin.Context) string {
+	token := c.GetHeader("Authorization")
+	if token == "" || token == "Bearer undefined" {
+		cookie, err := c.Cookie("__Host-access_token")
+		if err != nil {
+			return ""
+		}
+		token = cookie
+	}
+	return strings.TrimPrefix(token, "Bearer ")
+}
+
+func getSessionID(c *gin.Context) string {
+	sid, err := c.Cookie("__Host-session_id")
+	if err != nil {
+		return ""
+	}
+	return sid
 }

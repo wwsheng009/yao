@@ -271,6 +271,226 @@ The DSL Management API provides:
 
 All DSL endpoints require OAuth authentication.
 
+## Chat API
+
+Comprehensive API for AI chat completions with **100% OpenAI client compatibility** and real-time streaming capabilities.
+
+**[View Full Chat API Documentation →](chat/README.md)**
+
+The Chat API provides:
+
+- **OpenAI Client Compatibility**: 100% compatible with existing OpenAI client libraries and SDKs
+- **Chat Completions**: AI-powered chat with streaming responses via Server-Sent Events
+- **Assistant Selection**: Multiple AI assistants with different capabilities and personalities
+- **Standard Compliance**: Full OpenAI API specification compliance
+- **Context Management**: Persistent chat sessions with conversation history
+- **Real-Time Streaming**: Server-Sent Events for immediate response delivery
+- **Dual Format Support**: Both OpenAI standard and Yao simplified parameter formats
+
+**Key Endpoints:**
+
+- `GET /chat/completions` - Stream chat completions with query parameters (Yao format)
+- `POST /chat/completions` - Stream chat completions with JSON body (OpenAI format)
+
+**OpenAI Compatibility Features:**
+
+- **Zero Code Migration**: Existing OpenAI code works with just URL/token changes
+- **Client Library Support**: Works with OpenAI Python, Node.js, Go, and other clients
+- **Standard Response Format**: OpenAI-compatible streaming response structure
+- **Parameter Compatibility**: Supports `model`, `messages`, `temperature`, `max_tokens`, etc.
+- **Error Format**: OpenAI-compatible error response structure
+
+**Yao Extensions:**
+
+- **Simplified Input**: Use `content` parameter for basic interactions
+- **Assistant Selection**: Choose from Yao assistants (`mohe`, `developer`, `analyst`, etc.)
+- **Context Awareness**: Additional context and conversation history support
+- **Session Management**: Automatic session handling with user identification
+
+**Migration Example:**
+
+```python
+# Before (OpenAI)
+openai.api_key = "sk-..."
+
+# After (Yao - Only 2 lines change!)
+openai.api_base = "https://your-yao.com/v1"
+openai.api_key = "your-oauth-token"
+```
+
+**Note:** This is a temporary implementation for full-process testing, and the interface may undergo significant global changes in the future. However, OpenAI compatibility will be maintained.
+
+All Chat endpoints require OAuth authentication.
+
+## Signin API
+
+Comprehensive authentication API for user signin, configuration management, and OAuth integration with support for multiple authentication providers.
+
+The Signin API provides:
+
+- **Signin Configuration**: Get public signin configuration for different locales
+- **Password Authentication**: Traditional username/password signin flow
+- **OAuth Integration**: Third-party authentication provider callbacks
+- **Multi-Locale Support**: Localized signin configurations and messages
+- **Provider Management**: Support for multiple OAuth providers (Google, GitHub, etc.)
+
+**Key Endpoints:**
+
+- `GET /signin` - Get signin configuration for locale
+- `POST /signin` - Authenticate with username/password
+- `GET /signin/authback/{id}` - OAuth authentication callback handler
+
+**Configuration:**
+
+Signin configurations are defined in DSL files with multi-locale support:
+
+**[View Configuration Examples →](https://github.com/YaoApp/yao-dev-app/blob/main/openapi/signin.en.yao)**
+
+### Get Signin Configuration
+
+Retrieve public signin configuration for a specific locale:
+
+```
+GET /signin?locale={locale}
+```
+
+**Parameters:**
+
+- `locale` (optional): Language locale (e.g., "en", "zh-cn")
+
+**Example:**
+
+```bash
+curl -X GET "/v1/signin?locale=en" \
+  -H "Content-Type: application/json"
+```
+
+**Response:**
+
+```json
+{
+  "title": "Sign In",
+  "subtitle": "Welcome back",
+  "providers": [
+    {
+      "id": "google",
+      "name": "Google",
+      "icon": "google",
+      "enabled": true
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "icon": "github",
+      "enabled": true
+    }
+  ],
+  "password_enabled": true,
+  "register_enabled": true,
+  "forgot_password_enabled": true
+}
+```
+
+### Password Signin
+
+Authenticate using username and password:
+
+```
+POST /signin
+```
+
+**Request Body:**
+
+```json
+{
+  "username": "user@example.com",
+  "password": "your_password",
+  "remember": true
+}
+```
+
+**Response:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "def50200...",
+  "user": {
+    "id": "user123",
+    "email": "user@example.com",
+    "name": "John Doe"
+  }
+}
+```
+
+### OAuth Authentication Callback
+
+Handle OAuth provider authentication callbacks:
+
+```
+GET /signin/authback/{provider_id}
+```
+
+**Parameters:**
+
+- `provider_id` (path): OAuth provider identifier (e.g., "google", "github")
+- Standard OAuth parameters in query string (code, state, etc.)
+
+**Example:**
+
+```
+GET /signin/authback/google?code=auth_code&state=csrf_token
+```
+
+This endpoint processes the OAuth callback and returns authentication tokens or redirects to the configured success/error URLs.
+
+**Features:**
+
+- **Multi-Provider Support**: Google, GitHub, Microsoft, and custom OAuth providers
+- **Locale Awareness**: Configuration adapts to user's preferred language
+- **Security**: CSRF protection, secure token handling, and validation
+- **Customizable UI**: Configurable signin forms and provider buttons
+- **Session Management**: Automatic session creation and token management
+
+**Note:** Signin endpoints are publicly accessible for authentication purposes, but return OAuth tokens that must be used for subsequent API calls.
+
+## File Management API
+
+Comprehensive API for managing file uploads, downloads, and file operations with support for multiple storage backends.
+
+**[View Full File Management API Documentation →](file/README.md)**
+
+The File Management API provides:
+
+- **File Upload**: Single and chunked file uploads with compression support
+- **File Listing**: Paginated file listing with filtering and sorting capabilities
+- **File Retrieval**: Get file metadata and download file content with accurate headers
+- **File Management**: Check file existence and delete files
+- **Storage Flexibility**: Support for local, S3, and custom storage backends
+- **Security**: URL-safe file IDs and path validation
+- **Optimized Content Delivery**: Direct content reading with database-driven metadata
+
+**Key Endpoints:**
+
+- `POST /file/{uploaderID}` - Upload files (supports chunked upload)
+- `GET /file/{uploaderID}` - List files with pagination and filters
+- `GET /file/{uploaderID}/{fileID}` - Get file metadata
+- `GET /file/{uploaderID}/{fileID}/content` - Download file content
+- `GET /file/{uploaderID}/{fileID}/exists` - Check file existence
+- `DELETE /file/{uploaderID}/{fileID}` - Delete file
+
+**Advanced Features:**
+
+- **Chunked Upload**: Large file support with reliable chunk-based uploading
+- **Compression**: Automatic gzip and image compression options
+- **Metadata Management**: File organization with groups, paths, and user identifiers
+- **Multiple Storage**: Local filesystem and S3-compatible cloud storage
+- **Optimized Content Delivery**: Direct file reading with accurate metadata headers
+
+All file endpoints require OAuth authentication.
+
 ## Error Responses
 
 All endpoints return standardized error responses:
@@ -383,6 +603,111 @@ curl -X POST "/v1/dsl/create/model" \
     "id": "product",
     "source": "{ \"name\": \"product\", \"table\": { \"name\": \"products\" }, \"columns\": [...] }"
   }'
+```
+
+### AI Chat Interaction (OpenAI Compatible)
+
+1. **Start a chat conversation (OpenAI format)**:
+
+```bash
+curl -X POST "/v1/chat/completions" \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mohe",
+    "messages": [
+      {"role": "user", "content": "What is Yao framework?"}
+    ],
+    "stream": true
+  }'
+```
+
+2. **Continue conversation with OpenAI client (Python)**:
+
+```python
+import openai
+
+# Configure for Yao (only 2 lines change from OpenAI!)
+openai.api_base = "https://your-yao.com/v1"
+openai.api_key = "your-oauth-token"
+
+# Use exactly like OpenAI
+response = openai.ChatCompletion.create(
+    model="developer",
+    messages=[
+        {"role": "user", "content": "Show me an example"}
+    ],
+    stream=True
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.get("content"):
+        print(chunk.choices[0].delta.content, end="")
+```
+
+3. **Use Yao simplified format**:
+
+```bash
+curl -X GET "/v1/chat/completions?content=Help%20me%20create%20a%20user%20model&assistant_id=developer" \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Accept: text/event-stream"
+```
+
+### User Authentication with Signin API
+
+1. **Get signin configuration**:
+
+```bash
+curl -X GET "/v1/signin?locale=en" \
+  -H "Content-Type: application/json"
+```
+
+2. **Authenticate with password**:
+
+```bash
+curl -X POST "/v1/signin" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user@example.com",
+    "password": "secure_password",
+    "remember": true
+  }'
+```
+
+3. **Use authentication token for API access**:
+
+```bash
+curl -X GET "/v1/dsl/list/model" \
+  -H "Authorization: Bearer {received_access_token}"
+```
+
+### File Upload and Management
+
+1. **Upload a file with metadata**:
+
+```bash
+curl -X POST "/v1/file/default" \
+  -H "Authorization: Bearer {access_token}" \
+  -F "file=@document.pdf" \
+  -F "path=documents/reports/quarterly-report.pdf" \
+  -F "groups=documents,reports" \
+  -F "client_id=app123" \
+  -F "gzip=true"
+```
+
+2. **List and filter files**:
+
+```bash
+curl -X GET "/v1/file/default?status=completed&content_type=application/pdf&page=1&page_size=10" \
+  -H "Authorization: Bearer {access_token}"
+```
+
+3. **Download file content** (with optimized delivery):
+
+```bash
+curl -X GET "/v1/file/default/{file_id}/content" \
+  -H "Authorization: Bearer {access_token}" \
+  --output downloaded-document.pdf
 ```
 
 ## Configuration
