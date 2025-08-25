@@ -132,9 +132,6 @@ func UpdateSegments(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("--------------------------------")
-	fmt.Println(document)
-
 	var req UpdateSegmentsRequest
 	// Parse and bind JSON request
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -250,11 +247,6 @@ func UpdateSegments(c *gin.Context) {
 		upsertOptions.Extraction = extractionProvider
 	}
 
-	fmt.Println("--- UpdateSegments ---")
-	fmt.Println(req.SegmentTexts)
-	fmt.Println(upsertOptions.DocID)
-	fmt.Println(upsertOptions.CollectionID)
-
 	// Perform update segments operation
 	updatedCount, err := kb.Instance.UpdateSegments(c.Request.Context(), req.SegmentTexts, upsertOptions)
 	if err != nil {
@@ -279,6 +271,17 @@ func UpdateSegments(c *gin.Context) {
 
 // RemoveSegments removes segments by IDs
 func RemoveSegments(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
 	// Parse segment_ids from query parameter (comma-separated string)
 	segmentIDsParam := strings.TrimSpace(c.Query("segment_ids"))
 	if segmentIDsParam == "" {
@@ -320,7 +323,7 @@ func RemoveSegments(c *gin.Context) {
 	}
 
 	// Perform remove segments operation
-	removedCount, err := kb.Instance.RemoveSegments(c.Request.Context(), validSegmentIDs)
+	removedCount, err := kb.Instance.RemoveSegments(c.Request.Context(), docID, validSegmentIDs)
 	if err != nil {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrServerError.Code,
@@ -386,14 +389,98 @@ func RemoveSegmentsByDocID(c *gin.Context) {
 
 // GetSegments gets segments by IDs
 func GetSegments(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// TODO: Implement document permission validation for docID
 	// TODO: Implement get segments logic
-	c.JSON(http.StatusOK, gin.H{"segments": []interface{}{}})
+	c.JSON(http.StatusOK, gin.H{
+		"segments": []interface{}{},
+		"doc_id":   docID,
+	})
 }
 
 // GetSegment gets a single segment by ID
 func GetSegment(c *gin.Context) {
-	// TODO: Implement get single segment logic
-	c.JSON(http.StatusOK, gin.H{"segment": nil})
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Extract segmentID from URL path
+	segmentID := c.Param("segmentID")
+	if segmentID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Segment ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Check if KB instance exists
+	if kb.Instance == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Knowledge base instance is not initialized",
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// TODO: Implement document permission validation for docID
+
+	// Get the segment using KB interface
+	segment, err := kb.Instance.GetSegment(c.Request.Context(), docID, segmentID)
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: fmt.Sprintf("Failed to get segment: %v", err),
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	if segment == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Segment not found",
+		}
+		response.RespondWithError(c, response.StatusNotFound, errorResp)
+		return
+	}
+
+	// Verify that the segment belongs to the specified document
+	if segment.DocumentID != docID {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrAccessDenied.Code,
+			ErrorDescription: "Segment does not belong to the specified document",
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
+	result := gin.H{
+		"segment":    segment,
+		"doc_id":     docID,
+		"segment_id": segmentID,
+	}
+
+	response.RespondWithSuccess(c, response.StatusOK, result)
 }
 
 // ScrollSegments scrolls segments with iterator-style pagination
@@ -502,4 +589,280 @@ func ScrollSegments(c *gin.Context) {
 
 	// Return success response
 	response.RespondWithSuccess(c, response.StatusOK, result)
+}
+
+// AddSegmentsAsync adds segments to a document asynchronously
+func AddSegmentsAsync(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Check if kb.Instance is available
+	if kb.Instance == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Knowledge base not initialized",
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	var req AddSegmentsRequest
+
+	// Parse and bind JSON request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Invalid request format: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Set docID from URL parameter
+	req.DocID = docID
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: err.Error(),
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// TODO: Implement document permission validation for docID
+
+	// Create and run job
+	job := NewJob()
+	jobID := job.Run(func() {
+		// TODO: Implement async add segments logic
+		// This should call the same logic as AddSegments but in background
+		// err := AddSegmentsProcess(context.Background(), &req, job.ID)
+		// For now, just simulate async processing
+		// if err != nil {
+		//     log.Error("Async segments addition failed: %v", err)
+		// }
+	})
+
+	// Return job ID for status tracking
+	result := gin.H{
+		"job_id":  jobID,
+		"message": "Segments addition started",
+		"doc_id":  docID,
+	}
+
+	response.RespondWithSuccess(c, response.StatusCreated, result)
+}
+
+// UpdateSegmentsAsync updates segments in a document asynchronously
+func UpdateSegmentsAsync(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Check if kb.Instance is available
+	if kb.Instance == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Knowledge base not initialized",
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// Parse request body for segments data
+	var requestBody map[string]interface{}
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Invalid request format: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// TODO: Validate request body
+	// TODO: Implement document permission validation for docID
+
+	// Create and run job
+	job := NewJob()
+	jobID := job.Run(func() {
+		// TODO: Implement async update segments logic
+		// This should call the same logic as UpdateSegments but in background
+		// err := UpdateSegmentsProcess(context.Background(), docID, requestBody, job.ID)
+		// For now, just simulate async processing
+		// if err != nil {
+		//     log.Error("Async segments update failed: %v", err)
+		// }
+	})
+
+	// Return job ID for status tracking
+	result := gin.H{
+		"job_id":  jobID,
+		"message": "Segments update started",
+		"doc_id":  docID,
+	}
+
+	response.RespondWithSuccess(c, response.StatusCreated, result)
+}
+
+// GetSegmentParents gets the parent segments for a specific segment
+func GetSegmentParents(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Extract segmentID from URL path
+	segmentID := c.Param("segmentID")
+	if segmentID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Segment ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Check if kb.Instance is available
+	if kb.Instance == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Knowledge base not initialized",
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// TODO: Implement document permission validation for docID
+
+	// Call GraphRag GetSegmentParents method
+	segmentTree, err := kb.Instance.GetSegmentParents(c.Request.Context(), docID, segmentID)
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Failed to get segment parents: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	if segmentTree == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Segment not found",
+		}
+		response.RespondWithError(c, response.StatusNotFound, errorResp)
+		return
+	}
+
+	// Verify that the target segment belongs to the specified document
+	if segmentTree.Segment != nil && segmentTree.Segment.DocumentID != docID {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrAccessDenied.Code,
+			ErrorDescription: "Segment does not belong to the specified document",
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
+	// Parse query parameters for response formatting
+	includeMetadata := true
+	if includeMetadataStr := c.Query("include_metadata"); includeMetadataStr == "false" {
+		includeMetadata = false
+	}
+
+	// Format response based on query parameters
+	responseData := formatSegmentTreeResponse(segmentTree, includeMetadata)
+
+	// Add additional response information
+	result := gin.H{
+		"tree":       responseData,
+		"doc_id":     docID,
+		"segment_id": segmentID,
+	}
+
+	response.RespondWithSuccess(c, response.StatusOK, result)
+}
+
+// formatSegmentTreeResponse formats a SegmentTree for API response
+func formatSegmentTreeResponse(tree *types.SegmentTree, includeMetadata bool) map[string]interface{} {
+	if tree == nil || tree.Segment == nil {
+		return nil
+	}
+
+	// Format the segment data
+	segmentData := map[string]interface{}{
+		"id":            tree.Segment.ID,
+		"text":          tree.Segment.Text,
+		"collection_id": tree.Segment.CollectionID,
+		"document_id":   tree.Segment.DocumentID,
+		"depth":         tree.Depth,
+		"weight":        tree.Segment.Weight,
+		"score":         tree.Segment.Score,
+		"positive":      tree.Segment.Positive,
+		"negative":      tree.Segment.Negative,
+		"hit":           tree.Segment.Hit,
+		"created_at":    tree.Segment.CreatedAt,
+		"updated_at":    tree.Segment.UpdatedAt,
+		"version":       tree.Segment.Version,
+	}
+
+	// Include score dimensions if available
+	if len(tree.Segment.ScoreDimensions) > 0 {
+		segmentData["score_dimensions"] = tree.Segment.ScoreDimensions
+	}
+
+	// Include metadata if requested
+	if includeMetadata && tree.Segment.Metadata != nil {
+		segmentData["metadata"] = tree.Segment.Metadata
+	}
+
+	// Include nodes and relationships if available
+	if len(tree.Segment.Nodes) > 0 {
+		segmentData["nodes"] = tree.Segment.Nodes
+	}
+	if len(tree.Segment.Relationships) > 0 {
+		segmentData["relationships"] = tree.Segment.Relationships
+	}
+
+	// Format parent tree recursively (only one parent in document hierarchy)
+	var parent map[string]interface{}
+	if tree.Parent != nil {
+		parent = formatSegmentTreeResponse(tree.Parent, includeMetadata)
+	}
+
+	result := map[string]interface{}{
+		"segment": segmentData,
+		"depth":   tree.Depth,
+	}
+
+	// Only add parent if it exists
+	if parent != nil {
+		result["parent"] = parent
+	}
+
+	return result
 }

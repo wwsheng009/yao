@@ -1,30 +1,27 @@
 package kb
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/yao/kb"
 	"github.com/yaoapp/yao/openapi/response"
 )
 
-// Segment Voting, Scoring, Weighting Handlers
+// Weight Management Handlers
 
-// UpdateVote updates votes for segments
-func UpdateVote(c *gin.Context) {
-	// TODO: Implement update vote logic
-	c.JSON(http.StatusOK, gin.H{"message": "Vote updated"})
-}
+// UpdateWeights updates weights for multiple segments in batch
+func UpdateWeights(c *gin.Context) {
+	// Extract docID from URL path
+	docID := c.Param("docID")
+	if docID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Document ID is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
 
-// UpdateScore updates scores for segments
-func UpdateScore(c *gin.Context) {
-	// TODO: Implement update score logic
-	c.JSON(http.StatusOK, gin.H{"message": "Score updated"})
-}
-
-// UpdateWeight updates weights for segments
-func UpdateWeight(c *gin.Context) {
-	var req UpdateWeightRequest
+	var req UpdateWeightsRequest
 
 	// Parse and bind JSON request
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,8 +53,10 @@ func UpdateWeight(c *gin.Context) {
 		return
 	}
 
-	// Perform update weight operation
-	updatedCount, err := kb.Instance.UpdateWeight(c.Request.Context(), req.Segments)
+	// TODO: Implement document permission validation for docID
+
+	// Call GraphRag UpdateWeights method (without Compute option)
+	updatedCount, err := kb.Instance.UpdateWeights(c.Request.Context(), docID, req.Weights)
 	if err != nil {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrServerError.Code,
@@ -70,7 +69,8 @@ func UpdateWeight(c *gin.Context) {
 	// Return success response
 	result := gin.H{
 		"message":       "Segment weights updated successfully",
-		"segments":      req.Segments,
+		"doc_id":        docID,
+		"weights":       req.Weights,
 		"updated_count": updatedCount,
 	}
 

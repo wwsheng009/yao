@@ -131,7 +131,14 @@ type UpdateSegmentsRequest struct {
 
 // UpdateVoteRequest represents the request for UpdateVote API
 type UpdateVoteRequest struct {
-	Segments []types.SegmentVote `json:"segments" binding:"required"`
+	Segments        []types.SegmentVote    `json:"segments" binding:"required"`
+	DefaultReaction *types.SegmentReaction `json:"default_reaction,omitempty"` // Optional default context for segments that don't have reaction
+}
+
+// UpdateHitRequest represents the request for UpdateHit API
+type UpdateHitRequest struct {
+	Segments        []types.SegmentHit     `json:"segments" binding:"required"`
+	DefaultReaction *types.SegmentReaction `json:"default_reaction,omitempty"` // Optional default context for segments that don't have reaction
 }
 
 // UpdateScoreRequest represents the request for UpdateScore API
@@ -142,6 +149,16 @@ type UpdateScoreRequest struct {
 // UpdateWeightRequest represents the request for UpdateWeight API
 type UpdateWeightRequest struct {
 	Segments []types.SegmentWeight `json:"segments" binding:"required"`
+}
+
+// UpdateScoresRequest represents the request for batch score updates
+type UpdateScoresRequest struct {
+	Scores []types.SegmentScore `json:"scores" binding:"required"`
+}
+
+// UpdateWeightsRequest represents the request for batch weight updates
+type UpdateWeightsRequest struct {
+	Weights []types.SegmentWeight `json:"weights" binding:"required"`
 }
 
 // ProviderOption resolves a ProviderConfig to a *kbtypes.ProviderOption
@@ -413,6 +430,22 @@ func (r *UpdateWeightRequest) Validate() error {
 		}
 		if segment.Weight < 0 {
 			return fmt.Errorf("segments[%d].weight cannot be negative", i)
+		}
+	}
+	return nil
+}
+
+// Validate validates the UpdateWeightsRequest fields
+func (r *UpdateWeightsRequest) Validate() error {
+	if len(r.Weights) == 0 {
+		return fmt.Errorf("weights is required")
+	}
+	for i, weight := range r.Weights {
+		if strings.TrimSpace(weight.ID) == "" {
+			return fmt.Errorf("weights[%d].id cannot be empty", i)
+		}
+		if weight.Weight < 0 {
+			return fmt.Errorf("weights[%d].weight cannot be negative", i)
 		}
 	}
 	return nil
