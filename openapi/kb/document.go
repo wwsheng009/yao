@@ -21,7 +21,7 @@ var (
 		"id": true, "document_id": true, "collection_id": true, "name": true,
 		"description": true, "status": true, "type": true, "size": true,
 		"segment_count": true, "job_id": true, "uploader_id": true, "tags": true,
-		"locale": true, "system": true, "sort": true, "cover": true,
+		"locale": true, "system": true, "readonly": true, "sort": true, "cover": true,
 		"file_id": true, "file_name": true, "file_mime_type": true,
 		"url": true, "url_title": true, "text_content": true,
 		"converter_provider_id": true, "converter_option_id": true, "converter_properties": true,
@@ -35,7 +35,7 @@ var (
 	defaultDocumentFields = []interface{}{
 		"id", "document_id", "collection_id", "name", "description",
 		"cover", "tags", "type", "size", "segment_count", "status", "locale",
-		"file_id", "file_name", "file_mime_type", "uploader_id",
+		"system", "readonly", "file_id", "file_name", "file_mime_type", "uploader_id",
 		"url", "url_title", "text_content", // 添加 URL 和文本内容字段
 		"error_message", "created_at", "updated_at",
 	}
@@ -360,8 +360,106 @@ func GetDocument(c *gin.Context) {
 
 // RemoveDocs removes documents by IDs
 func RemoveDocs(c *gin.Context) {
-	// TODO: Implement remove documents logic
-	c.JSON(http.StatusOK, gin.H{"message": "Documents removed"})
+	// Check if kb.Instance is available
+	if !checkKBInstance(c) {
+		return
+	}
+
+	// Parse document_ids from query parameter (comma-separated string)
+	docIDsParam := strings.TrimSpace(c.Query("document_ids"))
+	if docIDsParam == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "document_ids query parameter is required",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Split comma-separated document IDs
+	docIDs := strings.Split(docIDsParam, ",")
+	var validDocIDs []string
+	for _, id := range docIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			validDocIDs = append(validDocIDs, id)
+		}
+	}
+
+	if len(validDocIDs) == 0 {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "No valid document IDs provided",
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	// Get KB config for database operations
+	config, err := kb.GetConfig()
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Failed to get KB config: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// Remove documents using GraphRAG
+	deletedCount, err := kb.Instance.RemoveDocs(c.Request.Context(), validDocIDs)
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Failed to remove documents: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// Also remove documents from the database and track collections to update
+	dbDeletedCount := 0
+	collectionsToUpdate := make(map[string]bool) // Track unique collection IDs
+
+	for _, docID := range validDocIDs {
+		// Get document info before deletion to track collection
+		if docInfo, err := config.FindDocument(docID, model.QueryParam{
+			Select: []interface{}{"collection_id"},
+		}); err == nil && docInfo != nil {
+			if collectionID, ok := docInfo["collection_id"].(string); ok && collectionID != "" {
+				collectionsToUpdate[collectionID] = true
+			}
+		}
+
+		if err := config.RemoveDocument(docID); err != nil {
+			// Log the error but don't fail the entire operation
+			// since the document was already removed from GraphRAG
+			errorResp := &response.ErrorResponse{
+				Code:             response.ErrServerError.Code,
+				ErrorDescription: "Failed to remove document from database: " + err.Error(),
+			}
+			response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+			return
+		}
+		dbDeletedCount++
+	}
+
+	// Update document counts for affected collections
+	for collectionID := range collectionsToUpdate {
+		if err := config.UpdateDocumentCount(collectionID); err != nil {
+			// Log error but don't fail the operation
+			// TODO: Add proper logging
+			// log.Error("Failed to update document count for collection %s: %v", collectionID, err)
+		}
+	}
+
+	// Return success response with deletion count
+	c.JSON(http.StatusOK, gin.H{
+		"message":          "Documents removed successfully",
+		"deleted_count":    deletedCount,
+		"requested_count":  len(validDocIDs),
+		"db_deleted_count": dbDeletedCount,
+	})
 }
 
 // Validator interface for request validation
