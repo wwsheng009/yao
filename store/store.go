@@ -91,12 +91,12 @@ func loadSystemStores(cfg config.Config) error {
 		source := string(raw)
 		if strings.Contains(source, "YAO_APP_ROOT") || strings.Contains(source, "YAO_DATA_ROOT") {
 			vars := map[string]string{
-				"YAO_APP_ROOT":  cfg.Root,
-				"YAO_DATA_ROOT": cfg.DataRoot,
+				"YAO_APP_ROOT":  strings.ReplaceAll(cfg.Root, "\\", "/"),
+				"YAO_DATA_ROOT": strings.ReplaceAll(cfg.DataRoot, "\\", "/"),
 			}
 			source = replaceVars(source, vars)
 		}
-
+		
 		// Load store with the processed source
 		_, err = store.LoadSource([]byte(source), id, filepath.Join("__system", path))
 		if err != nil {
