@@ -221,7 +221,7 @@ func loadSigninConfigs(rootPath string) error {
 		}
 
 		// Skip files in subdirectories (like providers/)
-		if filepath.Dir(filename) != "openapi/signin" {
+		if strings.ReplaceAll(filepath.Dir(filename),"\\","/") != "openapi/signin" {
 			return nil
 		}
 
@@ -249,7 +249,7 @@ func loadSigninConfigs(rootPath string) error {
 
 		// Process ENV variables in full config
 		fullConfig := signinConfig
-		processConfigENVVariables(&fullConfig, rootPath)
+		processConfigENVVariables(&fullConfig, strings.ReplaceAll(rootPath,"\\","/"))
 
 		// Set as default config if marked as default
 		if fullConfig.Default {
