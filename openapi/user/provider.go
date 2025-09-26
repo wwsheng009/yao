@@ -1,4 +1,4 @@
-package signin
+package user
 
 import (
 	"crypto/ecdsa"
@@ -1156,15 +1156,4 @@ func (p *Provider) AccessToken(code, redirectURI string) (*OAuthTokenResponse, e
 	}
 
 	return &tokenResponse, nil
-}
-
-// GetProvider gets the provider by ID from the global providers map
-func GetProvider(providerID string) (*Provider, error) {
-	// Get provider from global providers map
-	provider, exists := providers[providerID]
-	if !exists {
-		return nil, fmt.Errorf("OAuth provider '%s' not found", providerID)
-	}
-
-	return provider, nil
 }

@@ -1,4 +1,4 @@
-package signin
+package user
 
 import (
 	oauthtypes "github.com/yaoapp/yao/openapi/oauth/types"
@@ -76,6 +76,7 @@ type YaoClientConfig struct {
 // Provider represents a third party login provider
 type Provider struct {
 	ID                    string           `json:"id,omitempty"`
+	Label                 string           `json:"label,omitempty"`
 	Title                 string           `json:"title,omitempty"`
 	Logo                  string           `json:"logo,omitempty"`
 	Color                 string           `json:"color,omitempty"`
@@ -168,7 +169,19 @@ type LoginResponse struct {
 	ExpiresIn             int    `json:"expires_in,omitempty"`
 	RefreshTokenExpiresIn int    `json:"refresh_token_expires_in,omitempty"`
 	TokenType             string `json:"token_type,omitempty"`
+	MFAEnabled            bool   `json:"mfa_enabled,omitempty"`
 	Scope                 string `json:"scope,omitempty"`
+}
+
+// LoginSuccessResponse represents the response for login success
+type LoginSuccessResponse struct {
+	IDToken               string `json:"id_token,omitempty"`
+	AccessToken           string `json:"access_token,omitempty"`
+	SessionID             string `json:"session_id,omitempty"`
+	RefreshToken          string `json:"refresh_token,omitempty"`
+	ExpiresIn             int    `json:"expires_in,omitempty"`
+	MFAEnabled            bool   `json:"mfa_enabled"`
+	RefreshTokenExpiresIn int    `json:"refresh_token_expires_in,omitempty"`
 }
 
 // Built-in preset mapping types
@@ -187,3 +200,120 @@ const (
 	UserInfoSourceIDToken     = "id_token"     // Extract user info from ID token (JWT)
 	UserInfoSourceAccessToken = "access_token" // Extract user info from access token response
 )
+
+// ==== Team API Types ====
+
+// TeamResponse represents a team in API responses
+type TeamResponse struct {
+	ID          int64  `json:"id"`
+	TeamID      string `json:"team_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	OwnerID     string `json:"owner_id"`
+	Status      string `json:"status"`
+	IsVerified  bool   `json:"is_verified"`
+	VerifiedBy  string `json:"verified_by,omitempty"`
+	VerifiedAt  string `json:"verified_at,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// TeamDetailResponse represents detailed team information
+type TeamDetailResponse struct {
+	TeamResponse
+	// Add additional fields that are only included in detailed responses
+	Settings map[string]interface{} `json:"settings,omitempty"`
+}
+
+// CreateTeamRequest represents the request to create a team
+type CreateTeamRequest struct {
+	Name        string                 `json:"name" binding:"required"`
+	Description string                 `json:"description,omitempty"`
+	Settings    map[string]interface{} `json:"settings,omitempty"`
+}
+
+// UpdateTeamRequest represents the request to update a team
+type UpdateTeamRequest struct {
+	Name        string                 `json:"name,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Settings    map[string]interface{} `json:"settings,omitempty"`
+}
+
+// ==== Member API Types ====
+
+// MemberResponse represents a team member in API responses
+type MemberResponse struct {
+	ID           int64                  `json:"id"`
+	TeamID       string                 `json:"team_id"`
+	UserID       string                 `json:"user_id"`
+	MemberType   string                 `json:"member_type"`
+	RoleID       string                 `json:"role_id"`
+	Status       string                 `json:"status"`
+	InvitedBy    string                 `json:"invited_by,omitempty"`
+	InvitedAt    string                 `json:"invited_at,omitempty"`
+	JoinedAt     string                 `json:"joined_at,omitempty"`
+	LastActivity string                 `json:"last_activity,omitempty"`
+	Settings     map[string]interface{} `json:"settings,omitempty"`
+	CreatedAt    string                 `json:"created_at"`
+	UpdatedAt    string                 `json:"updated_at"`
+}
+
+// MemberDetailResponse represents detailed member information
+type MemberDetailResponse struct {
+	MemberResponse
+	// Add additional fields that are only included in detailed responses
+	UserInfo map[string]interface{} `json:"user_info,omitempty"`
+}
+
+// CreateMemberRequest represents the request to add a member directly
+type CreateMemberRequest struct {
+	UserID     string                 `json:"user_id" binding:"required"`
+	MemberType string                 `json:"member_type,omitempty"` // "user" or "robot"
+	RoleID     string                 `json:"role_id" binding:"required"`
+	Settings   map[string]interface{} `json:"settings,omitempty"`
+}
+
+// UpdateMemberRequest represents the request to update a member
+type UpdateMemberRequest struct {
+	RoleID       string                 `json:"role_id,omitempty"`
+	Status       string                 `json:"status,omitempty"`
+	Settings     map[string]interface{} `json:"settings,omitempty"`
+	LastActivity string                 `json:"last_activity,omitempty"`
+}
+
+// ==== Invitation API Types ====
+
+// InvitationResponse represents a team invitation in API responses
+type InvitationResponse struct {
+	ID                  int64                  `json:"id"`
+	TeamID              string                 `json:"team_id"`
+	UserID              string                 `json:"user_id"`
+	MemberType          string                 `json:"member_type"`
+	RoleID              string                 `json:"role_id"`
+	Status              string                 `json:"status"`
+	InvitedBy           string                 `json:"invited_by"`
+	InvitedAt           string                 `json:"invited_at"`
+	InvitationToken     string                 `json:"invitation_token,omitempty"`
+	InvitationExpiresAt string                 `json:"invitation_expires_at,omitempty"`
+	Message             string                 `json:"message,omitempty"`
+	Settings            map[string]interface{} `json:"settings,omitempty"`
+	CreatedAt           string                 `json:"created_at"`
+	UpdatedAt           string                 `json:"updated_at"`
+}
+
+// InvitationDetailResponse represents detailed invitation information
+type InvitationDetailResponse struct {
+	InvitationResponse
+	// Add additional fields that are only included in detailed responses
+	UserInfo map[string]interface{} `json:"user_info,omitempty"`
+	TeamInfo map[string]interface{} `json:"team_info,omitempty"`
+}
+
+// CreateInvitationRequest represents the request to send a team invitation
+type CreateInvitationRequest struct {
+	UserID     string                 `json:"user_id,omitempty"`     // Optional for unregistered users
+	MemberType string                 `json:"member_type,omitempty"` // "user" or "robot"
+	RoleID     string                 `json:"role_id" binding:"required"`
+	Message    string                 `json:"message,omitempty"`
+	Settings   map[string]interface{} `json:"settings,omitempty"`
+}

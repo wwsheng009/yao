@@ -1,4 +1,4 @@
-package signin
+package user
 
 import (
 	"fmt"
@@ -14,53 +14,11 @@ import (
 	"github.com/yaoapp/gou/session"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/openapi/oauth"
-	"github.com/yaoapp/yao/openapi/oauth/types"
 	"github.com/yaoapp/yao/openapi/response"
 	"github.com/yaoapp/yao/openapi/utils"
 )
 
-// Attach attaches the signin handlers to the router
-func Attach(group *gin.RouterGroup, oauth types.OAuth) {
-	group.GET("/signin", getConfig)
-	group.POST("/signin", signin)
-	group.POST("/signin/oauth/:provider/authback", authback)
-	group.GET("/signin/oauth/:provider/authorize", getOAuthAuthorizationURL)
-	group.POST("/signin/oauth/:provider/authorize/prepare", authbackPrepare) // Receive the post data and forward to the authback handler
-}
-
-// getConfig is the handler for get signin configuration
-func getConfig(c *gin.Context) {
-	// Get locale from query parameter (optional)
-	locale := c.Query("locale")
-
-	// Get public configuration for the specified locale
-	config := GetPublicConfig(locale)
-
-	// Set session id if not exists
-	sid := utils.GetSessionID(c)
-	if sid == "" {
-		sid = generateSessionID()
-		response.SendSessionCookie(c, sid)
-	}
-
-	// If no configuration found, return error
-	if config == nil {
-		errorResp := &response.ErrorResponse{
-			Code:             response.ErrInvalidRequest.Code,
-			ErrorDescription: "No signin configuration found for the requested locale",
-		}
-		response.RespondWithError(c, response.StatusNotFound, errorResp)
-		return
-	}
-
-	// Return the public configuration
-	response.RespondWithSuccess(c, response.StatusOK, config)
-}
-
-// signin is the handler for signin (password login)
-func signin(c *gin.Context) {}
-
-// authback is the handler for authback
+// authbackPrepare receives the post data and forwards to the authback handler
 func authbackPrepare(c *gin.Context) {
 	code := c.PostForm("code")
 	state := c.PostForm("state")
@@ -87,11 +45,23 @@ func authbackPrepare(c *gin.Context) {
 	c.Redirect(http.StatusFound, redirectURI+"?"+params.Encode())
 }
 
-// authback is the handler for authback
+// authback is the handler for OAuth callback
 func authback(c *gin.Context) {
 	sid := utils.GetSessionID(c)
 	var params OAuthAuthbackRequest
 	providerID := c.Param("provider")
+
+	// Check if provider exists first
+	provider, err := GetProvider(providerID)
+	if err != nil || provider == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: fmt.Sprintf("OAuth provider '%s' not found", providerID),
+		}
+		response.RespondWithError(c, response.StatusNotFound, errorResp)
+		return
+	}
+
 	if err := c.ShouldBind(&params); err != nil {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -132,7 +102,7 @@ func authback(c *gin.Context) {
 	}
 
 	// Get provider
-	provider, err := GetProvider(providerID)
+	provider, err = GetProvider(providerID)
 	if err != nil {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -145,7 +115,7 @@ func authback(c *gin.Context) {
 	// if response mode is form_post
 	if provider.ResponseMode == "form_post" {
 		// Replace the redirectURI to
-		pathname := strings.TrimSuffix(c.Request.URL.Path, "/authback") + "/authorize/prepare"
+		pathname := strings.TrimSuffix(c.Request.URL.Path, "/callback") + "/authorize/prepare"
 		newRedirectURI, err := reconstructRedirectURI(redirectURI, pathname, c)
 		if err != nil {
 			log.Error("Failed to reconstruct redirectURI: %v", err)
@@ -214,18 +184,19 @@ func authback(c *gin.Context) {
 		return
 	}
 
-	// Authorize Cookie
-	accessToken := fmt.Sprintf("%s %s", loginResponse.TokenType, loginResponse.AccessToken)
-	refreshToken := fmt.Sprintf("%s %s", loginResponse.TokenType, loginResponse.RefreshToken)
-
-	// Send Cookie
-	expires := time.Now().Add(time.Duration(loginResponse.ExpiresIn) * time.Second)
-	refreshExpires := time.Now().Add(time.Duration(loginResponse.RefreshTokenExpiresIn) * time.Second)
-	response.SendAccessTokenCookieWithExpiry(c, accessToken, expires)
-	response.SendRefreshTokenCookieWithExpiry(c, refreshToken, refreshExpires)
+	// Send all login cookies (access token, refresh token, and session ID)
+	SendLoginCookies(c, loginResponse, sid)
 
 	// Send IDToken to the client
-	response.RespondWithSuccess(c, response.StatusOK, map[string]interface{}{"id_token": loginResponse.IDToken})
+	response.RespondWithSuccess(c, response.StatusOK, LoginSuccessResponse{
+		SessionID:             sid,
+		IDToken:               loginResponse.IDToken,
+		AccessToken:           loginResponse.AccessToken,
+		RefreshToken:          loginResponse.RefreshToken,
+		ExpiresIn:             loginResponse.ExpiresIn,
+		RefreshTokenExpiresIn: loginResponse.RefreshTokenExpiresIn,
+		MFAEnabled:            loginResponse.MFAEnabled,
+	})
 }
 
 // getOAuthAuthorizationURL generates OAuth authorization URL for a provider
@@ -374,6 +345,8 @@ func getOAuthAuthorizationURL(c *gin.Context) {
 	})
 }
 
+// Helper functions for OAuth state management
+
 // generateRandomState generates a UUID-based state parameter for better uniqueness
 func generateRandomState() (string, error) {
 	u := uuid.New()
@@ -408,10 +381,7 @@ func reconstructRedirectURI(originalRedirectURI, newPath string, c *gin.Context)
 	return newRedirectURI, nil
 }
 
-// generateSessionID generates a session ID
-func generateSessionID() string {
-	return session.ID()
-}
+// Cache management functions
 
 // userInfoKey returns the key for the user info
 func userInfoKey(providerID, state string) string {
