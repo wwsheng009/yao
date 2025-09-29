@@ -2,6 +2,7 @@ package twilio
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ type Provider struct {
 	config              types.ProviderConfig
 	accountSID          string
 	authToken           string
+	apiSID              string
+	apiKey              string
 	fromPhone           string
 	fromEmail           string
 	fromName            string
@@ -52,8 +55,15 @@ func NewTwilioProvider(config types.ProviderConfig) (*Provider, error) {
 
 	if authToken, ok := options["auth_token"].(string); ok {
 		provider.authToken = authToken
-	} else {
-		return nil, fmt.Errorf("Twilio provider requires 'auth_token' option")
+	}
+
+	// Optional API Key authentication (preferred over auth_token)
+	if apiSID, ok := options["api_sid"].(string); ok {
+		provider.apiSID = apiSID
+	}
+
+	if apiKey, ok := options["api_key"].(string); ok {
+		provider.apiKey = apiKey
 	}
 
 	// Optional options for different services
@@ -85,23 +95,23 @@ func NewTwilioProvider(config types.ProviderConfig) (*Provider, error) {
 }
 
 // Send sends a message using appropriate Twilio service based on message type
-func (p *Provider) Send(message *types.Message) error {
+func (p *Provider) Send(ctx context.Context, message *types.Message) error {
 	switch message.Type {
 	case types.MessageTypeSMS:
-		return p.sendSMS(message)
+		return p.sendSMS(ctx, message)
 	case types.MessageTypeWhatsApp:
-		return p.sendWhatsApp(message)
+		return p.sendWhatsApp(ctx, message)
 	case types.MessageTypeEmail:
-		return p.sendEmail(message)
+		return p.sendEmail(ctx, message)
 	default:
 		return fmt.Errorf("unsupported message type: %s", message.Type)
 	}
 }
 
 // SendBatch sends multiple messages in batch
-func (p *Provider) SendBatch(messages []*types.Message) error {
+func (p *Provider) SendBatch(ctx context.Context, messages []*types.Message) error {
 	for _, message := range messages {
-		if err := p.Send(message); err != nil {
+		if err := p.Send(ctx, message); err != nil {
 			return fmt.Errorf("failed to send message to %v: %w", message.To, err)
 		}
 	}
@@ -118,14 +128,60 @@ func (p *Provider) GetName() string {
 	return p.config.Name
 }
 
+// GetPublicInfo returns public information about the provider
+func (p *Provider) GetPublicInfo() types.ProviderPublicInfo {
+	description := "Twilio multi-channel communication provider"
+	if p.config.Description != "" {
+		description = p.config.Description
+	}
+
+	capabilities := []string{}
+	if p.fromPhone != "" || p.messagingServiceSID != "" {
+		capabilities = append(capabilities, "sms")
+	}
+	if p.fromPhone != "" {
+		capabilities = append(capabilities, "whatsapp")
+	}
+	if p.sendGridAPIKey != "" {
+		capabilities = append(capabilities, "email")
+	}
+	if len(capabilities) == 0 {
+		capabilities = []string{"sms", "whatsapp", "email"} // Default capabilities
+	}
+
+	return types.ProviderPublicInfo{
+		Name:         p.config.Name,
+		Type:         "twilio",
+		Description:  description,
+		Capabilities: capabilities,
+		Features: types.Features{
+			SupportsWebhooks:   true,
+			SupportsReceiving:  false,
+			SupportsTracking:   true,
+			SupportsScheduling: true,
+		},
+	}
+}
+
 // Validate validates the provider configuration
 func (p *Provider) Validate() error {
 	if p.accountSID == "" {
 		return fmt.Errorf("account_sid is required")
 	}
-	if p.authToken == "" {
-		return fmt.Errorf("auth_token is required")
+
+	// Either auth_token or both api_sid and api_key must be provided
+	hasAuthToken := p.authToken != ""
+	hasAPIKeys := p.apiSID != "" && p.apiKey != ""
+
+	if !hasAuthToken && !hasAPIKeys {
+		return fmt.Errorf("either 'auth_token' or both 'api_sid' and 'api_key' are required")
 	}
+
+	// If API keys are partially configured, require both
+	if (p.apiSID != "" && p.apiKey == "") || (p.apiSID == "" && p.apiKey != "") {
+		return fmt.Errorf("both 'api_sid' and 'api_key' must be provided together")
+	}
+
 	return nil
 }
 
@@ -135,13 +191,13 @@ func (p *Provider) Close() error {
 }
 
 // sendSMS sends an SMS message via Twilio
-func (p *Provider) sendSMS(message *types.Message) error {
+func (p *Provider) sendSMS(ctx context.Context, message *types.Message) error {
 	if p.fromPhone == "" && p.messagingServiceSID == "" {
 		return fmt.Errorf("either from_phone or messaging_service_sid is required for SMS")
 	}
 
 	for _, to := range message.To {
-		err := p.sendSMSToRecipient(to, message)
+		err := p.sendSMSToRecipient(ctx, to, message)
 		if err != nil {
 			return fmt.Errorf("failed to send SMS to %s: %w", to, err)
 		}
@@ -150,7 +206,7 @@ func (p *Provider) sendSMS(message *types.Message) error {
 }
 
 // sendSMSToRecipient sends SMS to a single recipient
-func (p *Provider) sendSMSToRecipient(to string, message *types.Message) error {
+func (p *Provider) sendSMSToRecipient(ctx context.Context, to string, message *types.Message) error {
 	apiURL := fmt.Sprintf("%s/Accounts/%s/Messages.json", p.baseURL, p.accountSID)
 
 	// Prepare form data
@@ -164,17 +220,17 @@ func (p *Provider) sendSMSToRecipient(to string, message *types.Message) error {
 		data.Set("From", p.fromPhone)
 	}
 
-	return p.sendTwilioRequest(apiURL, data)
+	return p.sendTwilioRequest(ctx, apiURL, data)
 }
 
 // sendWhatsApp sends a WhatsApp message via Twilio
-func (p *Provider) sendWhatsApp(message *types.Message) error {
+func (p *Provider) sendWhatsApp(ctx context.Context, message *types.Message) error {
 	if p.fromPhone == "" {
 		return fmt.Errorf("from_phone is required for WhatsApp messages")
 	}
 
 	for _, to := range message.To {
-		err := p.sendWhatsAppToRecipient(to, message)
+		err := p.sendWhatsAppToRecipient(ctx, to, message)
 		if err != nil {
 			return fmt.Errorf("failed to send WhatsApp message to %s: %w", to, err)
 		}
@@ -183,7 +239,7 @@ func (p *Provider) sendWhatsApp(message *types.Message) error {
 }
 
 // sendWhatsAppToRecipient sends WhatsApp message to a single recipient
-func (p *Provider) sendWhatsAppToRecipient(to string, message *types.Message) error {
+func (p *Provider) sendWhatsAppToRecipient(ctx context.Context, to string, message *types.Message) error {
 	apiURL := fmt.Sprintf("%s/Accounts/%s/Messages.json", p.baseURL, p.accountSID)
 
 	// Ensure phone numbers have WhatsApp prefix
@@ -203,11 +259,11 @@ func (p *Provider) sendWhatsAppToRecipient(to string, message *types.Message) er
 	data.Set("To", toWhatsApp)
 	data.Set("Body", message.Body)
 
-	return p.sendTwilioRequest(apiURL, data)
+	return p.sendTwilioRequest(ctx, apiURL, data)
 }
 
 // sendEmail sends an email via Twilio SendGrid API
-func (p *Provider) sendEmail(message *types.Message) error {
+func (p *Provider) sendEmail(ctx context.Context, message *types.Message) error {
 	if p.sendGridAPIKey == "" {
 		return fmt.Errorf("sendgrid_api_key is required for email messages")
 	}
@@ -267,7 +323,7 @@ func (p *Provider) sendEmail(message *types.Message) error {
 
 	// Send via SendGrid API
 	apiURL := "https://api.sendgrid.com/v3/mail/send"
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -290,14 +346,19 @@ func (p *Provider) sendEmail(message *types.Message) error {
 }
 
 // sendTwilioRequest sends a request to Twilio API
-func (p *Provider) sendTwilioRequest(apiURL string, data url.Values) error {
+func (p *Provider) sendTwilioRequest(ctx context.Context, apiURL string, data url.Values) error {
 	// Add custom metadata as status callback parameters
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(p.accountSID, p.authToken)
+	// Use API Key authentication if available, otherwise fall back to Auth Token
+	if p.apiSID != "" && p.apiKey != "" {
+		req.SetBasicAuth(p.apiSID, p.apiKey)
+	} else {
+		req.SetBasicAuth(p.accountSID, p.authToken)
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	// Send request

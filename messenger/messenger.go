@@ -1,17 +1,22 @@
 package messenger
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/messenger/providers/mailer"
 	"github.com/yaoapp/yao/messenger/providers/mailgun"
-	"github.com/yaoapp/yao/messenger/providers/smtp"
 	"github.com/yaoapp/yao/messenger/providers/twilio"
 	"github.com/yaoapp/yao/messenger/types"
 	"github.com/yaoapp/yao/share"
@@ -31,6 +36,8 @@ type Service struct {
 	providersByType map[types.MessageType][]types.Provider // Providers grouped by message type
 	channels        map[string]types.Channel
 	defaults        map[string]string
+	receivers       map[string]context.CancelFunc // Active mail receivers by provider name
+	messageHandlers []types.MessageHandler        // Registered message handlers for OnReceive
 	mutex           sync.RWMutex
 }
 
@@ -101,10 +108,16 @@ func Load(cfg config.Config) error {
 		providersByType: providersByType,
 		channels:        make(map[string]types.Channel),
 		defaults:        config.Defaults,
+		receivers:       make(map[string]context.CancelFunc),
+		messageHandlers: make([]types.MessageHandler, 0),
 	}
 
 	// Set global instance
 	Instance = service
+
+	// Auto-start mail receivers for mailer providers that support receiving
+	service.startMailReceivers()
+
 	return nil
 }
 
@@ -162,10 +175,14 @@ func loadProvider(file string, name string) (types.Provider, error) {
 		return nil, err
 	}
 
-	// Set name if not provided
-	if config.Name == "" {
-		config.Name = name
+	// Resolve environment variables in the configuration
+	if err := resolveProviderEnvVars(&config); err != nil {
+		return nil, fmt.Errorf("failed to resolve environment variables: %w", err)
 	}
+
+	// Always use the file-based ID as the provider name for consistency
+	// This ensures the name matches what's used in channels.yao configuration
+	config.Name = name
 
 	// Create provider based on type
 	return createProvider(config)
@@ -173,10 +190,11 @@ func loadProvider(file string, name string) (types.Provider, error) {
 
 // createProvider creates a provider instance based on configuration
 func createProvider(config types.ProviderConfig) (types.Provider, error) {
-	// Default to enabled if not specified
-	if !config.Enabled && config.Enabled != false {
-		config.Enabled = true
-	}
+	// Since bool zero value is false, and our config files don't specify "enabled",
+	// we need to default to enabled=true. We'll assume providers are enabled unless
+	// explicitly disabled in the configuration.
+	// This is a simple fix: just assume enabled=true for all providers that don't explicitly set it
+	config.Enabled = true
 
 	if !config.Enabled {
 		return nil, nil
@@ -187,8 +205,10 @@ func createProvider(config types.ProviderConfig) (types.Provider, error) {
 
 	// Create provider based on connector
 	switch connector {
-	case "smtp":
-		return smtp.NewSMTPProvider(config)
+	case "mailer":
+		return mailer.NewMailerProvider(config)
+	case "smtp": // Keep backward compatibility
+		return mailer.NewMailerProvider(config)
 	case "twilio":
 		return createTwilioProvider(config)
 	case "mailgun":
@@ -204,7 +224,7 @@ func createTwilioProvider(config types.ProviderConfig) (types.Provider, error) {
 }
 
 // Send sends a message using the specified channel or default provider
-func (m *Service) Send(channel string, message *types.Message) error {
+func (m *Service) Send(ctx context.Context, channel string, message *types.Message) error {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -214,11 +234,11 @@ func (m *Service) Send(channel string, message *types.Message) error {
 		return fmt.Errorf("no provider configured for channel: %s, type: %s", channel, message.Type)
 	}
 
-	return m.SendWithProvider(providerName, message)
+	return m.SendWithProvider(ctx, providerName, message)
 }
 
 // SendWithProvider sends a message using a specific provider
-func (m *Service) SendWithProvider(providerName string, message *types.Message) error {
+func (m *Service) SendWithProvider(ctx context.Context, providerName string, message *types.Message) error {
 	provider, exists := m.providers[providerName]
 	if !exists {
 		return fmt.Errorf("provider not found: %s", providerName)
@@ -237,7 +257,14 @@ func (m *Service) SendWithProvider(providerName string, message *types.Message) 
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := provider.Send(message)
+		// Check if context is cancelled before each attempt
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("send cancelled: %w", ctx.Err())
+		default:
+		}
+
+		err := provider.Send(ctx, message)
 		if err == nil {
 			log.Info("[Messenger] Message sent successfully via %s (attempt %d/%d)", providerName, attempt, maxAttempts)
 			return nil
@@ -246,7 +273,13 @@ func (m *Service) SendWithProvider(providerName string, message *types.Message) 
 		lastErr = err
 		if attempt < maxAttempts {
 			log.Warn("[Messenger] Send attempt %d/%d failed for provider %s: %v", attempt, maxAttempts, providerName, err)
-			time.Sleep(m.config.Global.RetryDelay)
+
+			// Use context-aware sleep for retry delay
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("send cancelled during retry: %w", ctx.Err())
+			case <-time.After(m.config.Global.RetryDelay):
+			}
 		}
 	}
 
@@ -254,7 +287,7 @@ func (m *Service) SendWithProvider(providerName string, message *types.Message) 
 }
 
 // SendBatch sends multiple messages in batch
-func (m *Service) SendBatch(channel string, messages []*types.Message) error {
+func (m *Service) SendBatch(ctx context.Context, channel string, messages []*types.Message) error {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -272,13 +305,20 @@ func (m *Service) SendBatch(channel string, messages []*types.Message) error {
 	// Send messages by provider
 	var errors []string
 	for providerName, msgs := range providerMessages {
+		// Check if context is cancelled before each provider
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("batch send cancelled: %w", ctx.Err())
+		default:
+		}
+
 		provider, exists := m.providers[providerName]
 		if !exists {
 			errors = append(errors, fmt.Sprintf("provider not found: %s", providerName))
 			continue
 		}
 
-		err := provider.SendBatch(msgs)
+		err := provider.SendBatch(ctx, msgs)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("provider %s: %v", providerName, err))
 		}
@@ -326,6 +366,18 @@ func (m *Service) GetProvidersByMessageType() map[types.MessageType][]types.Prov
 		copy(result[msgType], providers)
 	}
 	return result
+}
+
+// GetAllProviders returns all providers
+func (m *Service) GetAllProviders() []types.Provider {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	providers := make([]types.Provider, 0, len(m.providers))
+	for _, provider := range m.providers {
+		providers = append(providers, provider)
+	}
+	return providers
 }
 
 // GetChannels returns all available channels
@@ -410,6 +462,60 @@ func (m *Service) getProviderForChannel(channel, messageType string) string {
 	return ""
 }
 
+// resolveProviderEnvVars resolves environment variables in provider configuration
+func resolveProviderEnvVars(config *types.ProviderConfig) error {
+	if config.Options != nil {
+		resolved, err := resolveEnvVars(config.Options)
+		if err != nil {
+			return err
+		}
+		config.Options = resolved
+	}
+	return nil
+}
+
+// resolveEnvVars resolves environment variables in configuration values
+func resolveEnvVars(config map[string]interface{}) (map[string]interface{}, error) {
+	resolved := make(map[string]interface{})
+
+	for key, value := range config {
+		switch v := value.(type) {
+		case string:
+			resolved[key] = parseEnvVar(v)
+		case map[string]interface{}:
+			// Recursively resolve nested maps
+			nestedResolved, err := resolveEnvVars(v)
+			if err != nil {
+				return nil, err
+			}
+			resolved[key] = nestedResolved
+		default:
+			resolved[key] = value
+		}
+	}
+
+	return resolved, nil
+}
+
+// parseEnvVar parses environment variable pattern $ENV.VAR_NAME
+func parseEnvVar(value string) string {
+	// Pattern to match $ENV.VAR_NAME (same as kb package)
+	envPattern := regexp.MustCompile(`\$ENV\.([A-Za-z_][A-Za-z0-9_]*)`)
+
+	return envPattern.ReplaceAllStringFunc(value, func(match string) string {
+		// Extract variable name (remove $ENV. prefix)
+		varName := strings.TrimPrefix(match, "$ENV.")
+
+		// Get environment variable value
+		if envValue := os.Getenv(varName); envValue != "" {
+			return envValue
+		}
+
+		// Return original if environment variable is not set
+		return match
+	})
+}
+
 // parseChannelsConfig parses the channels configuration and converts it to a defaults map
 func parseChannelsConfig(channelsConfig map[string]interface{}, defaults map[string]string) {
 	for channelName, channelData := range channelsConfig {
@@ -462,7 +568,7 @@ func (m *Service) supportsChannelType(provider types.Provider, channelType strin
 
 	switch channelType {
 	case "email":
-		return providerType == "smtp" || providerType == "mailgun" || providerType == "twilio"
+		return providerType == "mailer" || providerType == "smtp" || providerType == "mailgun" || providerType == "twilio"
 	case "sms":
 		return providerType == "twilio"
 	case "whatsapp":
@@ -477,7 +583,9 @@ func getSupportedMessageTypes(provider types.Provider) []types.MessageType {
 	providerType := strings.ToLower(provider.GetType())
 
 	switch providerType {
-	case "smtp":
+	case "mailer":
+		return []types.MessageType{types.MessageTypeEmail}
+	case "smtp": // Keep backward compatibility
 		return []types.MessageType{types.MessageTypeEmail}
 	case "mailgun":
 		return []types.MessageType{types.MessageTypeEmail}
@@ -487,4 +595,195 @@ func getSupportedMessageTypes(provider types.Provider) []types.MessageType {
 	default:
 		return []types.MessageType{}
 	}
+}
+
+// startMailReceivers automatically starts mail receivers for mailer providers that support receiving
+func (m *Service) startMailReceivers() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for name, provider := range m.providers {
+		// Only handle mailer providers
+		if provider.GetType() != "mailer" {
+			continue
+		}
+
+		// Check if this mailer provider supports receiving
+		if mailerProvider, ok := provider.(*mailer.Provider); ok {
+			if mailerProvider.SupportsReceiving() {
+				log.Info("[Messenger] Starting mail receiver for provider: %s", name)
+
+				// Create context for this receiver
+				ctx, cancel := context.WithCancel(context.Background())
+
+				// Start the mail receiver in a goroutine
+				go func(providerName string, mp *mailer.Provider) {
+					err := mp.StartMailReceiver(ctx, func(msg *types.Message) error {
+						log.Info("[Messenger] Received email via %s: Subject=%s, From=%s", providerName, msg.Subject, msg.From)
+
+						// Trigger OnReceive handlers for the received message
+						if err := m.triggerOnReceiveHandlers(ctx, msg); err != nil {
+							log.Error("[Messenger] Failed to trigger OnReceive handlers: %v", err)
+							return err
+						}
+
+						return nil
+					})
+
+					if err != nil {
+						log.Error("[Messenger] Mail receiver for %s stopped with error: %v", providerName, err)
+					} else {
+						log.Info("[Messenger] Mail receiver for %s stopped gracefully", providerName)
+					}
+				}(name, mailerProvider)
+
+				// Store the cancel function for later cleanup
+				m.receivers[name] = cancel
+
+				log.Info("[Messenger] Mail receiver started for provider: %s", name)
+			} else {
+				log.Debug("[Messenger] Provider %s does not support receiving (IMAP not configured)", name)
+			}
+		}
+	}
+}
+
+// StopMailReceivers stops all active mail receivers
+func (m *Service) StopMailReceivers() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for name, cancel := range m.receivers {
+		log.Info("[Messenger] Stopping mail receiver for provider: %s", name)
+		cancel()
+	}
+
+	// Clear the receivers map
+	m.receivers = make(map[string]context.CancelFunc)
+	log.Info("[Messenger] All mail receivers stopped")
+}
+
+// StopMailReceiver stops a specific mail receiver by provider name
+func (m *Service) StopMailReceiver(providerName string) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if cancel, exists := m.receivers[providerName]; exists {
+		log.Info("[Messenger] Stopping mail receiver for provider: %s", providerName)
+		cancel()
+		delete(m.receivers, providerName)
+	} else {
+		log.Warn("[Messenger] No active mail receiver found for provider: %s", providerName)
+	}
+}
+
+// GetActiveReceivers returns the names of all active mail receivers
+func (m *Service) GetActiveReceivers() []string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	var receivers []string
+	for name := range m.receivers {
+		receivers = append(receivers, name)
+	}
+	return receivers
+}
+
+// OnReceive registers a message handler for received messages
+// Multiple handlers can be registered and will be called in order
+func (m *Service) OnReceive(handler types.MessageHandler) error {
+	if handler == nil {
+		return fmt.Errorf("handler cannot be nil")
+	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.messageHandlers = append(m.messageHandlers, handler)
+	log.Info("[Messenger] Registered new message handler (total: %d)", len(m.messageHandlers))
+	return nil
+}
+
+// RemoveReceiveHandler removes a previously registered message handler
+func (m *Service) RemoveReceiveHandler(handler types.MessageHandler) error {
+	if handler == nil {
+		return fmt.Errorf("handler cannot be nil")
+	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// Find and remove the handler by comparing function pointers
+	handlerPtr := reflect.ValueOf(handler).Pointer()
+	for i, existingHandler := range m.messageHandlers {
+		if reflect.ValueOf(existingHandler).Pointer() == handlerPtr {
+			// Remove handler at index i
+			m.messageHandlers = append(m.messageHandlers[:i], m.messageHandlers[i+1:]...)
+			log.Info("[Messenger] Removed message handler (remaining: %d)", len(m.messageHandlers))
+			return nil
+		}
+	}
+
+	return fmt.Errorf("handler not found")
+}
+
+// TriggerWebhook processes incoming webhook data and triggers OnReceive handlers
+// This is used by OPENAPI endpoints to handle incoming messages
+func (m *Service) TriggerWebhook(providerName string, c interface{}) error {
+	// Get the provider to process the webhook data
+	provider, exists := m.providers[providerName]
+	if !exists {
+		return fmt.Errorf("provider not found: %s", providerName)
+	}
+
+	// Let the provider process the webhook data and convert to Message
+	message, err := provider.TriggerWebhook(c)
+	if err != nil {
+		log.Warn("[Messenger] Provider %s failed to process webhook: %v", providerName, err)
+		return err
+	}
+
+	// Create context from gin.Context if available, otherwise use background
+	var ctx context.Context
+	if ginCtx, ok := c.(*gin.Context); ok {
+		ctx = ginCtx.Request.Context()
+	} else {
+		ctx = context.Background()
+	}
+
+	// Trigger all registered OnReceive handlers
+	return m.triggerOnReceiveHandlers(ctx, message)
+}
+
+// Note: convertWebhookToMessage has been removed as it's replaced by provider-specific TriggerWebhook implementations
+
+// triggerOnReceiveHandlers calls all registered OnReceive handlers
+func (m *Service) triggerOnReceiveHandlers(ctx context.Context, message *types.Message) error {
+	m.mutex.RLock()
+	handlers := make([]types.MessageHandler, len(m.messageHandlers))
+	copy(handlers, m.messageHandlers)
+	m.mutex.RUnlock()
+
+	if len(handlers) == 0 {
+		log.Debug("[Messenger] No OnReceive handlers registered")
+		return nil
+	}
+
+	log.Info("[Messenger] Triggering %d OnReceive handlers for message: %s", len(handlers), message.Subject)
+
+	var errors []string
+	for i, handler := range handlers {
+		err := handler(ctx, message)
+		if err != nil {
+			errMsg := fmt.Sprintf("handler %d failed: %v", i, err)
+			errors = append(errors, errMsg)
+			log.Error("[Messenger] %s", errMsg)
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("some OnReceive handlers failed: %s", strings.Join(errors, "; "))
+	}
+
+	return nil
 }

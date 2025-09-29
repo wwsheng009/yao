@@ -48,7 +48,7 @@ type ProviderConfig struct {
 	types.MetaInfo
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
-	Connector   string                 `json:"connector"`         // Provider type: smtp, twilio, mailgun
+	Connector   string                 `json:"connector"`         // Provider type: mailer, twilio, mailgun
 	Options     map[string]interface{} `json:"options,omitempty"` // Provider-specific options
 	Enabled     bool                   `json:"enabled,omitempty"` // Whether the provider is enabled (default: true)
 }
@@ -116,4 +116,21 @@ type SendResult struct {
 	Attempts  int                    `json:"attempts"`
 	SentAt    time.Time              `json:"sent_at"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ProviderPublicInfo defines the public information structure for providers
+type ProviderPublicInfo struct {
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Description  string   `json:"description"`
+	Capabilities []string `json:"capabilities"`
+	Features     Features `json:"features"`
+}
+
+// Features defines the features supported by a provider
+type Features struct {
+	SupportsWebhooks   bool `json:"supports_webhooks"`
+	SupportsReceiving  bool `json:"supports_receiving"`
+	SupportsTracking   bool `json:"supports_tracking"`
+	SupportsScheduling bool `json:"supports_scheduling"`
 }

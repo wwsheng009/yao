@@ -1,6 +1,7 @@
 package mailgun
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,18 +68,18 @@ func NewMailgunProvider(config types.ProviderConfig) (*Provider, error) {
 }
 
 // Send sends a message using Mailgun
-func (p *Provider) Send(message *types.Message) error {
+func (p *Provider) Send(ctx context.Context, message *types.Message) error {
 	if message.Type != types.MessageTypeEmail {
 		return fmt.Errorf("Mailgun provider only supports email messages")
 	}
 
-	return p.sendEmail(message)
+	return p.sendEmail(ctx, message)
 }
 
 // SendBatch sends multiple messages in batch
-func (p *Provider) SendBatch(messages []*types.Message) error {
+func (p *Provider) SendBatch(ctx context.Context, messages []*types.Message) error {
 	for _, message := range messages {
-		if err := p.Send(message); err != nil {
+		if err := p.Send(ctx, message); err != nil {
 			return fmt.Errorf("failed to send message to %v: %w", message.To, err)
 		}
 	}
@@ -93,6 +94,27 @@ func (p *Provider) GetType() string {
 // GetName returns the provider name
 func (p *Provider) GetName() string {
 	return p.config.Name
+}
+
+// GetPublicInfo returns public information about the provider
+func (p *Provider) GetPublicInfo() types.ProviderPublicInfo {
+	description := "Mailgun email service provider"
+	if p.config.Description != "" {
+		description = p.config.Description
+	}
+
+	return types.ProviderPublicInfo{
+		Name:         p.config.Name,
+		Type:         "mailgun",
+		Description:  description,
+		Capabilities: []string{"email", "webhooks", "tracking"},
+		Features: types.Features{
+			SupportsWebhooks:   true,
+			SupportsReceiving:  false,
+			SupportsTracking:   true,
+			SupportsScheduling: true,
+		},
+	}
 }
 
 // Validate validates the provider configuration
@@ -115,7 +137,7 @@ func (p *Provider) Close() error {
 }
 
 // sendEmail sends an email via Mailgun API
-func (p *Provider) sendEmail(message *types.Message) error {
+func (p *Provider) sendEmail(ctx context.Context, message *types.Message) error {
 	apiURL := fmt.Sprintf("%s/%s/messages", p.baseURL, p.domain)
 
 	// Prepare form data
@@ -170,8 +192,8 @@ func (p *Provider) sendEmail(message *types.Message) error {
 		data.Set("o:deliverytime", message.ScheduledAt.Format(time.RFC1123Z))
 	}
 
-	// Create request
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data.Encode()))
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
