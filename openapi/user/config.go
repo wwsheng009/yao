@@ -230,7 +230,7 @@ func loadSigninConfigs(_ string) error {
 		}
 
 		// Skip providers directory and client.yao file
-		if strings.Contains(filename, "providers/") || filepath.Base(filename) == "client.yao" {
+		if strings.Contains(strings.ReplaceAll(filename,"\\","/"), "providers/") || filepath.Base(filename) == "client.yao" {
 			return nil
 		}
 
