@@ -354,7 +354,7 @@ func (data *Data) Map() (map[string]interface{}, error) {
 		v["id"] = data.ID
 	}
 
-	if data.Bytes != nil && data.Type == "text" {
+	if data.Bytes != nil {
 		v["text"] = string(data.Bytes)
 	}
 
@@ -373,7 +373,7 @@ func (data *Data) MarshalJSON() ([]byte, error) {
 		v["id"] = data.ID
 	}
 
-	if data.Bytes != nil && data.Type == "text" {
+	if data.Bytes != nil {
 		v["text"] = string(data.Bytes)
 	}
 

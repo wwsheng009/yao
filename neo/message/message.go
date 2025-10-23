@@ -357,6 +357,27 @@ func (m *Message) String() string {
 		return raw
 	}
 }
+// removeToolContent removes content between <tool> and </tool> tags in a message.
+func removeToolContent(message string) string {
+    start := strings.Index(message, "<tool>")
+    if start == -1 {
+        return message // No <tool> tag found
+    }
+
+    end := strings.Index(message, "</tool>")
+    if end == -1 {
+        return message // No </tool> tag found
+    }
+
+    // Remove the content from <tool> to </tool>
+    return message[:start] + message[end+len("</tool>"):]
+}
+func (m *Message) ToolContentString() string {
+	if m.Type != "tool" {
+		return ""
+	}
+	return removeToolContent(m.Text)
+}
 
 // SetText set the text
 func (m *Message) SetText(text string) *Message {

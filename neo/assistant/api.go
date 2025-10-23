@@ -1117,7 +1117,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	for index, message := range messages {
 		// Ignore the tool, think, error
-		if message.Type == "tool" || message.Type == "think" || message.Type == "error" {
+		if message.Type == "think" || message.Type == "error" {
 			continue
 		}
 
@@ -1132,6 +1132,9 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		}
 
 		content := message.String()
+		if message.Type == "tool" {
+			content = message.ToolContentString()
+		}
 		if content == "" {
 			// fmt.Println("--------------------------------")
 			// fmt.Println("Request Message Error")
@@ -1187,7 +1190,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 		newMessages = append(newMessages, newMessage)
 	}
-	newMessages = MergeMessages(newMessages)
+	// newMessages = MergeMessages(newMessages)
 
 	// Process messages to standardize format, filter duplicates, and merge consecutive assistant messages
 	processedMessages := formatMessages(newMessages)
@@ -1204,47 +1207,47 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 }
 
 // MergeMessages merges adjacent messages with the same role and moves system messages to the front
-func MergeMessages(messages []map[string]interface{}) []map[string]interface{} {
-	if len(messages) == 0 {
-		return messages
-	}
+// func MergeMessages(messages []map[string]interface{}) []map[string]interface{} {
+// 	if len(messages) == 0 {
+// 		return messages
+// 	}
 
-	// Separate system messages and non-system messages
-	systemMsgs := []map[string]interface{}{}
-	otherMsgs := []map[string]interface{}{}
+// 	// Separate system messages and non-system messages
+// 	systemMsgs := []map[string]interface{}{}
+// 	otherMsgs := []map[string]interface{}{}
 
-	for _, msg := range messages {
-		if msg["role"] == "system" {
-			systemMsgs = append(systemMsgs, msg)
-		} else {
-			otherMsgs = append(otherMsgs, msg)
-		}
-	}
+// 	for _, msg := range messages {
+// 		if msg["role"] == "system" {
+// 			systemMsgs = append(systemMsgs, msg)
+// 		} else {
+// 			otherMsgs = append(otherMsgs, msg)
+// 		}
+// 	}
 
-	// Merge adjacent messages in the non-system messages
-	merged := []map[string]interface{}{}
-	if len(otherMsgs) > 0 {
-		merged = append(merged, otherMsgs[0])
-		for i := 1; i < len(otherMsgs); i++ {
-			last := merged[len(merged)-1]
-			current := otherMsgs[i]
+// 	// Merge adjacent messages in the non-system messages
+// 	merged := []map[string]interface{}{}
+// 	if len(otherMsgs) > 0 {
+// 		merged = append(merged, otherMsgs[0])
+// 		for i := 1; i < len(otherMsgs); i++ {
+// 			last := merged[len(merged)-1]
+// 			current := otherMsgs[i]
 
-			if last["role"] == current["role"] {
-				// Merge content of messages with same role
-				last["content"] = fmt.Sprintf("%v\n%v", last["content"], current["content"])
-			} else {
-				merged = append(merged, current)
-			}
-		}
-	}
+// 			if last["role"] == current["role"] {
+// 				// Merge content of messages with same role
+// 				last["content"] = fmt.Sprintf("%v\n%v", last["content"], current["content"])
+// 			} else {
+// 				merged = append(merged, current)
+// 			}
+// 		}
+// 	}
 
-	// Combine system messages and other messages
-	result := make([]map[string]interface{}, 0, len(systemMsgs)+len(merged))
-	result = append(result, systemMsgs...)
-	result = append(result, merged...)
+// 	// Combine system messages and other messages
+// 	result := make([]map[string]interface{}, 0, len(systemMsgs)+len(merged))
+// 	result = append(result, systemMsgs...)
+// 	result = append(result, merged...)
 
-	return result
-}
+// 	return result
+// }
 
 func (ast *Assistant) withAttachments(ctx context.Context, msg *chatMessage.Message) ([]map[string]interface{}, error) {
 	contents := []map[string]interface{}{{"type": "text", "text": msg.Text}}
