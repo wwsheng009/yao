@@ -167,7 +167,7 @@ type UserProvider interface {
 	CreateUser(ctx context.Context, userData maps.MapStrAny) (string, error)
 	UpdateUser(ctx context.Context, userID string, userData maps.MapStrAny) error
 	DeleteUser(ctx context.Context, userID string) error
-	UpdateUserLastLogin(ctx context.Context, userID string, ip string) error
+	UpdateUserLastLogin(ctx context.Context, userID string, loginCtx *LoginContext) error
 	UpdateUserStatus(ctx context.Context, userID string, status string) error
 
 	// User List and Search
@@ -247,6 +247,12 @@ type UserProvider interface {
 	GetTypeConfiguration(ctx context.Context, typeID string) (maps.MapStrAny, error)
 	SetTypeConfiguration(ctx context.Context, typeID string, config maps.MapStrAny) error
 
+	// Type Pricing and Status Management
+	GetTypePricing(ctx context.Context, typeID string) (maps.MapStrAny, error)
+	SetTypePricing(ctx context.Context, typeID string, pricing maps.MapStrAny) error
+	GetPublishedTypes(ctx context.Context, param model.QueryParam, locale ...string) ([]maps.MapStr, error)
+	UpdateTypeStatus(ctx context.Context, typeID string, status string) error
+
 	// ============================================================================
 	// Team Resource
 	// ============================================================================
@@ -266,7 +272,10 @@ type UserProvider interface {
 
 	// Team Query Methods
 	GetTeamsByOwner(ctx context.Context, ownerID string) ([]maps.MapStr, error)
+	GetTeamsByMember(ctx context.Context, memberID string) ([]maps.MapStr, error)
+	GetTeamByMember(ctx context.Context, teamID string, memberID string) (maps.MapStrAny, error)
 	GetTeamsByStatus(ctx context.Context, status string) ([]maps.MapStr, error)
+	CountTeamsByMember(ctx context.Context, memberID string) (int64, error)
 
 	// Team Management
 	UpdateTeamStatus(ctx context.Context, teamID string, status string) error
@@ -299,7 +308,7 @@ type UserProvider interface {
 
 	// Member Invitation Management
 	AddMember(ctx context.Context, teamID string, userID string, roleID string, invitedBy string) (int64, error)
-	AcceptInvitation(ctx context.Context, invitationToken string) error
+	AcceptInvitation(ctx context.Context, invitationID string, invitationToken string, userID string) error
 
 	// Robot Member Operations
 	CreateRobotMember(ctx context.Context, teamID string, robotData maps.MapStrAny) (int64, error)
@@ -319,6 +328,16 @@ type UserProvider interface {
 
 	// Member List and Search
 	PaginateMembers(ctx context.Context, param model.QueryParam, page int, pagesize int) (maps.MapStr, error)
+
+	// ============================================================================
+	// Invitation Code Resource (Official Platform Invitation Codes)
+	// ============================================================================
+	// Note: This is for official platform invitation codes required during beta testing.
+	// Not to be confused with user-to-user invitation functionality (coming later).
+
+	CreateInvitationCodes(ctx context.Context, codeData []maps.MapStrAny) ([]string, error)
+	UseInvitationCode(ctx context.Context, code string, userID string) error
+	DeleteInvitationCode(ctx context.Context, code string) error
 
 	// ============================================================================
 	// Utils

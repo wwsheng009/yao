@@ -44,6 +44,15 @@ const (
 	ErrFailedToDeleteTeam      = "failed to delete team: %w"
 	ErrFailedToDeleteMember    = "failed to delete member: %w"
 
+	// Invitation Code related errors
+	ErrInvitationCodeNotFound       = "invitation code not found"
+	ErrInvitationCodeAlreadyUsed    = "invitation code has already been used"
+	ErrInvitationCodeExpired        = "invitation code has expired"
+	ErrInvitationCodeNotPublished   = "invitation code is not published"
+	ErrFailedToCreateInvitationCode = "failed to create invitation code: %w"
+	ErrFailedToUseInvitationCode    = "failed to use invitation code: %w"
+	ErrFailedToDeleteInvitationCode = "failed to delete invitation code: %w"
+
 	// MFA related errors
 	ErrMFANotEnabled             = "MFA is not enabled for this user"
 	ErrMFAAlreadyEnabled         = "MFA is already enabled for this user"
@@ -63,7 +72,8 @@ var (
 		"id", "user_id", "preferred_username", "email", "email_verified", "name", "given_name", "family_name",
 		"middle_name", "nickname", "profile", "picture", "website", "gender", "birthdate", "zoneinfo", "locale",
 		"phone_number", "phone_number_verified", "address", "theme", "status", "role_id", "type_id",
-		"mfa_enabled", "last_login_at", "metadata", "created_at", "updated_at",
+		"mfa_enabled", "last_login_at", "last_login_ip", "last_login_user_agent", "last_login_device",
+		"last_login_platform", "metadata", "created_at", "updated_at",
 	}
 
 	// DefaultBasicUserFields contains minimal fields for basic user info
@@ -115,43 +125,46 @@ var (
 
 	// DefaultTypeFields contains basic type fields
 	DefaultTypeFields = []interface{}{
-		"id", "type_id", "name", "description", "is_active", "is_default", "sort_order",
-		"default_role_id", "max_sessions", "session_timeout", "created_at", "updated_at",
+		"id", "type_id", "name", "description", "is_active", "is_default", "sort_order", "status", "locale",
+		"default_role_id", "max_sessions", "session_timeout", "price_daily", "price_monthly",
+		"price_yearly", "credits_monthly", "created_at", "updated_at",
 	}
 
 	// DefaultTypeDetailFields contains all type fields including configuration and metadata
 	DefaultTypeDetailFields = []interface{}{
 		"id", "type_id", "name", "description", "default_role_id", "schema", "metadata",
-		"is_active", "is_default", "sort_order", "max_sessions", "session_timeout",
-		"password_policy", "features", "limits", "created_at", "updated_at",
+		"is_active", "is_default", "sort_order", "status", "locale", "max_sessions", "session_timeout",
+		"password_policy", "features", "limits", "price_daily", "price_monthly", "price_yearly",
+		"credits_monthly", "introduction", "sale_type", "sale_link", "sale_price_label",
+		"sale_description", "created_at", "updated_at",
 	}
 
 	// DefaultTeamFields contains basic team fields
 	DefaultTeamFields = []interface{}{
-		"id", "team_id", "name", "display_name", "description", "website", "logo",
-		"owner_id", "status", "type_id", "type", "is_verified", "verified_at",
+		"team_id", "name", "display_name", "description", "website", "logo",
+		"owner_id", "status", "role_id", "type_id", "type", "is_verified", "verified_at",
 		"created_at", "updated_at",
 	}
 
 	// DefaultTeamDetailFields contains all team fields including contact info and metadata
 	DefaultTeamDetailFields = []interface{}{
-		"id", "team_id", "name", "display_name", "description", "website", "logo",
+		"team_id", "name", "display_name", "description", "website", "logo",
 		"owner_id", "contact_email", "contact_phone", "is_verified", "verified_at", "verified_by",
-		"team_code", "team_code_type", "status", "type_id", "type", "address", "street_address",
+		"team_code", "team_code_type", "status", "role_id", "type_id", "type", "address", "street_address",
 		"city", "state_province", "postal_code", "country", "country_name", "region", "zoneinfo",
 		"settings", "metadata", "created_at", "updated_at",
 	}
 
 	// DefaultMemberFields contains basic member fields
 	DefaultMemberFields = []interface{}{
-		"id", "team_id", "user_id", "member_type", "role_id", "status",
+		"team_id", "user_id", "member_type", "role_id", "status",
 		"invitation_id", "invited_by", "invited_at", "joined_at", "invitation_token", "invitation_expires_at",
 		"last_active_at", "login_count", "message", "created_at", "updated_at",
 	}
 
 	// DefaultMemberDetailFields contains all member fields including robot config and permissions
 	DefaultMemberDetailFields = []interface{}{
-		"id", "team_id", "user_id", "member_type", "role_id", "status",
+		"team_id", "user_id", "member_type", "role_id", "status",
 		"robot_name", "robot_description", "robot_avatar", "robot_config", "agents", "tools",
 		"mcp_servers", "data_access_permissions", "system_prompt", "is_active_robot",
 		"schedule_config", "random_activity", "activity_frequency", "last_robot_activity",
@@ -181,6 +194,7 @@ type DefaultUser struct {
 	oauthAccountModel string
 	teamModel         string
 	memberModel       string
+	invitationModel   string
 	cache             store.Store
 
 	// ID Generation Configuration
@@ -236,6 +250,7 @@ type DefaultUserOptions struct {
 	OAuthAccountModel string // bind to a specific oauth account model
 	TeamModel         string // bind to a specific team model
 	MemberModel       string // bind to a specific member model
+	InvitationModel   string // bind to a specific invitation code model
 	Cache             store.Store
 
 	// ID Generation Strategy
@@ -302,6 +317,11 @@ func NewDefaultUser(options *DefaultUserOptions) *DefaultUser {
 	memberModel := options.MemberModel
 	if memberModel == "" {
 		memberModel = "__yao.member"
+	}
+
+	invitationModel := options.InvitationModel
+	if invitationModel == "" {
+		invitationModel = "__yao.invitation"
 	}
 
 	// Set ID generation strategy with defaults
@@ -393,6 +413,7 @@ func NewDefaultUser(options *DefaultUserOptions) *DefaultUser {
 		oauthAccountModel: oauthAccountModel,
 		teamModel:         teamModel,
 		memberModel:       memberModel,
+		invitationModel:   invitationModel,
 		cache:             options.Cache,
 		idStrategy:        idStrategy,
 		idPrefix:          idPrefix,

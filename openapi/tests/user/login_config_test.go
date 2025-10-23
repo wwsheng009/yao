@@ -30,16 +30,16 @@ func TestUserLoginConfig(t *testing.T) {
 
 	// Note: user.Load is automatically called by openapi.Load in testutils.Prepare
 
-	// Test API endpoints
+	// Test API endpoints for entry configuration
 	testCases := []struct {
 		name       string
 		endpoint   string
 		expectCode int
 	}{
-		{"get config without locale", "/user/login", 200},
-		{"get config with en locale", "/user/login?locale=en", 200},
-		{"get config with zh-cn locale", "/user/login?locale=zh-cn", 200},
-		{"get config with invalid locale", "/user/login?locale=invalid", 200}, // should fallback to default
+		{"get entry config without locale", "/user/entry", 200},
+		{"get entry config with en locale", "/user/entry?locale=en", 200},
+		{"get entry config with zh-cn locale", "/user/entry?locale=zh-cn", 200},
+		{"get entry config with invalid locale", "/user/entry?locale=invalid", 200}, // should fallback to default
 	}
 
 	for _, tc := range testCases {
@@ -57,7 +57,7 @@ func TestUserLoginConfig(t *testing.T) {
 					body, err := io.ReadAll(resp.Body)
 					assert.NoError(t, err, "Should read response body")
 
-					var config user.Config
+					var config user.EntryConfig
 					err = json.Unmarshal(body, &config)
 					assert.NoError(t, err, "Should parse JSON response")
 
@@ -102,13 +102,13 @@ func TestUserLoginConfigLoad(t *testing.T) {
 	err := user.Load(config.Conf)
 	assert.NoError(t, err, "user.Load should succeed")
 
-	// Test that we can get public config
-	publicConfig := user.GetPublicConfig("")
-	if publicConfig != nil {
-		t.Logf("Public config loaded with title: %s", publicConfig.Title)
-		assert.IsType(t, &user.Config{}, publicConfig, "Should return correct config type")
+	// Test that we can get entry config
+	entryConfig := user.GetEntryConfig("")
+	if entryConfig != nil {
+		t.Logf("Entry config loaded with title: %s", entryConfig.Title)
+		assert.IsType(t, &user.EntryConfig{}, entryConfig, "Should return correct config type")
 	} else {
-		t.Log("No public config found")
+		t.Log("No entry config found")
 	}
 }
 
@@ -122,19 +122,23 @@ func TestUserLoginConfigStructure(t *testing.T) {
 	// Note: user.Load is automatically called by openapi.Load in testutils.Prepare
 
 	// Get a config to test structure
-	config := user.GetPublicConfig("")
+	config := user.GetEntryConfig("")
 	if config != nil {
 		t.Logf("Config loaded successfully with title: %s", config.Title)
 
 		// Verify config structure is valid
-		assert.IsType(t, &user.Config{}, config, "Should return correct config type")
+		assert.IsType(t, &user.EntryConfig{}, config, "Should return correct config type")
 
 		// Test new configuration fields
 		assert.IsType(t, "", config.ClientID, "ClientID should be string")
 		assert.IsType(t, "", config.ClientSecret, "ClientSecret should be string")
 		assert.IsType(t, false, config.Default, "Default should be boolean")
-		t.Logf("Config has ClientID: %t, ClientSecret: %t, Default: %t",
-			config.ClientID != "", config.ClientSecret != "", config.Default)
+		assert.IsType(t, false, config.AutoLogin, "AutoLogin should be boolean")
+		assert.IsType(t, "", config.Role, "Role should be string")
+		assert.IsType(t, "", config.Type, "Type should be string")
+		assert.IsType(t, false, config.InviteRequired, "InviteRequired should be boolean")
+		t.Logf("Config has ClientID: %t, ClientSecret: %t, Default: %t, AutoLogin: %t",
+			config.ClientID != "", config.ClientSecret != "", config.Default, config.AutoLogin)
 
 		// Test form configuration
 		if config.Form != nil {
@@ -160,6 +164,19 @@ func TestUserLoginConfigStructure(t *testing.T) {
 					assert.NotEmpty(t, provider.ID, "Provider ID should not be empty")
 					assert.NotEmpty(t, provider.Title, "Provider title should not be empty")
 				}
+			}
+		}
+
+		// Test messenger configuration (for registration)
+		if config.Messenger != nil {
+			t.Logf("Messenger configuration found")
+			if config.Messenger.Mail != nil {
+				assert.IsType(t, "", config.Messenger.Mail.Channel, "Messenger mail channel should be string")
+				assert.IsType(t, "", config.Messenger.Mail.Template, "Messenger mail template should be string")
+			}
+			if config.Messenger.SMS != nil {
+				assert.IsType(t, "", config.Messenger.SMS.Channel, "Messenger SMS channel should be string")
+				assert.IsType(t, "", config.Messenger.SMS.Template, "Messenger SMS template should be string")
 			}
 		}
 	} else {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yaoapp/gou/application"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/openapi/oauth"
 	"github.com/yaoapp/yao/openapi/oauth/types"
@@ -22,14 +23,12 @@ var (
 	// Client config
 	yaoClientConfig *YaoClientConfig
 
-	// Full configurations with sensitive data (for backend use)
-	fullConfigs = make(map[string]*Config)
-	// Public configurations without sensitive data (for frontend use)
-	publicConfigs = make(map[string]*Config)
 	// Global providers map (decoupled from locale-specific configs)
 	providers = make(map[string]*Provider)
-	// Default configuration (marked with default: true)
-	defaultConfig *Config
+	// Team configurations by locale
+	teamConfigs = make(map[string]*TeamConfig)
+	// Entry configurations by locale (unified login + register)
+	entryConfigs = make(map[string]*EntryConfig)
 	// Mutex for thread safety
 	configMutex sync.RWMutex
 )
@@ -40,15 +39,20 @@ func Load(appConfig config.Config) error {
 	defer configMutex.Unlock()
 
 	// Clear existing configurations
-	fullConfigs = make(map[string]*Config)
-	publicConfigs = make(map[string]*Config)
 	providers = make(map[string]*Provider)
-	defaultConfig = nil
+	teamConfigs = make(map[string]*TeamConfig)
+	entryConfigs = make(map[string]*EntryConfig)
 
-	// Load signin configurations
-	err := loadSigninConfigs(appConfig.Root)
+	// Load entry configurations from openapi/user/entry directory
+	err := loadEntryConfigs(appConfig.Root)
 	if err != nil {
-		return fmt.Errorf("failed to load signin configs: %v", err)
+		return fmt.Errorf("failed to load entry configs: %v", err)
+	}
+
+	// Load team configurations from openapi/user/team directory
+	err = loadTeamConfigs(appConfig.Root)
+	if err != nil {
+		return fmt.Errorf("failed to load team configs: %v", err)
 	}
 
 	// Load providers first
@@ -93,6 +97,25 @@ func loadClientConfig() error {
 	// Process ENV variables in client config
 	clientConfig.ClientID = replaceENVVar(clientConfig.ClientID)
 	clientConfig.ClientSecret = replaceENVVar(clientConfig.ClientSecret)
+
+	// Check if required values are missing or unresolved
+	if clientConfig.ClientID == "" {
+		return fmt.Errorf("client_id is required but not set")
+	}
+
+	// Check if ClientID still contains unresolved environment variable references
+	if strings.HasPrefix(clientConfig.ClientID, "$ENV.") || strings.HasPrefix(clientConfig.ClientID, "${") || strings.HasPrefix(clientConfig.ClientID, "$") {
+		envVarName := extractEnvVarName(clientConfig.ClientID)
+		return fmt.Errorf("environment variable '%s' is required but not set", envVarName)
+	}
+
+	// ClientSecret is optional - if it contains unresolved environment variable references, set it to empty
+	// This allows the system to generate a new secret during client registration
+	if clientConfig.ClientSecret != "" && (strings.HasPrefix(clientConfig.ClientSecret, "$ENV.") || strings.HasPrefix(clientConfig.ClientSecret, "${") || strings.HasPrefix(clientConfig.ClientSecret, "$")) {
+		// Log a warning but don't fail - the system will generate a new secret
+		log.Warn("Client secret environment variable not set, will generate new secret during registration")
+		clientConfig.ClientSecret = ""
+	}
 
 	// Validate client config
 	err = validateClientConfig(&clientConfig)
@@ -216,21 +239,16 @@ func loadProviders(_ string) error {
 	return nil
 }
 
-// loadSigninConfigs loads all signin configurations from the openapi/signin directory
-func loadSigninConfigs(_ string) error {
-	// Use Walk to find all configuration files in the user directory
-	err := application.App.Walk("openapi/user", func(root, filename string, isdir bool) error {
+// loadTeamConfigs loads all team configurations from the openapi/user/team directory
+func loadTeamConfigs(_ string) error {
+	// Use Walk to find all configuration files in the team directory
+	err := application.App.Walk("openapi/user/team", func(root, filename string, isdir bool) error {
 		if isdir {
 			return nil
 		}
 
 		// Only process .yao files
 		if !strings.HasSuffix(filename, ".yao") {
-			return nil
-		}
-
-		// Skip providers directory and client.yao file
-		if strings.Contains(strings.ReplaceAll(filename,"\\","/"), "providers/") || filepath.Base(filename) == "client.yao" {
 			return nil
 		}
 
@@ -241,85 +259,24 @@ func loadSigninConfigs(_ string) error {
 		// Read configuration
 		configRaw, err := application.App.Read(filename)
 		if err != nil {
-			return fmt.Errorf("failed to read config %s: %v", filename, err)
+			return fmt.Errorf("failed to read team config %s: %v", filename, err)
 		}
 
 		// Parse the configuration
-		var config Config
-		err = application.Parse(filename, configRaw, &config)
+		var teamConfig TeamConfig
+		err = application.Parse(filename, configRaw, &teamConfig)
 		if err != nil {
-			return fmt.Errorf("failed to parse config %s: %v", filename, err)
+			return fmt.Errorf("failed to parse team config %s: %v", filename, err)
 		}
 
-		// Process ENV variables in the configuration
-		processConfigENVVariables(&config)
-
-		// Store full configuration
-		fullConfigs[locale] = &config
-
-		// Create public configuration (without sensitive data)
-		publicConfig := config
-		publicConfig.ClientSecret = "" // Remove sensitive data
-
-		// Remove captcha secret from public config
-		if publicConfig.Form != nil && publicConfig.Form.Captcha != nil && publicConfig.Form.Captcha.Options != nil {
-			// Create a copy of captcha options without the secret
-			captchaOptions := make(map[string]interface{})
-			for k, v := range publicConfig.Form.Captcha.Options {
-				if k != "secret" {
-					captchaOptions[k] = v
-				}
-			}
-			publicConfig.Form.Captcha.Options = captchaOptions
-		}
-
-		publicConfigs[locale] = &publicConfig
-
-		// Set as default if marked
-		if config.Default {
-			defaultConfig = &config
-		}
+		// Store team configuration
+		teamConfigs[locale] = &teamConfig
 
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to walk signin directory: %v", err)
-	}
-
-	return nil
-}
-
-// GetPublicConfig returns the public configuration for a given locale
-func GetPublicConfig(locale string) *Config {
-	configMutex.RLock()
-	defer configMutex.RUnlock()
-
-	// Normalize language code to lowercase
-	if locale != "" {
-		locale = strings.ToLower(locale)
-	}
-
-	// Try to get the specific locale configuration
-	if config, exists := publicConfigs[locale]; exists {
-		return config
-	}
-
-	// Fallback to default config's public version
-	if defaultConfig != nil {
-		// Find the public version of the default config
-		for lang, fullConfig := range fullConfigs {
-			if fullConfig == defaultConfig {
-				if publicConfig, exists := publicConfigs[lang]; exists {
-					return publicConfig
-				}
-			}
-		}
-	}
-
-	// If no default, try to get any available configuration
-	for _, config := range publicConfigs {
-		return config
+		return fmt.Errorf("failed to walk team directory: %v", err)
 	}
 
 	return nil
@@ -343,6 +300,58 @@ func GetYaoClientConfig() *YaoClientConfig {
 	configMutex.RLock()
 	defer configMutex.RUnlock()
 	return yaoClientConfig
+}
+
+// GetTeamConfig returns the team configuration for a given locale
+func GetTeamConfig(locale string) *TeamConfig {
+	configMutex.RLock()
+	defer configMutex.RUnlock()
+
+	// Normalize language code to lowercase
+	if locale != "" {
+		locale = strings.TrimSpace(strings.ToLower(locale))
+	}
+
+	// Try to get the specific locale configuration
+	if config, exists := teamConfigs[locale]; exists {
+		return config
+	}
+
+	// If no specific locale, try to get "en" as default
+	if config, exists := teamConfigs["en"]; exists {
+		return config
+	}
+
+	// If "en" is not available, try to get any available configuration
+	for _, config := range teamConfigs {
+		return config
+	}
+
+	return nil
+}
+
+// extractEnvVarName extracts the environment variable name from a string like "$ENV.VAR_NAME"
+func extractEnvVarName(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+
+	// Handle $ENV.VAR_NAME format
+	if strings.HasPrefix(value, "$ENV.") {
+		return strings.TrimPrefix(value, "$ENV.")
+	}
+
+	// Handle ${VAR_NAME} format
+	if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") {
+		return value[2 : len(value)-1]
+	}
+
+	// Handle $VAR_NAME format
+	if strings.HasPrefix(value, "$") {
+		return value[1:]
+	}
+
+	return "unknown"
 }
 
 // replaceENVVar replaces environment variables in a string
@@ -372,6 +381,7 @@ func replaceENVVar(value string) string {
 }
 
 // normalizeDuration normalizes various duration formats to Go's time.ParseDuration format
+// Supports: s (seconds), m (minutes), h (hours), d (days)
 func normalizeDuration(expiresIn string) (string, error) {
 	if expiresIn == "" {
 		return "", fmt.Errorf("empty duration")
@@ -379,9 +389,10 @@ func normalizeDuration(expiresIn string) (string, error) {
 
 	// Common patterns and their conversions
 	patterns := map[string]func(int) string{
-		"s": func(n int) string { return fmt.Sprintf("%ds", n) }, // seconds
-		"m": func(n int) string { return fmt.Sprintf("%dm", n) }, // minutes
-		"h": func(n int) string { return fmt.Sprintf("%dh", n) }, // hours
+		"s": func(n int) string { return fmt.Sprintf("%ds", n) },    // seconds
+		"m": func(n int) string { return fmt.Sprintf("%dm", n) },    // minutes
+		"h": func(n int) string { return fmt.Sprintf("%dh", n) },    // hours
+		"d": func(n int) string { return fmt.Sprintf("%dh", n*24) }, // days -> hours
 	}
 
 	// Extract number and unit using regex
@@ -400,7 +411,7 @@ func normalizeDuration(expiresIn string) (string, error) {
 	unit := matches[2]
 	converter, exists := patterns[unit]
 	if !exists {
-		return "", fmt.Errorf("unsupported time unit: %s", unit)
+		return "", fmt.Errorf("unsupported time unit: %s (supported: s, m, h, d)", unit)
 	}
 
 	normalized := converter(number)
@@ -413,11 +424,85 @@ func normalizeDuration(expiresIn string) (string, error) {
 	return normalized, nil
 }
 
-// processConfigENVVariables processes environment variables in the signin configuration
-func processConfigENVVariables(config *Config) {
+// processFormConfigENVVariables processes environment variables in the form configuration
+func processFormConfigENVVariables(form *FormConfig) []string {
 	var missingEnvVars []string
 
-	// Process client_id and client_secret
+	if form == nil {
+		return missingEnvVars
+	}
+
+	// Process form captcha options
+	if form.Captcha != nil && form.Captcha.Options != nil {
+		for key, value := range form.Captcha.Options {
+			if strValue, ok := value.(string); ok {
+				// Check if ENV variable exists before replacement
+				if strings.HasPrefix(strValue, "$ENV.") {
+					envVar := strings.TrimPrefix(strValue, "$ENV.")
+					if _, exists := os.LookupEnv(envVar); !exists {
+						missingEnvVars = append(missingEnvVars, envVar)
+					}
+				}
+				form.Captcha.Options[key] = replaceENVVar(strValue)
+			}
+		}
+	}
+
+	return missingEnvVars
+}
+
+// loadEntryConfigs loads all entry configurations from the openapi/user/entry directory
+// Entry config merges signin and register configurations
+func loadEntryConfigs(_ string) error {
+	// Use Walk to find all configuration files in the entry directory
+	err := application.App.Walk("openapi/user/entry", func(root, filename string, isdir bool) error {
+		if isdir {
+			return nil
+		}
+
+		// Only process .yao files
+		if !strings.HasSuffix(filename, ".yao") {
+			return nil
+		}
+
+		// Extract locale from filename (basename without extension)
+		baseName := filepath.Base(filename)
+		locale := strings.ToLower(strings.TrimSuffix(baseName, ".yao"))
+
+		// Read configuration
+		configRaw, err := application.App.Read(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read entry config %s: %v", filename, err)
+		}
+
+		// Parse the configuration
+		var config EntryConfig
+		err = application.Parse(filename, configRaw, &config)
+		if err != nil {
+			return fmt.Errorf("failed to parse entry config %s: %v", filename, err)
+		}
+
+		// Process ENV variables in the configuration
+		processEntryConfigENVVariables(&config)
+
+		// Store entry configuration
+		entryConfigs[locale] = &config
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to walk entry directory: %v", err)
+	}
+
+	return nil
+}
+
+// processEntryConfigENVVariables processes environment variables in the entry configuration
+func processEntryConfigENVVariables(config *EntryConfig) {
+	var missingEnvVars []string
+
+	// Process client_id and client_secret (from signin config)
 	if strings.HasPrefix(config.ClientID, "$ENV.") {
 		envVar := strings.TrimPrefix(config.ClientID, "$ENV.")
 		if _, exists := os.LookupEnv(envVar); !exists {
@@ -434,24 +519,40 @@ func processConfigENVVariables(config *Config) {
 	}
 	config.ClientSecret = replaceENVVar(config.ClientSecret)
 
-	// Process form captcha options
-	if config.Form != nil && config.Form.Captcha != nil && config.Form.Captcha.Options != nil {
-		for key, value := range config.Form.Captcha.Options {
-			if strValue, ok := value.(string); ok {
-				// Check if ENV variable exists before replacement
-				if strings.HasPrefix(strValue, "$ENV.") {
-					envVar := strings.TrimPrefix(strValue, "$ENV.")
-					if _, exists := os.LookupEnv(envVar); !exists {
-						missingEnvVars = append(missingEnvVars, envVar)
-					}
-				}
-				config.Form.Captcha.Options[key] = replaceENVVar(strValue)
-			}
-		}
+	// Process form configuration
+	formMissingVars := processFormConfigENVVariables(config.Form)
+	missingEnvVars = append(missingEnvVars, formMissingVars...)
+
+	// Log warning for missing environment variables
+	if len(missingEnvVars) > 0 {
+		fmt.Printf("Warning: The following environment variables are not set in entry configuration: %v\n", missingEnvVars)
+	}
+}
+
+// GetEntryConfig returns the entry configuration for a given locale
+func GetEntryConfig(locale string) *EntryConfig {
+	configMutex.RLock()
+	defer configMutex.RUnlock()
+
+	// Normalize language code to lowercase
+	if locale != "" {
+		locale = strings.TrimSpace(strings.ToLower(locale))
 	}
 
-	// Log warning for missing environment variables (optional, can be removed if log package not available)
-	if len(missingEnvVars) > 0 {
-		fmt.Printf("Warning: The following environment variables are not set in user configuration: %v\n", missingEnvVars)
+	// Try to get the specific locale configuration
+	if config, exists := entryConfigs[locale]; exists {
+		return config
 	}
+
+	// If no specific locale, try to get "en" as default
+	if config, exists := entryConfigs["en"]; exists {
+		return config
+	}
+
+	// If "en" is not available, try to get any available configuration
+	for _, config := range entryConfigs {
+		return config
+	}
+
+	return nil
 }

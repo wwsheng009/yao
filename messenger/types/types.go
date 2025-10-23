@@ -80,15 +80,6 @@ type RateLimit struct {
 	Window     time.Duration `json:"window,omitempty"`
 }
 
-// Template represents a message template
-type Template struct {
-	Subject  string                 `json:"subject,omitempty"`
-	Body     string                 `json:"body"`
-	HTML     string                 `json:"html,omitempty"`
-	Headers  map[string]string      `json:"headers,omitempty"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-}
-
 // GlobalConfig represents global messenger settings
 type GlobalConfig struct {
 	RetryAttempts int           `json:"retry_attempts,omitempty"`
@@ -133,4 +124,11 @@ type Features struct {
 	SupportsReceiving  bool `json:"supports_receiving"`
 	SupportsTracking   bool `json:"supports_tracking"`
 	SupportsScheduling bool `json:"supports_scheduling"`
+}
+
+// TemplateRequest represents a request to send a message using a specific template
+type TemplateRequest struct {
+	TemplateID  string       `json:"template_id"`
+	Data        TemplateData `json:"data"`
+	MessageType *MessageType `json:"message_type,omitempty"` // Optional: if not specified, will use first available template type
 }

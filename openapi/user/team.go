@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,13 +14,39 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/kun/maps"
 	"github.com/yaoapp/yao/openapi/oauth"
+	"github.com/yaoapp/yao/openapi/oauth/authorized"
 	"github.com/yaoapp/yao/openapi/oauth/providers/user"
+	"github.com/yaoapp/yao/openapi/oauth/types"
 	"github.com/yaoapp/yao/openapi/response"
 )
 
 // Team Management Handlers
 
-// GinTeamList handles GET /teams - Get user teams
+// GinTeamConfig handles GET /teams/config - Get team configuration (public)
+func GinTeamConfig(c *gin.Context) {
+	locale := c.Query("locale")
+	if locale == "" {
+		locale = "en" // default locale
+	}
+
+	// Clean locale: remove whitespace and special characters
+	locale = strings.TrimSpace(locale)
+	locale = strings.Trim(locale, "?&=")
+
+	config := GetTeamConfig(locale)
+	if config == nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Team configuration not found",
+		}
+		response.RespondWithError(c, response.StatusNotFound, errorResp)
+		return
+	}
+
+	response.RespondWithSuccess(c, http.StatusOK, config)
+}
+
+// GinTeamList handles GET /teams - Get user teams (all teams where user is a member)
 func GinTeamList(c *gin.Context) {
 	// Get authorized user info
 	authInfo := oauth.GetAuthorizedInfo(c)
@@ -34,63 +59,8 @@ func GinTeamList(c *gin.Context) {
 		return
 	}
 
-	// Parse pagination parameters
-	page := 1
-	pagesize := 20
-
-	if p := c.Query("page"); p != "" {
-		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
-			page = parsed
-		}
-	}
-
-	if ps := c.Query("pagesize"); ps != "" {
-		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
-			pagesize = parsed
-		}
-	}
-
-	// Get user provider instance
-	provider, err := getUserProvider()
-	if err != nil {
-		log.Error("Failed to get user provider: %v", err)
-		errorResp := &response.ErrorResponse{
-			Code:             response.ErrServerError.Code,
-			ErrorDescription: "Failed to initialize user provider",
-		}
-		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
-		return
-	}
-
-	// Build query parameters
-	param := model.QueryParam{
-		Wheres: []model.QueryWhere{
-			{Column: "owner_id", Value: authInfo.UserID},
-		},
-		Orders: []model.QueryOrder{
-			{Column: "created_at", Option: "desc"},
-		},
-	}
-
-	// Add status filter if provided
-	if status := c.Query("status"); status != "" {
-		param.Wheres = append(param.Wheres, model.QueryWhere{
-			Column: "status",
-			Value:  status,
-		})
-	}
-
-	// Add name search if provided
-	if name := c.Query("name"); name != "" {
-		param.Wheres = append(param.Wheres, model.QueryWhere{
-			Column: "name",
-			Value:  "%" + name + "%",
-			OP:     "like",
-		})
-	}
-
-	// Get paginated teams
-	result, err := provider.PaginateTeams(c.Request.Context(), param, page, pagesize)
+	// Call business logic to get user teams with roles
+	teams, err := getUserTeams(c.Request.Context(), authInfo.UserID)
 	if err != nil {
 		log.Error("Failed to get user teams: %v", err)
 		errorResp := &response.ErrorResponse{
@@ -101,14 +71,14 @@ func GinTeamList(c *gin.Context) {
 		return
 	}
 
-	// Return the paginated result directly (consistent with other modules)
-	c.JSON(http.StatusOK, result)
+	// Return teams list directly (no pagination)
+	response.RespondWithSuccess(c, http.StatusOK, teams)
 }
 
-// GinTeamGet handles GET /teams/:team_id - Get user team details
+// GinTeamGet handles GET /teams/:id - Get user team details
 func GinTeamGet(c *gin.Context) {
 	// Get authorized user info
-	authInfo := oauth.GetAuthorizedInfo(c)
+	authInfo := authorized.GetInfo(c)
 	if authInfo == nil || authInfo.UserID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidClient.Code,
@@ -118,7 +88,7 @@ func GinTeamGet(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	if teamID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -161,33 +131,35 @@ func GinTeamGet(c *gin.Context) {
 		return
 	}
 
-	// Check if user owns this team
-	ownerID := toString(teamData["owner_id"])
-	if ownerID != authInfo.UserID {
-		errorResp := &response.ErrorResponse{
-			Code:             response.ErrAccessDenied.Code,
-			ErrorDescription: "Access denied: you don't own this team",
-		}
-		response.RespondWithError(c, response.StatusForbidden, errorResp)
-		return
-	}
+	// // Check if user owns this team
+	// ownerID := toString(teamData["owner_id"])
+	// if ownerID != authInfo.UserID {
+	// 	errorResp := &response.ErrorResponse{
+	// 		Code:             response.ErrAccessDenied.Code,
+	// 		ErrorDescription: "Access denied: you don't own this team",
+	// 	}
+	// 	response.RespondWithError(c, response.StatusForbidden, errorResp)
+	// 	return
+	// }
 
 	// Convert to response format
 	team := mapToTeamDetailResponse(teamData)
-	c.JSON(http.StatusOK, team)
+	response.RespondWithSuccess(c, http.StatusOK, team)
 }
 
 // GinTeamCreate handles POST /teams - Create user team
 func GinTeamCreate(c *gin.Context) {
 	// Get authorized user info
-	authInfo := oauth.GetAuthorizedInfo(c)
-	if authInfo == nil || authInfo.UserID == "" {
-		errorResp := &response.ErrorResponse{
-			Code:             response.ErrInvalidClient.Code,
-			ErrorDescription: "User not authenticated",
+	authInfo := authorized.GetInfo(c)
+	if authInfo.Constraints.OwnerOnly {
+		if authInfo == nil || authInfo.UserID == "" {
+			errorResp := &response.ErrorResponse{
+				Code:             response.ErrInvalidClient.Code,
+				ErrorDescription: "User not authenticated",
+			}
+			response.RespondWithError(c, response.StatusUnauthorized, errorResp)
+			return
 		}
-		response.RespondWithError(c, response.StatusUnauthorized, errorResp)
-		return
 	}
 
 	// Parse request body
@@ -202,10 +174,10 @@ func GinTeamCreate(c *gin.Context) {
 	}
 
 	// Prepare team data
-	teamData := maps.MapStrAny{
+	teamData := authInfo.WithCreateScope(maps.MapStrAny{
 		"name":        req.Name,
 		"description": req.Description,
-	}
+	})
 
 	// Add settings if provided
 	if req.Settings != nil {
@@ -229,7 +201,7 @@ func GinTeamCreate(c *gin.Context) {
 	if err != nil {
 		log.Error("Failed to get user provider: %v", err)
 		// Return basic response if we can't get details
-		c.JSON(http.StatusCreated, gin.H{"team_id": teamID})
+		response.RespondWithSuccess(c, http.StatusCreated, gin.H{"team_id": teamID})
 		return
 	}
 
@@ -237,16 +209,16 @@ func GinTeamCreate(c *gin.Context) {
 	if err != nil {
 		log.Error("Failed to get created team details: %v", err)
 		// Return basic response if we can't get details
-		c.JSON(http.StatusCreated, gin.H{"team_id": teamID})
+		response.RespondWithSuccess(c, http.StatusCreated, gin.H{"team_id": teamID})
 		return
 	}
 
 	// Convert to response format
 	team := mapToTeamDetailResponse(createdTeam)
-	c.JSON(http.StatusCreated, team)
+	response.RespondWithSuccess(c, http.StatusCreated, team)
 }
 
-// GinTeamUpdate handles PUT /teams/:team_id - Update user team
+// GinTeamUpdate handles PUT /teams/:id - Update user team
 func GinTeamUpdate(c *gin.Context) {
 	// Get authorized user info
 	authInfo := oauth.GetAuthorizedInfo(c)
@@ -259,7 +231,7 @@ func GinTeamUpdate(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	if teamID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -324,23 +296,93 @@ func GinTeamUpdate(c *gin.Context) {
 	provider, err := getUserProvider()
 	if err != nil {
 		log.Error("Failed to get user provider: %v", err)
-		c.JSON(http.StatusOK, gin.H{"message": "Team updated successfully"})
+		response.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Team updated successfully"})
 		return
 	}
 
 	updatedTeam, err := provider.GetTeamDetail(c.Request.Context(), teamID)
 	if err != nil {
 		log.Error("Failed to get updated team details: %v", err)
-		c.JSON(http.StatusOK, gin.H{"message": "Team updated successfully"})
+		response.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Team updated successfully"})
 		return
 	}
 
 	// Convert to response format
 	team := mapToTeamDetailResponse(updatedTeam)
-	c.JSON(http.StatusOK, team)
+	response.RespondWithSuccess(c, http.StatusOK, team)
 }
 
-// GinTeamDelete handles DELETE /teams/:team_id - Delete user team
+// GinTeamSelection handles POST /teams/select - Select a team and issue tokens with team_id
+func GinTeamSelection(c *gin.Context) {
+	// Get authorized user info
+	authInfo := oauth.GetAuthorizedInfo(c)
+	if authInfo == nil || authInfo.UserID == "" {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidClient.Code,
+			ErrorDescription: "User not authenticated",
+		}
+		response.RespondWithError(c, response.StatusUnauthorized, errorResp)
+		return
+	}
+
+	// Verify the current token has team_selection scope
+	if authInfo.Scope != ScopeTeamSelection {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrAccessDenied.Code,
+			ErrorDescription: "Invalid scope: team_selection scope required",
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
+	// Parse request body
+	var req TeamSelectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrInvalidRequest.Code,
+			ErrorDescription: "Invalid request body: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusBadRequest, errorResp)
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Prepare login context with full device/platform information
+	loginCtx := makeLoginContext(c)
+
+	// Preserve Remember Me state from temporary token
+	loginCtx.RememberMe = authInfo.RememberMe
+
+	// Login with selected team
+	loginResponse, err := LoginByTeamID(authInfo.UserID, req.TeamID, loginCtx)
+	if err != nil {
+		log.Error("Failed to login with team: %v", err)
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: "Failed to login with team: " + err.Error(),
+		}
+		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// Revoke the current temporary token (read from header)
+	currentToken := oauth.OAuth.GetAccessToken(c)
+	if currentToken != "" {
+		if err := oauth.OAuth.Revoke(ctx, currentToken, "access_token"); err != nil {
+			// Log the error but don't fail the request
+			log.Warn("Failed to revoke temporary token: %v", err)
+		}
+	}
+
+	// Send secure cookies (access token, refresh token, and session ID)
+	SendLoginCookies(c, loginResponse, "")
+
+	// Return the new tokens in response body
+	response.RespondWithSuccess(c, http.StatusOK, loginResponse)
+}
+
+// GinTeamDelete handles DELETE /teams/:id - Delete user team
 func GinTeamDelete(c *gin.Context) {
 	// Get authorized user info
 	authInfo := oauth.GetAuthorizedInfo(c)
@@ -353,7 +395,7 @@ func GinTeamDelete(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	if teamID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -390,7 +432,7 @@ func GinTeamDelete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Team deleted successfully"})
+	response.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Team deleted successfully"})
 }
 
 // Yao Process Handlers (for Yao application calls)
@@ -654,23 +696,68 @@ func teamCreate(ctx context.Context, userID string, teamData maps.MapStrAny) (st
 	teamData["created_at"] = time.Now()
 	teamData["updated_at"] = time.Now()
 
+	// Get team config for setting defaults
+	locale := ""
+	if localeVal, ok := teamData["locale"].(string); ok && localeVal != "" {
+		locale = strings.TrimSpace(strings.ToLower(localeVal))
+	}
+
+	// Fallback: try common locale variations or use "en" as final fallback
+	// This ensures we always get a valid config even if locale is invalid
+	teamConfig := GetTeamConfig(locale)
+	if teamConfig == nil {
+		// Try fallback locales in order
+		fallbackLocales := []string{"en", "zh-cn"}
+		for _, fallback := range fallbackLocales {
+			teamConfig = GetTeamConfig(fallback)
+			if teamConfig != nil {
+				break
+			}
+		}
+	}
+
+	// Set default type_id from team config if not provided
+	if _, hasType := teamData["type_id"]; !hasType {
+		// Apply default type from config if available
+		if teamConfig != nil && teamConfig.Type != "" {
+			teamData["type_id"] = teamConfig.Type
+		}
+	}
+
+	// Set default role_id from team config if not provided
+	if _, hasRole := teamData["role_id"]; !hasRole {
+		// Apply default role from config if available
+		if teamConfig != nil && teamConfig.Role != "" {
+			teamData["role_id"] = teamConfig.Role
+		}
+	}
+
+	// Clean up: remove locale from team data as it's not stored in database
+	delete(teamData, "locale")
+
 	// Create team
 	teamID, err := provider.CreateTeam(ctx, teamData)
 	if err != nil {
 		return "", fmt.Errorf("failed to create team: %w", err)
 	}
 
+	// Determine owner member role_id from team config
+	ownerRoleID := "owner" // fallback default
+	if teamConfig != nil && teamConfig.Role != "" {
+		ownerRoleID = teamConfig.Role
+	}
+
 	// Add the creator as an owner member of the team
-	ownerMemberData := maps.MapStrAny{
+	ownerMemberData := types.CopyCreateScope(teamData, maps.MapStrAny{
 		"team_id":     teamID,
 		"user_id":     userID,
 		"member_type": "user",
-		"role_id":     "owner",
+		"role_id":     ownerRoleID,
 		"status":      "active",
 		"joined_at":   time.Now(),
 		"created_at":  time.Now(),
 		"updated_at":  time.Now(),
-	}
+	})
 
 	_, err = provider.CreateMember(ctx, ownerMemberData)
 	if err != nil {
@@ -801,10 +888,53 @@ func mapToTeamDetailResponse(data maps.MapStr) TeamDetailResponse {
 
 	// Add settings if available
 	if settings, ok := data["settings"]; ok {
-		if settingsMap, ok := settings.(map[string]interface{}); ok {
-			team.Settings = settingsMap
+		if teamSettings, ok := settings.(*TeamSettings); ok {
+			team.Settings = teamSettings
+		} else if settingsMap, ok := settings.(map[string]interface{}); ok {
+			// Convert map to TeamSettings (for backward compatibility)
+			teamSettings := &TeamSettings{
+				Theme:      toString(settingsMap["theme"]),
+				Visibility: toString(settingsMap["visibility"]),
+			}
+			team.Settings = teamSettings
 		}
 	}
 
 	return team
+}
+
+// Business Logic Functions for Team Membership
+
+// getUserTeams gets all teams where the user is a member (includes role information)
+func getUserTeams(ctx context.Context, userID string) ([]maps.MapStr, error) {
+	// Get user provider instance
+	provider, err := getUserProvider()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
+	// Get teams with role information
+	teams, err := provider.GetTeamsByMember(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve user teams: %w", err)
+	}
+
+	return teams, nil
+}
+
+// getUserTeamsCount counts the number of teams a user is a member of
+func getUserTeamsCount(ctx context.Context, userID string) (int64, error) {
+	// Get user provider instance
+	provider, err := getUserProvider()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
+	// Count teams
+	count, err := provider.CountTeamsByMember(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count user teams: %w", err)
+	}
+
+	return count, nil
 }

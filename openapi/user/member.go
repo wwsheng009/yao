@@ -15,6 +15,7 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/kun/maps"
 	"github.com/yaoapp/yao/openapi/oauth"
+	"github.com/yaoapp/yao/openapi/oauth/authorized"
 	"github.com/yaoapp/yao/openapi/response"
 )
 
@@ -22,8 +23,8 @@ import (
 
 // GinMemberList handles GET /teams/:team_id/members - Get team members
 func GinMemberList(c *gin.Context) {
-	// Get authorized user info
-	authInfo := oauth.GetAuthorizedInfo(c)
+
+	authInfo := authorized.GetInfo(c)
 	if authInfo == nil || authInfo.UserID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidClient.Code,
@@ -33,7 +34,7 @@ func GinMemberList(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	if teamID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -87,7 +88,7 @@ func GinMemberList(c *gin.Context) {
 	}
 
 	// Return the paginated result
-	c.JSON(http.StatusOK, result)
+	response.RespondWithSuccess(c, http.StatusOK, result)
 }
 
 // GinMemberGet handles GET /teams/:team_id/members/:member_id - Get team member details
@@ -103,7 +104,7 @@ func GinMemberGet(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	memberID := c.Param("member_id")
 	if teamID == "" || memberID == "" {
 		errorResp := &response.ErrorResponse{
@@ -143,10 +144,10 @@ func GinMemberGet(c *gin.Context) {
 
 	// Convert to response format
 	member := mapToMemberDetailResponse(memberData)
-	c.JSON(http.StatusOK, member)
+	response.RespondWithSuccess(c, http.StatusOK, member)
 }
 
-// GinMemberCreateDirect handles POST /teams/:team_id/members/direct - Add member directly
+// GinMemberCreateDirect handles POST /teams/:team_id/members - Add member directly to team
 func GinMemberCreateDirect(c *gin.Context) {
 	// Get authorized user info
 	authInfo := oauth.GetAuthorizedInfo(c)
@@ -159,7 +160,7 @@ func GinMemberCreateDirect(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	if teamID == "" {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrInvalidRequest.Code,
@@ -226,7 +227,7 @@ func GinMemberCreateDirect(c *gin.Context) {
 	}
 
 	// Return created member ID
-	c.JSON(http.StatusCreated, gin.H{"member_id": memberID})
+	response.RespondWithSuccess(c, http.StatusCreated, gin.H{"member_id": memberID})
 }
 
 // GinMemberUpdate handles PUT /teams/:team_id/members/:member_id - Update team member
@@ -242,7 +243,7 @@ func GinMemberUpdate(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	memberID := c.Param("member_id")
 	if teamID == "" || memberID == "" {
 		errorResp := &response.ErrorResponse{
@@ -307,7 +308,7 @@ func GinMemberUpdate(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Member updated successfully"})
+	response.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Member updated successfully"})
 }
 
 // GinMemberDelete handles DELETE /teams/:team_id/members/:member_id - Remove team member
@@ -323,7 +324,7 @@ func GinMemberDelete(c *gin.Context) {
 		return
 	}
 
-	teamID := c.Param("team_id")
+	teamID := c.Param("id")
 	memberID := c.Param("member_id")
 	if teamID == "" || memberID == "" {
 		errorResp := &response.ErrorResponse{
@@ -361,7 +362,7 @@ func GinMemberDelete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Member removed successfully"})
+	response.RespondWithSuccess(c, http.StatusOK, gin.H{"message": "Member removed successfully"})
 }
 
 // Yao Process Handlers (for Yao application calls)
@@ -797,8 +798,28 @@ func mapToMemberResponse(data maps.MapStr) MemberResponse {
 
 	// Add settings if available
 	if settings, ok := data["settings"]; ok {
-		if settingsMap, ok := settings.(map[string]interface{}); ok {
-			member.Settings = settingsMap
+		if memSettings, ok := settings.(*MemberSettings); ok {
+			member.Settings = memSettings
+		} else if settingsMap, ok := settings.(map[string]interface{}); ok {
+			// Convert map to MemberSettings (for backward compatibility)
+			memSettings := &MemberSettings{
+				Notifications: toBool(settingsMap["notifications"]),
+			}
+			// Handle permissions array
+			if perms, ok := settingsMap["permissions"]; ok {
+				if permsSlice, ok := perms.([]interface{}); ok {
+					permissions := make([]string, 0, len(permsSlice))
+					for _, p := range permsSlice {
+						if permStr, ok := p.(string); ok {
+							permissions = append(permissions, permStr)
+						}
+					}
+					memSettings.Permissions = permissions
+				} else if permsStrSlice, ok := perms.([]string); ok {
+					memSettings.Permissions = permsStrSlice
+				}
+			}
+			member.Settings = memSettings
 		}
 	}
 

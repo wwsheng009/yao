@@ -130,6 +130,9 @@ func (u *DefaultUser) CreateMember(ctx context.Context, memberData maps.MapStrAn
 		return 0, fmt.Errorf("role_id is required in memberData")
 	}
 
+	// Add __yao_team_id to the member data
+	memberData["__yao_team_id"] = memberData["team_id"]
+
 	// Set default values if not provided
 	if _, exists := memberData["member_type"]; !exists {
 		memberData["member_type"] = "user"
@@ -238,12 +241,14 @@ func (u *DefaultUser) AddMember(ctx context.Context, teamID string, userID strin
 }
 
 // AcceptInvitation accepts a team invitation
-func (u *DefaultUser) AcceptInvitation(ctx context.Context, invitationToken string) error {
-	// Find member by invitation token
+// userID can be empty - if provided and invitation doesn't have user_id, it will be updated
+func (u *DefaultUser) AcceptInvitation(ctx context.Context, invitationID string, invitationToken string, userID string) error {
+	// Find member by invitation_id and token
 	m := model.Select(u.memberModel)
 	members, err := m.Get(model.QueryParam{
 		Select: []interface{}{"id", "team_id", "user_id", "status", "invitation_expires_at"},
 		Wheres: []model.QueryWhere{
+			{Column: "invitation_id", Value: invitationID},
 			{Column: "invitation_token", Value: invitationToken},
 			{Column: "status", Value: "pending"},
 		},
@@ -273,7 +278,13 @@ func (u *DefaultUser) AcceptInvitation(ctx context.Context, invitationToken stri
 	updateData := maps.MapStrAny{
 		"status":           "active",
 		"joined_at":        time.Now(),
-		"invitation_token": nil, // Clear the token
+		"invitation_token": nil,    // Clear the token
+		"__yao_updated_by": userID, // Set the updated by user ID
+	}
+
+	// If invitation doesn't have a user_id (unregistered user invitation), update it with provided userID
+	if userID != "" && (member["user_id"] == nil || member["user_id"] == "") {
+		updateData["user_id"] = userID
 	}
 
 	affected, err := m.UpdateWhere(model.QueryParam{

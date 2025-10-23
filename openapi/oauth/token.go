@@ -248,13 +248,22 @@ func (s *Service) ValidateTokenBinding(ctx context.Context, token string, bindin
 // ============================================================================
 
 // MakeAccessToken generates a new access token with specific parameters and stores it
-func (s *Service) MakeAccessToken(clientID, scope, subject string, expiresIn int) (string, error) {
-	return s.generateAccessTokenWithScope(clientID, scope, subject, expiresIn)
+// extraClaims: optional extra claims to add to the token (e.g., team_id, tenant_id)
+func (s *Service) MakeAccessToken(clientID, scope, subject string, expiresIn int, extraClaims ...map[string]interface{}) (string, error) {
+	var claims map[string]interface{}
+	if len(extraClaims) > 0 {
+		claims = extraClaims[0]
+	}
+	return s.generateAccessTokenWithScope(clientID, scope, subject, expiresIn, claims)
 }
 
 // MakeRefreshToken generates a new refresh token with specific parameters and stores it
-func (s *Service) MakeRefreshToken(clientID, scope, subject string, expiresIn ...int) (string, error) {
-	return s.generateRefreshToken(clientID, scope, subject, expiresIn...)
+func (s *Service) MakeRefreshToken(clientID, scope, subject string, expiresIn int, extraClaims ...map[string]interface{}) (string, error) {
+	var claims map[string]interface{}
+	if len(extraClaims) > 0 {
+		claims = extraClaims[0]
+	}
+	return s.generateRefreshToken(clientID, scope, subject, expiresIn, claims)
 }
 
 // Subject converts a userID to a subject using NanoID fingerprint
@@ -338,19 +347,27 @@ func (s *Service) validateAudience(audience string) error {
 // generateAccessToken generates a new access token
 func (s *Service) generateAccessToken(clientID string) (string, error) {
 	expiresIn := int(s.config.Token.AccessTokenLifetime.Seconds())
-	return s.generateAccessTokenWithScope(clientID, "", "", expiresIn)
+	return s.generateAccessTokenWithScope(clientID, "", "", expiresIn, nil)
 }
 
 // generateAccessTokenWithScope generates a new access token with specific parameters and stores it
-func (s *Service) generateAccessTokenWithScope(clientID, scope, subject string, expiresIn int) (string, error) {
+func (s *Service) generateAccessTokenWithScope(clientID, scope, subject string, expiresIn int, extraClaims map[string]interface{}) (string, error) {
 	// Use the new signing mechanism based on configuration
-	accessToken, err := s.SignToken("access_token", clientID, scope, subject, expiresIn)
+	var accessToken string
+	var err error
+
+	if extraClaims != nil {
+		accessToken, err = s.SignToken("access_token", clientID, scope, subject, expiresIn, extraClaims)
+	} else {
+		accessToken, err = s.SignToken("access_token", clientID, scope, subject, expiresIn)
+	}
+
 	if err != nil {
 		return "", err
 	}
 
-	// Store access token with metadata
-	err = s.storeAccessToken(accessToken, clientID, scope, subject, expiresIn)
+	// Store access token with metadata (including extra claims)
+	err = s.storeAccessToken(accessToken, clientID, scope, subject, expiresIn, extraClaims)
 	if err != nil {
 		return "", err
 	}
@@ -359,7 +376,7 @@ func (s *Service) generateAccessTokenWithScope(clientID, scope, subject string, 
 }
 
 // storeAccessToken stores access token with metadata and specified expiration
-func (s *Service) storeAccessToken(accessToken, clientID string, scope string, subject string, expiresIn int) error {
+func (s *Service) storeAccessToken(accessToken, clientID string, scope string, subject string, expiresIn int, extraClaims map[string]interface{}) error {
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(expiresIn) * time.Second).Unix()
 
@@ -371,6 +388,11 @@ func (s *Service) storeAccessToken(accessToken, clientID string, scope string, s
 		"token_type": "Bearer",
 		"issued_at":  now.Unix(),
 		"expires_at": expiresAt,
+	}
+
+	// Add extra claims if provided (e.g., team_id, tenant_id)
+	for key, value := range extraClaims {
+		tokenData[key] = value
 	}
 
 	ttl := time.Duration(expiresIn) * time.Second
@@ -415,14 +437,14 @@ func (s *Service) revokeAccessToken(accessToken string) error {
 }
 
 // generateRefreshToken generates and stores a new refresh token with scope and subject
-func (s *Service) generateRefreshToken(clientID, scope, subject string, expiresIn ...int) (string, error) {
+func (s *Service) generateRefreshToken(clientID, scope, subject string, expiresIn int, extraClaims map[string]interface{}) (string, error) {
 	refreshToken, err := s.generateToken("rfk", clientID)
 	if err != nil {
 		return "", err
 	}
 
 	// Store refresh token with metadata
-	err = s.storeRefreshTokenWithScope(refreshToken, clientID, scope, subject, expiresIn...)
+	err = s.storeRefreshTokenWithScope(refreshToken, clientID, scope, subject, expiresIn, extraClaims)
 	if err != nil {
 		return "", err
 	}
@@ -529,7 +551,7 @@ func (s *Service) storeRefreshToken(refreshToken, clientID string) error {
 }
 
 // storeRefreshTokenWithScope stores refresh token with metadata including scope and subject
-func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subject string, expiresIn ...int) error {
+func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subject string, expiresIn int, extraClaims map[string]interface{}) error {
 	tokenData := map[string]interface{}{
 		"client_id": clientID,
 		"scope":     scope,
@@ -538,9 +560,14 @@ func (s *Service) storeRefreshTokenWithScope(refreshToken, clientID, scope, subj
 		"issued_at": time.Now().Unix(),
 	}
 
+	// Add extra claims if provided (e.g., team_id, tenant_id)
+	for key, value := range extraClaims {
+		tokenData[key] = value
+	}
+
 	expires := s.config.Token.RefreshTokenLifetime
-	if len(expiresIn) > 0 && expiresIn[0] > 0 {
-		expires = time.Duration(expiresIn[0]) * time.Second
+	if expiresIn > 0 {
+		expires = time.Duration(expiresIn) * time.Second
 	}
 
 	return s.store.Set(s.refreshTokenKey(refreshToken), tokenData, expires)

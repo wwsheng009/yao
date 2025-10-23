@@ -227,6 +227,7 @@
       "comment": "User account status",
       "option": [
         "pending", // New user awaiting email verification or admin approval
+        "pending_invite", // New user awaiting invitation code verification
         "active", // Normal user with full access to all features
         "disabled", // Disabled by admin, cannot login but data retained
         "suspended", // Temporarily banned due to policy violations
@@ -346,6 +347,30 @@
       "label": "Last Login IP",
       "comment": "Last login IP address",
       "length": 46,
+      "nullable": true
+    },
+    {
+      "name": "last_login_user_agent",
+      "type": "string",
+      "label": "Last Login User Agent",
+      "comment": "Last login user agent string",
+      "length": 512,
+      "nullable": true
+    },
+    {
+      "name": "last_login_device",
+      "type": "string",
+      "label": "Last Login Device",
+      "comment": "Last login device type (e.g., mobile, desktop, tablet)",
+      "length": 50,
+      "nullable": true
+    },
+    {
+      "name": "last_login_platform",
+      "type": "string",
+      "label": "Last Login Platform",
+      "comment": "Last login platform (e.g., ios, android, web)",
+      "length": 50,
       "nullable": true
     },
     {

@@ -434,15 +434,21 @@ func (s *Service) GetKeyID() string {
 }
 
 // SignToken signs a token based on the configured format (jwt or opaque)
-func (s *Service) SignToken(tokenType, clientID, scope, subject string, expiresIn int) (string, error) {
+// extraClaims: optional extra claims to add to the token (e.g., team_id, tenant_id)
+func (s *Service) SignToken(tokenType, clientID, scope, subject string, expiresIn int, extraClaims ...map[string]interface{}) (string, error) {
+	var claims map[string]interface{}
+	if len(extraClaims) > 0 {
+		claims = extraClaims[0]
+	}
+
 	switch s.config.Token.AccessTokenFormat {
 	case "jwt":
-		return s.signJWTToken(tokenType, clientID, scope, subject, expiresIn)
+		return s.signJWTToken(tokenType, clientID, scope, subject, expiresIn, claims)
 	case "opaque":
 		return s.signOpaqueToken(tokenType, clientID, scope, subject)
 	default:
 		// Default to JWT if format is not specified or unknown
-		return s.signJWTToken(tokenType, clientID, scope, subject, expiresIn)
+		return s.signJWTToken(tokenType, clientID, scope, subject, expiresIn, claims)
 	}
 }
 
@@ -458,7 +464,7 @@ func (s *Service) VerifyToken(token string) (*types.TokenClaims, error) {
 }
 
 // SignIDToken signs an ID token with specific parameters and stores it
-func (s *Service) SignIDToken(clientID, scope string, expiresIn int, userdata *types.OIDCUserInfo) (string, error) {
+func (s *Service) SignIDToken(clientID, scope string, expiresIn int, userdata *types.OIDCUserInfo, extraClaims ...map[string]interface{}) (string, error) {
 	if s.signingCerts == nil || s.signingCerts.SigningKey == nil {
 		return "", fmt.Errorf("signing certificates not initialized")
 	}
@@ -491,6 +497,13 @@ func (s *Service) SignIDToken(clientID, scope string, expiresIn int, userdata *t
 		"exp": idTokenClaims.Exp,
 		"iat": idTokenClaims.Iat,
 		"jti": generateJTI(),
+	}
+
+	// Add extra claims if provided (e.g., team_id, tenant_id)
+	if len(extraClaims) > 0 {
+		for key, value := range extraClaims[0] {
+			claims[key] = value
+		}
 	}
 
 	// Add user information from userdata
@@ -553,6 +566,64 @@ func (s *Service) SignIDToken(clientID, scope string, expiresIn int, userdata *t
 		claims["updated_at"] = *userdata.UpdatedAt
 	}
 
+	// Add Yao custom fields with namespace
+	if userdata.YaoUserID != "" {
+		claims["yao:user_id"] = userdata.YaoUserID
+	}
+	if userdata.YaoTenantID != "" {
+		claims["yao:tenant_id"] = userdata.YaoTenantID
+	}
+	if userdata.YaoTeamID != "" {
+		claims["yao:team_id"] = userdata.YaoTeamID
+	}
+	if userdata.YaoIsOwner != nil {
+		claims["yao:is_owner"] = *userdata.YaoIsOwner
+	}
+	if userdata.YaoTypeID != "" {
+		claims["yao:type_id"] = userdata.YaoTypeID
+	}
+	// Add Yao team info if present
+	if userdata.YaoTeam != nil {
+		teamMap := make(map[string]interface{})
+		if userdata.YaoTeam.TeamID != "" {
+			teamMap["team_id"] = userdata.YaoTeam.TeamID
+		}
+		if userdata.YaoTeam.Logo != "" {
+			teamMap["logo"] = userdata.YaoTeam.Logo
+		}
+		if userdata.YaoTeam.Name != "" {
+			teamMap["name"] = userdata.YaoTeam.Name
+		}
+		if userdata.YaoTeam.OwnerID != "" {
+			teamMap["owner_id"] = userdata.YaoTeam.OwnerID
+		}
+		if userdata.YaoTeam.Description != "" {
+			teamMap["description"] = userdata.YaoTeam.Description
+		}
+		if userdata.YaoTeam.UpdatedAt != nil {
+			teamMap["updated_at"] = *userdata.YaoTeam.UpdatedAt
+		}
+		if len(teamMap) > 0 {
+			claims["yao:team"] = teamMap
+		}
+	}
+	// Add Yao type info if present
+	if userdata.YaoType != nil {
+		typeMap := make(map[string]interface{})
+		if userdata.YaoType.TypeID != "" {
+			typeMap["type_id"] = userdata.YaoType.TypeID
+		}
+		if userdata.YaoType.Name != "" {
+			typeMap["name"] = userdata.YaoType.Name
+		}
+		if userdata.YaoType.Locale != "" {
+			typeMap["locale"] = userdata.YaoType.Locale
+		}
+		if len(typeMap) > 0 {
+			claims["yao:type"] = typeMap
+		}
+	}
+
 	// Add scope if provided (useful for determining which claims to include)
 	if scope != "" {
 		claims["scope"] = scope
@@ -577,25 +648,32 @@ func (s *Service) SignIDToken(clientID, scope string, expiresIn int, userdata *t
 }
 
 // signJWTToken signs a JWT token using the configured signing algorithm
-func (s *Service) signJWTToken(tokenType, clientID, scope, subject string, expiresIn int) (string, error) {
+func (s *Service) signJWTToken(tokenType, clientID, scope, subject string, expiresIn int, extraClaims map[string]interface{}) (string, error) {
 	if s.signingCerts == nil || s.signingCerts.SigningKey == nil {
 		return "", fmt.Errorf("signing certificates not initialized")
 	}
 
 	now := time.Now()
-	claims := &types.JWTClaims{
-		StandardClaims: jwt.StandardClaims{
-			Issuer:    s.config.IssuerURL,
-			Subject:   subject,
-			Audience:  clientID,
-			ExpiresAt: now.Add(time.Duration(expiresIn) * time.Second).Unix(),
-			NotBefore: now.Unix(),
-			IssuedAt:  now.Unix(),
-			Id:        generateJTI(),
-		},
-		ClientID:  clientID,
-		Scope:     scope,
-		TokenType: tokenType,
+
+	// Use MapClaims to support extra claims
+	claims := jwt.MapClaims{
+		// Standard JWT claims
+		"iss": s.config.IssuerURL,
+		"sub": subject,
+		"aud": clientID,
+		"exp": now.Add(time.Duration(expiresIn) * time.Second).Unix(),
+		"nbf": now.Unix(),
+		"iat": now.Unix(),
+		"jti": generateJTI(),
+		// Custom OAuth claims
+		"client_id":  clientID,
+		"scope":      scope,
+		"token_type": tokenType,
+	}
+
+	// Add extra claims if provided (e.g., team_id, tenant_id)
+	for key, value := range extraClaims {
+		claims[key] = value
 	}
 
 	// Create token with claims
@@ -614,8 +692,8 @@ func (s *Service) verifyJWTToken(tokenString string) (*types.TokenClaims, error)
 		return nil, fmt.Errorf("signing certificates not initialized")
 	}
 
-	// Parse token with claims
-	token, err := jwt.ParseWithClaims(tokenString, &types.JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	// Parse token with MapClaims to support extra claims
+	token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Validate signing method
 		expectedMethod := getSigningMethod(s.config.Token.AccessTokenSigningAlg)
 		if token.Method != expectedMethod {
@@ -635,22 +713,75 @@ func (s *Service) verifyJWTToken(tokenString string) (*types.TokenClaims, error)
 	}
 
 	// Extract claims
-	jwtClaims, ok := token.Claims.(*types.JWTClaims)
+	mapClaims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, fmt.Errorf("invalid JWT claims type")
 	}
 
 	// Convert to TokenClaims
 	tokenClaims := &types.TokenClaims{
-		Subject:   jwtClaims.Subject,
-		ClientID:  jwtClaims.ClientID,
-		Scope:     jwtClaims.Scope,
-		TokenType: jwtClaims.TokenType,
-		ExpiresAt: time.Unix(jwtClaims.ExpiresAt, 0),
-		IssuedAt:  time.Unix(jwtClaims.IssuedAt, 0),
-		Issuer:    jwtClaims.Issuer,
-		Audience:  []string{jwtClaims.Audience},
-		JTI:       jwtClaims.Id,
+		Extra: make(map[string]interface{}),
+	}
+
+	// Extract standard claims
+	if sub, ok := mapClaims["sub"].(string); ok {
+		tokenClaims.Subject = sub
+	}
+	if clientID, ok := mapClaims["client_id"].(string); ok {
+		tokenClaims.ClientID = clientID
+	}
+	if scope, ok := mapClaims["scope"].(string); ok {
+		tokenClaims.Scope = scope
+	}
+	if tokenType, ok := mapClaims["token_type"].(string); ok {
+		tokenClaims.TokenType = tokenType
+	}
+	if iss, ok := mapClaims["iss"].(string); ok {
+		tokenClaims.Issuer = iss
+	}
+	if jti, ok := mapClaims["jti"].(string); ok {
+		tokenClaims.JTI = jti
+	}
+
+	// Extract time claims
+	if exp, ok := mapClaims["exp"].(float64); ok {
+		tokenClaims.ExpiresAt = time.Unix(int64(exp), 0)
+	}
+	if iat, ok := mapClaims["iat"].(float64); ok {
+		tokenClaims.IssuedAt = time.Unix(int64(iat), 0)
+	}
+
+	// Extract audience
+	if aud, ok := mapClaims["aud"].(string); ok {
+		tokenClaims.Audience = []string{aud}
+	} else if audArray, ok := mapClaims["aud"].([]interface{}); ok {
+		audience := make([]string, 0, len(audArray))
+		for _, a := range audArray {
+			if audStr, ok := a.(string); ok {
+				audience = append(audience, audStr)
+			}
+		}
+		tokenClaims.Audience = audience
+	}
+
+	// Extract extended claims for multi-tenancy and team support
+	if teamID, ok := mapClaims["team_id"].(string); ok {
+		tokenClaims.TeamID = teamID
+	}
+	if tenantID, ok := mapClaims["tenant_id"].(string); ok {
+		tokenClaims.TenantID = tenantID
+	}
+
+	// Store all extra claims for flexibility
+	standardClaims := map[string]bool{
+		"sub": true, "client_id": true, "scope": true, "token_type": true,
+		"exp": true, "iat": true, "nbf": true, "iss": true, "aud": true, "jti": true,
+		"team_id": true, "tenant_id": true,
+	}
+	for key, value := range mapClaims {
+		if !standardClaims[key] {
+			tokenClaims.Extra[key] = value
+		}
 	}
 
 	return tokenClaims, nil

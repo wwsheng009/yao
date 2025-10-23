@@ -13,6 +13,18 @@ type Provider interface {
 	// SendBatch sends multiple messages in batch
 	SendBatch(ctx context.Context, messages []*Message) error
 
+	// SendT sends a message using a template with specified type
+	// templateType specifies which template variant to use (mail, sms, whatsapp)
+	SendT(ctx context.Context, templateID string, templateType TemplateType, data TemplateData) error
+
+	// SendTBatch sends multiple messages using the same template with different data
+	// templateType specifies which template variant to use (mail, sms, whatsapp)
+	SendTBatch(ctx context.Context, templateID string, templateType TemplateType, dataList []TemplateData) error
+
+	// SendTBatchMixed sends multiple messages using different templates with different data
+	// Each TemplateRequest can optionally specify its own MessageType
+	SendTBatchMixed(ctx context.Context, templateRequests []TemplateRequest) error
+
 	// TriggerWebhook processes webhook requests and converts to Message
 	TriggerWebhook(c interface{}) (*Message, error)
 
@@ -39,6 +51,28 @@ type Messenger interface {
 
 	// SendWithProvider sends a message using a specific provider
 	SendWithProvider(ctx context.Context, providerName string, message *Message) error
+
+	// SendT sends a message using a template
+	// messageType is optional - if not specified, the first available template type will be used
+	SendT(ctx context.Context, channel string, templateID string, data TemplateData, messageType ...MessageType) error
+
+	// SendTWithProvider sends a message using a template and specific provider
+	// messageType is optional - if not specified, the first available template type will be used
+	SendTWithProvider(ctx context.Context, providerName string, templateID string, data TemplateData, messageType ...MessageType) error
+
+	// SendTBatch sends multiple messages using the same template with different data
+	// messageType is optional - if not specified, the first available template type will be used
+	SendTBatch(ctx context.Context, channel string, templateID string, dataList []TemplateData, messageType ...MessageType) error
+
+	// SendTBatchWithProvider sends multiple messages using the same template with different data and specific provider
+	// messageType is optional - if not specified, the first available template type will be used
+	SendTBatchWithProvider(ctx context.Context, providerName string, templateID string, dataList []TemplateData, messageType ...MessageType) error
+
+	// SendTBatchMixed sends multiple messages using different templates with different data
+	SendTBatchMixed(ctx context.Context, channel string, templateRequests []TemplateRequest) error
+
+	// SendTBatchMixedWithProvider sends multiple messages using different templates with different data and specific provider
+	SendTBatchMixedWithProvider(ctx context.Context, providerName string, templateRequests []TemplateRequest) error
 
 	// SendBatch sends multiple messages in batch
 	SendBatch(ctx context.Context, channel string, messages []*Message) error

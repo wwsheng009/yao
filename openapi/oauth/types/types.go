@@ -6,6 +6,16 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// LoginContext represents the context information for login
+type LoginContext struct {
+	IP         string `json:"ip,omitempty"`          // Client IP address
+	UserAgent  string `json:"user_agent,omitempty"`  // Client user agent
+	Device     string `json:"device,omitempty"`      // Device type (e.g., "mobile", "desktop", "tablet")
+	Platform   string `json:"platform,omitempty"`    // Platform (e.g., "ios", "android", "web")
+	Location   string `json:"location,omitempty"`    // Geographic location (optional)
+	RememberMe bool   `json:"remember_me,omitempty"` // Remember Me flag for extended session
+}
+
 // MFAOptions contains configuration for MFA operations
 type MFAOptions struct {
 	Issuer         string // Issuer name displayed in authenticator app
@@ -24,6 +34,11 @@ type ErrorResponse struct {
 	ErrorDescription string `json:"error_description,omitempty"`
 	ErrorURI         string `json:"error_uri,omitempty"`
 	State            string `json:"state,omitempty"`
+
+	// Extended fields for ACL and permission errors (optional, following OAuth 2.0 extensibility)
+	Reason         string   `json:"reason,omitempty"`          // Detailed reason for denial
+	RequiredScopes []string `json:"required_scopes,omitempty"` // Required scopes for access
+	MissingScopes  []string `json:"missing_scopes,omitempty"`  // Scopes that are missing
 }
 
 // Error implements the error interface
@@ -572,6 +587,27 @@ type TokenClaims struct {
 	Issuer    string    `json:"iss,omitempty"`   // Token issuer
 	Audience  []string  `json:"aud,omitempty"`   // Token audience
 	JTI       string    `json:"jti,omitempty"`   // JWT ID (for JWT tokens)
+
+	// Extended claims for multi-tenancy and team support
+	TeamID   string `json:"team_id,omitempty"`   // Team identifier
+	TenantID string `json:"tenant_id,omitempty"` // Tenant identifier
+
+	// Extra claims for flexibility
+	Extra map[string]interface{} `json:"-"` // Additional custom claims (not serialized directly)
+}
+
+// DataConstraints represents data access constraints
+// These constraints are set by ACL enforcement and used by API handlers to filter data
+type DataConstraints struct {
+	// Built-in constraints
+	OwnerOnly   bool `json:"owner_only,omitempty"`   // Only access owner's data (current owner)
+	CreatorOnly bool `json:"creator_only,omitempty"` // Only access creator's data (who created)
+	EditorOnly  bool `json:"editor_only,omitempty"`  // Only access editor's data (who last updated)
+	TeamOnly    bool `json:"team_only,omitempty"`    // Only access team's data (filter by TeamID)
+
+	// Extra constraints (user-defined, flexible extension)
+	// Examples: department_only, region_only, project_only
+	Extra map[string]interface{} `json:"extra,omitempty"` // Extra constraints
 }
 
 // AuthorizedInfo represents authorized information
@@ -581,6 +617,14 @@ type AuthorizedInfo struct {
 	Scope     string `json:"scope,omitempty"`      // Access scope
 	SessionID string `json:"session_id,omitempty"` // Session ID
 	UserID    string `json:"user_id,omitempty"`    // User ID
+
+	// Extended fields for multi-tenancy and team support
+	TeamID     string `json:"team_id,omitempty"`     // Team identifier
+	TenantID   string `json:"tenant_id,omitempty"`   // Tenant identifier
+	RememberMe bool   `json:"remember_me,omitempty"` // Remember Me flag preserved from login
+
+	// Data access constraints (set by ACL enforcement)
+	Constraints DataConstraints `json:"constraints,omitempty"`
 }
 
 // JWTClaims represents JWT-specific claims structure
@@ -589,6 +633,10 @@ type JWTClaims struct {
 	ClientID  string `json:"client_id"`       // OAuth client ID
 	Scope     string `json:"scope,omitempty"` // Access scope
 	TokenType string `json:"token_type"`      // Token type
+
+	// Extended claims for multi-tenancy and team support
+	TeamID   string `json:"team_id,omitempty"`   // Team identifier
+	TenantID string `json:"tenant_id,omitempty"` // Tenant identifier
 }
 
 // ClientConfig represents default client configuration
@@ -665,8 +713,34 @@ type OIDCUserInfo struct {
 	// OIDC Address Claim (structured)
 	Address *OIDCAddress `json:"address,omitempty"` // Physical mailing address
 
+	// Additional custom claims with namespace
+	YaoUserID   string        `json:"yao:user_id,omitempty"`   // Yao user ID (original user ID)
+	YaoTenantID string        `json:"yao:tenant_id,omitempty"` // Yao tenant ID
+	YaoTeamID   string        `json:"yao:team_id,omitempty"`   // Yao team ID
+	YaoTeam     *OIDCTeamInfo `json:"yao:team,omitempty"`      // Yao team info
+	YaoIsOwner  *bool         `json:"yao:is_owner,omitempty"`  // Yao is owner
+	YaoTypeID   string        `json:"yao:type_id,omitempty"`   // Yao user type ID
+	YaoType     *OIDCTypeInfo `json:"yao:type,omitempty"`      // Yao user type info
+
 	// Raw response for debugging and custom processing
 	Raw map[string]interface{} `json:"raw,omitempty"` // Original provider response
+}
+
+// OIDCTeamInfo represents team information based on OIDC standard
+type OIDCTeamInfo struct {
+	TeamID      string `json:"team_id,omitempty"`     // Team identifier
+	Logo        string `json:"logo,omitempty"`        // Team logo
+	Name        string `json:"name,omitempty"`        // Team name
+	OwnerID     string `json:"owner_id,omitempty"`    // Team owner ID
+	Description string `json:"description,omitempty"` // Team description
+	UpdatedAt   *int64 `json:"updated_at,omitempty"`  // Team updated at (seconds since epoch)
+}
+
+// OIDCTypeInfo represents user type information based on OIDC standard
+type OIDCTypeInfo struct {
+	TypeID string `json:"type_id,omitempty"` // User type identifier
+	Name   string `json:"name,omitempty"`    // User type name
+	Locale string `json:"locale,omitempty"`  // User type locale
 }
 
 // OIDCAddress represents the OIDC address claim structure

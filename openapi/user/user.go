@@ -5,29 +5,84 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/process"
+	"github.com/yaoapp/yao/openapi/oauth/acl"
 	"github.com/yaoapp/yao/openapi/oauth/types"
 )
 
 func init() {
+	// Register builtin scopes for temporary tokens (before ACL initialization)
+	// These scopes grant limited access to specific endpoints for special purposes
+	acl.Register(
+		// MFA verification scope - allows users to complete MFA setup during login
+		&acl.ScopeDefinition{
+			Name:        ScopeMFAVerification,
+			Description: "MFA verification - temporary access for completing MFA challenge",
+			Endpoints: []string{
+				"POST /user/mfa/totp/verify",
+				"POST /user/mfa/sms/verify",
+				"GET /user/mfa/totp",
+			},
+		},
+		// Team selection scope - allows users to select a team and issue new tokens
+		&acl.ScopeDefinition{
+			Name:        ScopeTeamSelection,
+			Description: "Team selection - temporary access for selecting a team after login",
+			Endpoints: []string{
+				"POST /user/teams/select",
+				"GET /user/teams/config",
+			},
+		},
+		// Invite verification scope - allows users to accept team invitations
+		&acl.ScopeDefinition{
+			Name:        ScopeInviteVerification,
+			Description: "Invite verification - temporary access for accepting team invitations",
+			Endpoints: []string{
+				"POST /user/teams/invitations/:invitation_id/accept",
+				"GET /user/teams/invitations/:invitation_id",
+			},
+		},
+		// Entry verification scope - allows users to complete registration or login verification
+		&acl.ScopeDefinition{
+			Name:        ScopeEntryVerification,
+			Description: "Entry verification - temporary access for completing registration or login verification",
+			Endpoints: []string{
+				"POST /user/entry/register",
+				"POST /user/entry/login",
+				"POST /user/entry/invite/verify",
+				"POST /user/entry/otp",
+			},
+		},
+	)
+
 	// Register user process handlers
 	process.RegisterGroup("user", map[string]process.Handler{
-		"team.list":   ProcessTeamList,
-		"team.get":    ProcessTeamGet,
-		"team.create": ProcessTeamCreate,
-		"team.update": ProcessTeamUpdate,
-		"team.delete": ProcessTeamDelete,
+		"team.list":              ProcessTeamList,
+		"team.get":               ProcessTeamGet,
+		"team.create":            ProcessTeamCreate,
+		"team.update":            ProcessTeamUpdate,
+		"team.delete":            ProcessTeamDelete,
+		"team.invitation.list":   ProcessTeamInvitationList,
+		"team.invitation.get":    ProcessTeamInvitationGet,
+		"team.invitation.create": ProcessTeamInvitationCreate,
+		"team.invitation.resend": ProcessTeamInvitationResend,
+		"team.invitation.delete": ProcessTeamInvitationDelete,
 	})
 }
 
 // Attach attaches the signin handlers to the router
 func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 
-	// User Authentication (migrated from /signin)
-	group.GET("/login", getLoginConfig)             // Get login page config (public) - migrated from /signin
-	group.POST("/login", login)                     // User login (public) - migrated from /signin
-	group.GET("/login/captcha", getCaptcha)         // Get captcha for login (public)
-	group.POST("/register", placeholder)            // User register (public)
-	group.POST("/logout", oauth.Guard, placeholder) // User logout
+	// User Authentication
+	group.GET("/entry", getEntryConfig)         // Get unified auth entry config (public)
+	group.GET("/entry/captcha", getCaptcha)     // Get captcha for login/register (public)
+	group.POST("/entry/verify", GinEntryVerify) // Verify login/register email or mobile (public)
+
+	// Register a new user
+	group.POST("/entry/register", oauth.Guard, GinEntryRegister)     // Register a new user
+	group.POST("/entry/login", oauth.Guard, GinEntryLogin)           // Login a user
+	group.POST("/entry/invite/verify", oauth.Guard, GinVerifyInvite) // Verify invitation code (redeem)
+	group.POST("/entry/otp", oauth.Guard, GinSendOTP)                // Send OTP
+	group.POST("/logout", oauth.Guard, GinLogout)                    // User logout
 
 	// Logined User Settings
 	attachProfile(group, oauth)      // User profile management
@@ -51,29 +106,42 @@ func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 
 // User Team Management
 func attachTeam(group *gin.RouterGroup, oauth types.OAuth) {
+	// Public endpoint for viewing team invitations (no auth required)
+	// Must be registered BEFORE the team group with auth guard
+	group.GET("/teams/invitations/:invitation_id", GinTeamInvitationGetPublic)                   // GET /user/teams/invitations/:invitation_id - Get invitation details (public)
+	group.POST("/teams/invitations/:invitation_id/accept", oauth.Guard, GinTeamInvitationAccept) // POST /user/teams/invitations/:invitation_id/accept - Accept invitation and login
+
 	team := group.Group("/teams")
+
+	// Protected endpoints (authentication required)
 	team.Use(oauth.Guard)
 
-	// Team CRUD
-	team.GET("/", GinTeamList)              // Get user teams
-	team.GET("/:team_id", GinTeamGet)       // Get user team details
-	team.POST("/", GinTeamCreate)           // Create user team
-	team.PUT("/:team_id", GinTeamUpdate)    // Update user team
-	team.DELETE("/:team_id", GinTeamDelete) // Delete user team
+	// Team Configuration
+	team.GET("/config", GinTeamConfig) // Get team configuration (requires authentication)
 
-	// Member Management
-	team.GET("/:team_id/members", GinMemberList)                 // Get user team members
-	team.GET("/:team_id/members/:member_id", GinMemberGet)       // Get user team member details
-	team.POST("/:team_id/members/direct", GinMemberCreateDirect) // Add member directly (for bots/system)
-	team.PUT("/:team_id/members/:member_id", GinMemberUpdate)    // Update user team member
-	team.DELETE("/:team_id/members/:member_id", GinMemberDelete) // Remove user team member
+	// Team Selection
+	team.POST("/select", GinTeamSelection) // POST /teams/select - Select a team and issue tokens with team_id (requires authentication)
 
-	// Member Invitation Management
-	team.POST("/:team_id/invitations", GinInvitationCreate)                      // Send team invitation
-	team.GET("/:team_id/invitations", GinInvitationList)                         // Get team invitations
-	team.GET("/:team_id/invitations/:invitation_id", GinInvitationGet)           // Get invitation details
-	team.PUT("/:team_id/invitations/:invitation_id/resend", GinInvitationResend) // Resend invitation
-	team.DELETE("/:team_id/invitations/:invitation_id", GinInvitationDelete)     // Cancel invitation
+	// Team CRUD - Standard REST endpoints
+	team.GET("/", GinTeamList)         // GET /teams - List user teams
+	team.POST("/", GinTeamCreate)      // POST /teams - Create new team
+	team.GET("/:id", GinTeamGet)       // GET /teams/:id - Get team details
+	team.PUT("/:id", GinTeamUpdate)    // PUT /teams/:id - Update team
+	team.DELETE("/:id", GinTeamDelete) // DELETE /teams/:id - Delete team
+
+	// Team Members - Nested resource endpoints
+	team.GET("/:id/members", GinMemberList)                 // GET /teams/:id/members - List team members
+	team.POST("/:id/members", GinMemberCreateDirect)        // POST /teams/:id/members - Add team member
+	team.GET("/:id/members/:member_id", GinMemberGet)       // GET /teams/:id/members/:member_id - Get member details
+	team.PUT("/:id/members/:member_id", GinMemberUpdate)    // PUT /teams/:id/members/:member_id - Update member
+	team.DELETE("/:id/members/:member_id", GinMemberDelete) // DELETE /teams/:id/members/:member_id - Remove member
+
+	// Team Invitations - Nested resource endpoints
+	team.GET("/:id/invitations", GinTeamInvitationList)                         // GET /teams/:id/invitations - List invitations
+	team.POST("/:id/invitations", GinTeamInvitationCreate)                      // POST /teams/:id/invitations - Send invitation
+	team.GET("/:id/invitations/:invitation_id", GinTeamInvitationGet)           // GET /teams/:id/invitations/:invitation_id - Get invitation (admin)
+	team.PUT("/:id/invitations/:invitation_id/resend", GinTeamInvitationResend) // PUT /teams/:id/invitations/:invitation_id/resend - Resend invitation
+	team.DELETE("/:id/invitations/:invitation_id", GinTeamInvitationDelete)     // DELETE /teams/:id/invitations/:invitation_id - Cancel invitation
 }
 
 // Invitation Response Management (Cross-module invitation handling)
@@ -172,8 +240,8 @@ func attachProfile(group *gin.RouterGroup, oauth types.OAuth) {
 	profile := group.Group("/profile")
 	profile.Use(oauth.Guard)
 
-	profile.GET("/", placeholder) // Get user profile
-	profile.PUT("/", placeholder) // Update user profile
+	profile.GET("/", GinProfileGet) // Get user profile
+	profile.PUT("/", placeholder)   // Update user profile
 }
 
 // User management (CRUD)
