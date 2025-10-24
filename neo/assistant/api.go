@@ -602,10 +602,7 @@ func (ast *Assistant) streamChat(
 				// The default output
 				output := chatMessage.New().Done()
 				if res != nil && res.Output != nil && len(res.Output) > 0 {
-					output = chatMessage.New().Map(map[string]interface{}{"text": string(res.Output[0].Bytes),
-						"type":  res.Output[0].Type,
-						"props": res.Output[0].Props,
-						"done":  true})
+					output = chatMessage.New().Map(map[string]interface{}{"text": res.Output, "done": true})
 					output.Retry = ctx.Retry
 					output.Silent = ctx.Silent
 				}
@@ -1117,7 +1114,7 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 
 	for index, message := range messages {
 		// Ignore the tool, think, error
-		if message.Type == "think" || message.Type == "error" {
+		if message.Type == "tool" || message.Type == "think" || message.Type == "error" {
 			continue
 		}
 
@@ -1132,9 +1129,6 @@ func (ast *Assistant) requestMessages(ctx context.Context, messages []chatMessag
 		}
 
 		content := message.String()
-		if message.Type == "tool" {
-			content = message.ToolContentString()
-		}
 		if content == "" {
 			// fmt.Println("--------------------------------")
 			// fmt.Println("Request Message Error")
