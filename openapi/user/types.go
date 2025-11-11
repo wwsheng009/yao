@@ -265,6 +265,18 @@ type LoginSuccessResponse struct {
 // LoginContext is an alias for the oauth types LoginContext
 type LoginContext = oauthtypes.LoginContext
 
+// IssueTokensParams represents parameters for issueTokens function
+type IssueTokensParams struct {
+	UserID   string                 // User ID
+	TeamID   string                 // Team ID (empty for personal account)
+	Team     map[string]interface{} // Team data (nil for personal account)
+	Member   map[string]interface{} // Member profile data (nil for personal account or if not available)
+	User     map[string]interface{} // User data
+	Subject  string                 // Token subject
+	Scopes   []string               // Token scopes
+	LoginCtx *LoginContext          // Login context (IP, user agent, etc.)
+}
+
 // ==== Entry Verification Types ====
 
 // EntryVerifyRequest represents the request to verify entry (login/register)
@@ -355,6 +367,7 @@ type TeamResponse struct {
 	TeamID      string `json:"team_id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	Logo        string `json:"logo,omitempty"` // Team logo URL or file ID
 	OwnerID     string `json:"owner_id"`
 	Status      string `json:"status"`
 	IsVerified  bool   `json:"is_verified"`
@@ -375,6 +388,7 @@ type TeamDetailResponse struct {
 type CreateTeamRequest struct {
 	Name        string        `json:"name" binding:"required"`
 	Description string        `json:"description,omitempty"`
+	Logo        string        `json:"logo,omitempty"` // Team logo URL or file ID
 	Settings    *TeamSettings `json:"settings,omitempty"`
 }
 
@@ -382,6 +396,7 @@ type CreateTeamRequest struct {
 type UpdateTeamRequest struct {
 	Name        string        `json:"name,omitempty"`
 	Description string        `json:"description,omitempty"`
+	Logo        string        `json:"logo,omitempty"` // Team logo URL or file ID
 	Settings    *TeamSettings `json:"settings,omitempty"`
 }
 
@@ -394,34 +409,112 @@ type TeamSelectionRequest struct {
 
 // MemberResponse represents a team member in API responses
 type MemberResponse struct {
-	ID           int64           `json:"id"`
-	TeamID       string          `json:"team_id"`
-	UserID       string          `json:"user_id"`
-	MemberType   string          `json:"member_type"`
-	RoleID       string          `json:"role_id"`
-	Status       string          `json:"status"`
-	InvitedBy    string          `json:"invited_by,omitempty"`
-	InvitedAt    string          `json:"invited_at,omitempty"`
-	JoinedAt     string          `json:"joined_at,omitempty"`
-	LastActivity string          `json:"last_activity,omitempty"`
-	Settings     *MemberSettings `json:"settings,omitempty"`
-	CreatedAt    string          `json:"created_at"`
-	UpdatedAt    string          `json:"updated_at"`
+	ID                  int64           `json:"id"`
+	MemberID            string          `json:"member_id,omitempty"`
+	TeamID              string          `json:"team_id"`
+	UserID              string          `json:"user_id"`
+	MemberType          string          `json:"member_type"`
+	DisplayName         string          `json:"display_name,omitempty"`
+	Bio                 string          `json:"bio,omitempty"`
+	Avatar              string          `json:"avatar,omitempty"`
+	Email               string          `json:"email,omitempty"`
+	RobotEmail          string          `json:"robot_email,omitempty"` // Globally unique email for robot members
+	RoleID              string          `json:"role_id"`
+	IsOwner             interface{}     `json:"is_owner,omitempty"` // Can be int or bool
+	Status              string          `json:"status"`
+	InvitationID        string          `json:"invitation_id,omitempty"`
+	InvitedBy           string          `json:"invited_by,omitempty"`
+	InvitedAt           string          `json:"invited_at,omitempty"`
+	InvitationToken     string          `json:"invitation_token,omitempty"`
+	InvitationExpiresAt string          `json:"invitation_expires_at,omitempty"`
+	JoinedAt            string          `json:"joined_at,omitempty"`
+	LastActiveAt        string          `json:"last_active_at,omitempty"`
+	LoginCount          int             `json:"login_count,omitempty"`
+	Settings            *MemberSettings `json:"settings,omitempty"`
+	CreatedAt           string          `json:"created_at"`
+	UpdatedAt           string          `json:"updated_at"`
 }
 
 // MemberDetailResponse represents detailed member information
 type MemberDetailResponse struct {
 	MemberResponse
-	// Add additional fields that are only included in detailed responses
+	// Robot-specific fields (only for robot members)
+	SystemPrompt      string                 `json:"system_prompt,omitempty"`
+	ManagerID         string                 `json:"manager_id,omitempty"`
+	AuthorizedSenders []string               `json:"authorized_senders,omitempty"` // Whitelist of emails authorized to send commands
+	EmailFilterRules  []string               `json:"email_filter_rules,omitempty"` // Email filtering rules (supports regex patterns)
+	RobotConfig       map[string]interface{} `json:"robot_config,omitempty"`
+	Agents            []string               `json:"agents,omitempty"`
+	MCPServers        []string               `json:"mcp_servers,omitempty"`
+	LanguageModel     string                 `json:"language_model,omitempty"`
+	CostLimit         float64                `json:"cost_limit,omitempty"`
+	AutonomousMode    interface{}            `json:"autonomous_mode,omitempty"` // Can be bool or string
+	LastRobotActivity string                 `json:"last_robot_activity,omitempty"`
+	RobotStatus       string                 `json:"robot_status,omitempty"`
+	Notes             string                 `json:"notes,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+	// Additional user info (joined from user table)
 	UserInfo map[string]interface{} `json:"user_info,omitempty"`
 }
 
-// CreateMemberRequest represents the request to add a member directly
-type CreateMemberRequest struct {
-	UserID     string          `json:"user_id" binding:"required"`
-	MemberType string          `json:"member_type,omitempty"` // "user" or "robot"
-	RoleID     string          `json:"role_id" binding:"required"`
-	Settings   *MemberSettings `json:"settings,omitempty"`
+// CreateRobotMemberRequest represents the request to create a new robot member
+type CreateRobotMemberRequest struct {
+	Name              string   `json:"name" binding:"required"`        // Display name
+	Avatar            string   `json:"avatar,omitempty"`               // Avatar URL or file ID
+	Email             string   `json:"email,omitempty"`                // Email address (optional, for display only)
+	RobotEmail        string   `json:"robot_email" binding:"required"` // Robot's globally unique email address (required)
+	AuthorizedSenders []string `json:"authorized_senders,omitempty"`   // Whitelist of emails authorized to send commands
+	EmailFilterRules  []string `json:"email_filter_rules,omitempty"`   // Email filtering rules (supports regex patterns)
+	Bio               string   `json:"bio,omitempty"`                  // Bio/description
+	RoleID            string   `json:"role" binding:"required"`        // Role ID
+	ManagerID         string   `json:"report_to,omitempty"`            // Direct manager user ID
+	SystemPrompt      string   `json:"prompt" binding:"required"`      // Identity & role prompt
+	LanguageModel     string   `json:"llm,omitempty"`                  // Language model (e.g., "gpt-4")
+	Agents            []string `json:"agents,omitempty"`               // Accessible agents
+	MCPServers        []string `json:"mcp_tools,omitempty"`            // MCP servers/tools
+	AutonomousMode    string   `json:"autonomous_mode,omitempty"`      // "enabled" or "disabled"
+	CostLimit         float64  `json:"cost_limit,omitempty"`           // Monthly cost limit in USD
+}
+
+// UpdateRobotMemberRequest represents the request to update a robot member
+type UpdateRobotMemberRequest struct {
+	Name              string   `json:"name,omitempty"`               // Display name
+	Avatar            string   `json:"avatar,omitempty"`             // Avatar URL or file ID
+	Email             string   `json:"email,omitempty"`              // Email address (optional, for display only)
+	RobotEmail        string   `json:"robot_email,omitempty"`        // Robot's globally unique email address
+	AuthorizedSenders []string `json:"authorized_senders,omitempty"` // Whitelist of emails authorized to send commands
+	EmailFilterRules  []string `json:"email_filter_rules,omitempty"` // Email filtering rules (supports regex patterns)
+	Bio               string   `json:"bio,omitempty"`                // Bio/description
+	RoleID            string   `json:"role,omitempty"`               // Role ID
+	ManagerID         string   `json:"report_to,omitempty"`          // Direct manager user ID
+	SystemPrompt      string   `json:"prompt,omitempty"`             // Identity & role prompt
+	LanguageModel     string   `json:"llm,omitempty"`                // Language model (e.g., "gpt-4")
+	Agents            []string `json:"agents,omitempty"`             // Accessible agents
+	MCPServers        []string `json:"mcp_tools,omitempty"`          // MCP servers/tools
+	AutonomousMode    string   `json:"autonomous_mode,omitempty"`    // "enabled" or "disabled"
+	CostLimit         float64  `json:"cost_limit,omitempty"`         // Monthly cost limit in USD
+	Status            string   `json:"status,omitempty"`             // Status: active, inactive
+	RobotStatus       string   `json:"robot_status,omitempty"`       // Robot status: idle, working, error
+}
+
+// MemberListRequest represents the request to list team members with advanced filtering
+type MemberListRequest struct {
+	// Pagination
+	Page     int `json:"page" form:"page"`         // Page number (default: 1)
+	PageSize int `json:"pagesize" form:"pagesize"` // Page size (default: 20, max: 100)
+
+	// Filters
+	Status      string `json:"status" form:"status"`             // Filter by status: pending, active, inactive, suspended
+	MemberType  string `json:"member_type" form:"member_type"`   // Filter by type: user, robot
+	RoleID      string `json:"role_id" form:"role_id"`           // Filter by role ID
+	Email       string `json:"email" form:"email"`               // Filter by email (exact match)
+	DisplayName string `json:"display_name" form:"display_name"` // Filter by display name (like match)
+
+	// Sorting
+	Order string `json:"order" form:"order"` // Sort order: "field_name [asc|desc]" (e.g., "created_at desc", "joined_at asc"). Direction is optional, defaults to desc
+
+	// Field Selection
+	Fields []string `json:"fields" form:"fields"` // Select specific fields to return (comma-separated in query string)
 }
 
 // UpdateMemberRequest represents the request to update a member
@@ -430,6 +523,52 @@ type UpdateMemberRequest struct {
 	Status       string          `json:"status,omitempty"`
 	Settings     *MemberSettings `json:"settings,omitempty"`
 	LastActivity string          `json:"last_activity,omitempty"`
+}
+
+// UpdateMemberProfileRequest represents the request to update member profile information
+// Only allows updating profile-related fields (display_name, bio, avatar, email)
+type UpdateMemberProfileRequest struct {
+	DisplayName *string `json:"display_name,omitempty"` // Member display name
+	Bio         *string `json:"bio,omitempty"`          // Member bio/description
+	Avatar      *string `json:"avatar,omitempty"`       // Avatar URL or file ID
+	Email       *string `json:"email,omitempty"`        // Email address (for display only)
+}
+
+// ==== Profile API Types ====
+
+// ProfileGetRequest represents the request to get user profile with optional expansions
+type ProfileGetRequest struct {
+	Team   bool `json:"team" form:"team"`     // Include team information
+	Member bool `json:"member" form:"member"` // Include member information
+	Type   bool `json:"type" form:"type"`     // Include type information
+}
+
+// ProfileUpdateResponse represents the response after updating user profile
+type ProfileUpdateResponse struct {
+	UserID  string `json:"user_id"`
+	Message string `json:"message"`
+}
+
+// ProfileUpdateRequest represents the request to update user profile
+// Only allows updating profile-related fields (OIDC standard claims and preferences)
+// Note: preferred_username, email, and phone_number cannot be updated through this endpoint (use dedicated account management endpoints)
+type ProfileUpdateRequest struct {
+	// OIDC Standard Claims - Profile Information
+	Name       *string        `json:"name,omitempty"`
+	GivenName  *string        `json:"given_name,omitempty"`
+	FamilyName *string        `json:"family_name,omitempty"`
+	MiddleName *string        `json:"middle_name,omitempty"`
+	Nickname   *string        `json:"nickname,omitempty"`
+	Profile    *string        `json:"profile,omitempty"`   // Profile page URL
+	Picture    *string        `json:"picture,omitempty"`   // Profile picture URL
+	Website    *string        `json:"website,omitempty"`   // Website URL
+	Gender     *string        `json:"gender,omitempty"`    // Gender
+	Birthdate  *string        `json:"birthdate,omitempty"` // Birthdate (YYYY-MM-DD)
+	Zoneinfo   *string        `json:"zoneinfo,omitempty"`  // Timezone
+	Locale     *string        `json:"locale,omitempty"`    // Locale
+	Address    map[string]any `json:"address,omitempty"`   // Address (JSON object)
+	Theme      *string        `json:"theme,omitempty"`     // UI theme preference
+	Metadata   map[string]any `json:"metadata,omitempty"`  // Extended metadata
 }
 
 // ==== Invitation API Types ====

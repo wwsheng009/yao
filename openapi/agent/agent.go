@@ -2,28 +2,28 @@ package agent
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/yaoapp/yao/neo"
+	"github.com/yaoapp/yao/agent"
 	"github.com/yaoapp/yao/openapi/oauth/types"
 )
 
 // Attach attaches the agent (assistant) API handlers to the router with OAuth protection
-// This provides OAuth-protected endpoints for assistant management, mirroring the neo assistant API
+// This provides OAuth-protected endpoints for assistant management, mirroring the agent assistant API
 func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 
-	// Get the Neo instance
-	n := neo.GetNeo()
+	// Get the Agent instance
+	n := agent.GetAgent()
 
-	// Create agents group with OAuth guard
-	agents := group.Group("/agents")
-	agents.Use(oauth.Guard)
+	// Apply OAuth guard to all routes
+	group.Use(oauth.Guard)
 
-	// Agent CRUD - Standard REST endpoints
-	agents.GET("/", n.HandleAssistantList)         // GET /agents - List agents
-	agents.POST("/", n.HandleAssistantSave)        // POST /agents - Create/Update agent
-	agents.GET("/tags", n.HandleAssistantTags)     // GET /agents/tags - Get all agent tags
-	agents.GET("/:id", n.HandleAssistantDetail)    // GET /agents/:id - Get agent details
-	agents.DELETE("/:id", n.HandleAssistantDelete) // DELETE /agents/:id - Delete agent
+	// Assistant CRUD - Standard REST endpoints
+	group.GET("/assistants", ListAssistants)                 // GET /assistants - List assistants
+	group.POST("/assistants", CreateAssistant)               // POST /assistants - Create assistant
+	group.GET("/assistants/tags", ListAssistantTags)         // GET /assistants/tags - Get all assistant tags with permission filtering
+	group.GET("/assistants/:id", GetAssistant)               // GET /assistants/:id - Get assistant details with permission verification
+	group.PUT("/assistants/:id", UpdateAssistant)            // PUT /assistants/:id - Update assistant
+	group.DELETE("/assistants/:id", n.HandleAssistantDelete) // DELETE /assistants/:id - Delete assistant
 
-	// Agent Actions
-	agents.POST("/:id/call", n.HandleAssistantCall) // POST /agents/:id/call - Execute agent API
+	// Assistant Actions
+	group.POST("/assistants/:id/call", n.HandleAssistantCall) // POST /assistants/:id/call - Execute assistant API
 }

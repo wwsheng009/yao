@@ -12,7 +12,10 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/kun/maps"
 	"github.com/yaoapp/yao/kb"
+	"github.com/yaoapp/yao/openapi/oauth/authorized"
+	oauthtypes "github.com/yaoapp/yao/openapi/oauth/types"
 	"github.com/yaoapp/yao/openapi/response"
+	"github.com/yaoapp/yao/openapi/utils"
 )
 
 // Collection Management Handlers
@@ -22,7 +25,7 @@ var (
 	// availableCollectionFields defines all available fields for security filtering
 	availableCollectionFields = map[string]bool{
 		"id": true, "collection_id": true, "name": true, "description": true,
-		"status": true, "system": true, "readonly": true, "sort": true, "cover": true,
+		"status": true, "preset": true, "public": true, "share": true, "sort": true, "cover": true,
 		"document_count": true, "embedding_provider_id": true, "embedding_option_id": true,
 		"embedding_properties": true, "locale": true, "dimension": true,
 		"distance_metric": true, "hnsw_m": true, "ef_construction": true,
@@ -32,7 +35,7 @@ var (
 
 	// defaultCollectionFields defines the default compact field list
 	defaultCollectionFields = []interface{}{
-		"id", "collection_id", "name", "description", "status", "system", "readonly",
+		"id", "collection_id", "name", "description", "status", "preset", "public", "share",
 		"sort", "cover", "document_count", "embedding_provider_id", "embedding_option_id",
 		"locale", "dimension", "distance_metric", "created_at", "updated_at",
 	}
@@ -57,6 +60,7 @@ type ProviderSettings struct {
 
 // CreateCollection creates a new collection
 func CreateCollection(c *gin.Context) {
+
 	// Prepare request and database data
 	req, collectionData, err := PrepareCreateCollection(c)
 	if err != nil {
@@ -66,6 +70,12 @@ func CreateCollection(c *gin.Context) {
 		}
 		response.RespondWithError(c, response.StatusBadRequest, errorResp)
 		return
+	}
+
+	// Attach create scope to the collection data
+	authInfo := authorized.GetInfo(c)
+	if authInfo != nil {
+		collectionData = authInfo.WithCreateScope(collectionData)
 	}
 
 	// Check if kb.Instance is available
@@ -139,6 +149,9 @@ func CreateCollection(c *gin.Context) {
 
 // RemoveCollection removes an existing collection
 func RemoveCollection(c *gin.Context) {
+
+	authInfo := authorized.GetInfo(c)
+
 	// Get collection ID from URL parameter
 	collectionID := c.Param("collectionID")
 	if collectionID == "" {
@@ -157,6 +170,27 @@ func RemoveCollection(c *gin.Context) {
 			ErrorDescription: "Knowledge base not initialized",
 		}
 		response.RespondWithError(c, response.StatusInternalServerError, errorResp)
+		return
+	}
+
+	// Check remove permission
+	hasPermission, err := checkCollectionPermission(authInfo, collectionID)
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: err.Error(),
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
+	// 403 Forbidden
+	if !hasPermission {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrAccessDenied.Code,
+			ErrorDescription: "Forbidden: No permission to remove collection",
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
 		return
 	}
 
@@ -301,6 +335,10 @@ func GetCollection(c *gin.Context) {
 
 // ListCollections lists collections with pagination
 func ListCollections(c *gin.Context) {
+
+	// Get authorized information
+	authInfo := authorized.GetInfo(c)
+
 	// Check if kb.Instance is available
 	if kb.Instance == nil {
 		errorResp := &response.ErrorResponse{
@@ -356,12 +394,13 @@ func ListCollections(c *gin.Context) {
 	}
 
 	// Build query parameters
-	param := model.QueryParam{
-		Select: selectFields,
-	}
+	param := model.QueryParam{Select: selectFields}
 
 	// Add filters
 	var wheres []model.QueryWhere
+
+	// Apply permission-based filtering
+	wheres = append(wheres, AuthFilter(c, authInfo)...)
 
 	// Filter by keywords (search in name and description)
 	if keywords := strings.TrimSpace(c.Query("keywords")); keywords != "" {
@@ -503,6 +542,7 @@ func ListCollections(c *gin.Context) {
 
 // UpdateCollectionMetadata updates the metadata of an existing collection
 func UpdateCollectionMetadata(c *gin.Context) {
+
 	// Get collection ID from URL parameter
 	collectionID := c.Param("collectionID")
 	if collectionID == "" {
@@ -546,8 +586,30 @@ func UpdateCollectionMetadata(c *gin.Context) {
 		return
 	}
 
+	// Check update permission
+	authInfo := authorized.GetInfo(c)
+	hasPermission, err := checkCollectionPermission(authInfo, collectionID)
+	if err != nil {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrServerError.Code,
+			ErrorDescription: err.Error(),
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
+	// 403 Forbidden
+	if !hasPermission {
+		errorResp := &response.ErrorResponse{
+			Code:             response.ErrAccessDenied.Code,
+			ErrorDescription: "Forbidden: No permission to update collection",
+		}
+		response.RespondWithError(c, response.StatusForbidden, errorResp)
+		return
+	}
+
 	// Call the actual UpdateCollectionMetadata method
-	err := kb.Instance.UpdateCollectionMetadata(c.Request.Context(), collectionID, req.Metadata)
+	err = kb.Instance.UpdateCollectionMetadata(c.Request.Context(), collectionID, req.Metadata)
 	if err != nil {
 		errorResp := &response.ErrorResponse{
 			Code:             response.ErrServerError.Code,
@@ -572,6 +634,8 @@ func UpdateCollectionMetadata(c *gin.Context) {
 			updateData["status"] = status
 		}
 
+		// Update __yao_updated_by
+		updateData = authInfo.WithUpdateScope(updateData)
 		if len(updateData) > 0 {
 			// Only update database, don't sync to GraphRag again to avoid duplicate updates
 			if err := config.UpdateCollection(collectionID, updateData); err != nil {
@@ -686,4 +750,71 @@ func getProviderSettings(providerID, optionValue, locale string) (*ProviderSetti
 	}
 
 	return settings, nil
+}
+
+// checkCollectionPermission checks if the user has permission to access the collection
+func checkCollectionPermission(authInfo *oauthtypes.AuthorizedInfo, collectionID string, readable ...bool) (bool, error) {
+
+	// Team Permission validation)
+	if authInfo == nil {
+		return true, nil
+	}
+
+	// No constraints, allow access
+	if !authInfo.Constraints.TeamOnly && !authInfo.Constraints.OwnerOnly {
+		return true, nil
+	}
+
+	// Get KB config
+	config, err := kb.GetConfig()
+	if err != nil {
+		return false, fmt.Errorf("failed to get KB config: %v", err)
+	}
+
+	collection, err := config.FindCollection(collectionID, model.QueryParam{
+		Select: []interface{}{"collection_id", "__yao_created_by", "__yao_updated_by", "__yao_team_id", "public", "share"},
+		Wheres: []model.QueryWhere{
+			{Column: "collection_id", Value: collectionID},
+		},
+		Limit: 1,
+	})
+
+	if len(collection) == 0 {
+		return false, fmt.Errorf("collection not found: %s", collectionID)
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("failed to find collection: %v", err)
+	}
+
+	// if readable is true, check if the collection is readable
+	if len(readable) > 0 && readable[0] {
+		if utils.ToBool(collection["public"]) {
+			return true, nil
+		}
+
+		// Team only permission validation
+		if collection["share"] == "team" && authInfo.Constraints.TeamOnly {
+			return true, nil
+		}
+	}
+
+	// Combined Team and Owner permission validation
+	if authInfo.Constraints.TeamOnly && authInfo.Constraints.OwnerOnly {
+		if collection["__yao_created_by"] == authInfo.UserID && collection["__yao_team_id"] == authInfo.TeamID {
+			return true, nil
+		}
+	}
+
+	// Owner only permission validation
+	if authInfo.Constraints.OwnerOnly && collection["__yao_created_by"] == authInfo.UserID {
+		return true, nil
+	}
+
+	// Team only permission validation
+	if authInfo.Constraints.TeamOnly && collection["__yao_team_id"] == authInfo.TeamID {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("no permission to access collection: %s", collectionID)
 }

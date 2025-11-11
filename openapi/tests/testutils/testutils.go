@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yaoapp/yao/agent"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/kb"
-	"github.com/yaoapp/yao/neo"
 	"github.com/yaoapp/yao/openapi"
 	"github.com/yaoapp/yao/openapi/oauth"
 	"github.com/yaoapp/yao/openapi/oauth/types"
@@ -155,7 +155,7 @@ func Prepare(t *testing.T) string {
 	test.Prepare(t, config.Conf)
 
 	// Load Neo
-	err := neo.Load(config.Conf)
+	err := agent.Load(config.Conf)
 	if err != nil {
 		t.Fatalf("Failed to load Neo: %v", err)
 	}
@@ -1035,4 +1035,31 @@ func createTestUser(t *testing.T, server *openapi.OpenAPI, clientID string) (str
 
 	t.Logf("Created test user: %s with subject: %s", testUserID, subject)
 	return testUserID, subject
+}
+
+// GetUserProvider returns the UserProvider instance for direct database operations in tests.
+// This is useful for creating test data directly without going through API endpoints.
+//
+// USAGE:
+//
+//	provider := testutils.GetUserProvider(t)
+//	memberID, err := provider.CreateMember(ctx, memberData)
+//
+// ERROR HANDLING:
+// If the provider is not available, the test will fail immediately with a descriptive error message.
+func GetUserProvider(t *testing.T) types.UserProvider {
+	testMutex.RLock()
+	defer testMutex.RUnlock()
+
+	oauthService := oauth.OAuth
+	if oauthService == nil {
+		t.Fatal("Global OAuth service not initialized. Call Prepare(t) first.")
+	}
+
+	provider, err := oauthService.GetUserProvider()
+	if err != nil || provider == nil {
+		t.Fatalf("UserProvider not available: %v", err)
+	}
+
+	return provider
 }

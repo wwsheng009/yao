@@ -20,7 +20,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yaoapp/gou/fs"
 	"github.com/yaoapp/gou/model"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/attachment/local"
 	"github.com/yaoapp/yao/attachment/s3"
 	"github.com/yaoapp/yao/config"
@@ -39,6 +41,154 @@ type UploadChunk struct {
 	Total       int64
 	Chunksize   int64
 	TotalChunks int64
+	// Cache metadata from first chunk to avoid inconsistencies
+	ContentType   string
+	Filename      string
+	UserPath      string
+	CompressImage bool
+	CompressSize  int
+}
+
+// Parse parses an attachment wrapper string and returns uploader name and file ID
+// Format: __<uploader>://<fileID>
+// Example: __yao.attachment://ccd472d11feb96e03a3fc468f494045c
+// Returns (uploader, fileID, isWrapper)
+func Parse(value string) (string, string, bool) {
+	if !strings.HasPrefix(value, "__") {
+		return "", value, false
+	}
+
+	// Exclude common protocols (ftp, http, https, etc.)
+	excludedProtocols := []string{"__ftp://", "__http://", "__https://", "__ws://", "__wss://"}
+	for _, protocol := range excludedProtocols {
+		if strings.HasPrefix(value, protocol) {
+			return "", value, false
+		}
+	}
+
+	// Split by ://
+	parts := strings.SplitN(value, "://", 2)
+	if len(parts) != 2 {
+		return "", value, false
+	}
+
+	uploader := parts[0] // Keep the __ prefix as it's part of the manager name
+	fileID := parts[1]
+
+	return uploader, fileID, true
+}
+
+// Base64 processes a wrapper value and converts it to Base64 if it's an attachment wrapper
+// If the value is not a wrapper, it returns the original value
+// Special case: if value looks like a file path, it will try to read from fs data
+// Optional parameter dataURI: if true, returns data URI format (data:image/png;base64,...)
+func Base64(ctx context.Context, value string, dataURI ...bool) string {
+	useDataURI := false
+	if len(dataURI) > 0 {
+		useDataURI = dataURI[0]
+	}
+
+	uploader, fileID, isWrapper := Parse(value)
+	if !isWrapper {
+		// Try to read as file path from fs data
+		if base64Data := readFilePathAsBase64(value, useDataURI); base64Data != "" {
+			return base64Data
+		}
+		return value
+	}
+
+	// Get the manager
+	manager, exists := Managers[uploader]
+	if !exists {
+		return value
+	}
+
+	// Get file info to determine content type
+	var contentType string
+	if useDataURI {
+		fileInfo, err := manager.Info(ctx, fileID)
+		if err == nil && fileInfo != nil {
+			contentType = fileInfo.ContentType
+		}
+	}
+
+	// Read the file as Base64
+	base64Data, err := manager.ReadBase64(ctx, fileID)
+	if err != nil {
+		return value
+	}
+
+	// Return with data URI prefix if requested
+	if useDataURI && contentType != "" {
+		return fmt.Sprintf("data:%s;base64,%s", contentType, base64Data)
+	}
+
+	return base64Data
+}
+
+// readFilePathAsBase64 reads a file from fs data and returns Base64 encoded content
+// Returns empty string if file doesn't exist or can't be read
+// If dataURI is true, returns data URI format with mime type detection
+func readFilePathAsBase64(path string, dataURI bool) string {
+	// Check if path looks like a file path (contains / or \)
+	if !strings.Contains(path, "/") && !strings.Contains(path, "\\") {
+		return ""
+	}
+
+	// Try to get fs data
+	dataFS, err := fs.Get("data")
+	if err != nil || dataFS == nil {
+		return ""
+	}
+
+	// Check if file exists
+	exists, err := dataFS.Exists(path)
+	if err != nil || !exists {
+		return ""
+	}
+
+	// Read file content
+	content, err := dataFS.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	// Encode to Base64
+	base64Str := base64.StdEncoding.EncodeToString(content)
+
+	// Return with data URI prefix if requested
+	if dataURI {
+		// Detect content type from file extension or content
+		contentType := detectContentType(path, content)
+		if contentType != "" {
+			return fmt.Sprintf("data:%s;base64,%s", contentType, base64Str)
+		}
+	}
+
+	return base64Str
+}
+
+// detectContentType detects the MIME type from file path and content
+func detectContentType(path string, content []byte) string {
+	// First try to get from file extension
+	ext := filepath.Ext(path)
+	if ext != "" {
+		mimeType := mime.TypeByExtension(ext)
+		if mimeType != "" {
+			return mimeType
+		}
+	}
+
+	// Fallback to detecting from content (first 512 bytes)
+	if len(content) > 0 {
+		detectSize := len(content)
+		if detectSize > 512 {
+			detectSize = 512
+		}
+		return http.DetectContentType(content[:detectSize])
+	}
+
+	return ""
 }
 
 // GetHeader gets the header from the file header and request header
@@ -252,6 +402,12 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 				Total:       total,
 				Chunksize:   chunksize,
 				TotalChunks: totalChunks,
+				// Cache metadata from first chunk
+				ContentType:   file.ContentType,
+				Filename:      file.Filename,
+				UserPath:      file.UserPath,
+				CompressImage: option.CompressImage,
+				CompressSize:  option.CompressSize,
 			})
 		}
 
@@ -268,6 +424,11 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 			chunkIndex = chunkdata.Last + 1
 			chunkdata.Last = chunkIndex
 			uploadChunks.Store(file.ID, chunkdata)
+
+			// For non-first chunks, use cached metadata from first chunk
+			file.ContentType = chunkdata.ContentType
+			file.Filename = chunkdata.Filename
+			file.UserPath = chunkdata.UserPath
 		}
 
 		// Apply gzip compression if requested
@@ -286,6 +447,15 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 			return nil, err
 		}
 
+		// Save to database on first chunk only
+		if start == 0 {
+			file.Status = "uploading"
+			err = manager.saveFileToDatabase(ctx, file, file.Path, option)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create database record for chunked upload: %w", err)
+			}
+		}
+
 		// Fix the file size, the file size is the sum of all chunks
 		file.Bytes = chunkIndex * int(chunkdata.Chunksize)
 		file.Status = "uploading"
@@ -297,25 +467,34 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 				return nil, err
 			}
 
+			// Set initial file size from chunks
+			file.Bytes = int(chunkdata.Total)
+
 			// Apply image compression if requested and it's the final file
-			if option.CompressImage && strings.HasPrefix(file.ContentType, "image/") {
-				err = manager.compressStoredImage(ctx, file, option)
+			// Use cached compress options from first chunk
+			if chunkdata.CompressImage && strings.HasPrefix(file.ContentType, "image/") {
+				// Create a temporary option with cached compress size
+				compressOption := UploadOption{
+					CompressSize: chunkdata.CompressSize,
+				}
+				compressedBytes, err := manager.compressStoredImageAndGetSize(ctx, file, compressOption)
 				if err != nil {
 					return nil, err
 				}
+				// Update file size to compressed size
+				file.Bytes = compressedBytes
 			}
 
 			// Remove the chunk data
 			uploadChunks.Delete(file.ID)
 
-			// Fix the file size
-			file.Bytes = int(chunkdata.Total)
+			// Update status to uploaded
 			file.Status = "uploaded"
 
-			// Save file information to database when chunked upload is complete
+			// Update only bytes and status for the last chunk
 			err = manager.saveFileToDatabase(ctx, file, file.Path, option)
 			if err != nil {
-				return nil, fmt.Errorf("failed to save chunked file to database: %w", err)
+				return nil, fmt.Errorf("failed to update chunked file status: %w", err)
 			}
 		}
 
@@ -342,6 +521,10 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 			size = 1920
 		}
 
+		// Read original data for fallback
+		var originalData []byte
+		var err error
+
 		// If gzip was applied, we need to decompress first
 		if option.Gzip {
 			data, err := io.ReadAll(finalReader)
@@ -352,12 +535,24 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 			if err != nil {
 				return nil, err
 			}
+			originalData = decompressed
 			finalReader = bytes.NewReader(decompressed)
+		} else {
+			originalData, err = io.ReadAll(finalReader)
+			if err != nil {
+				return nil, err
+			}
+			finalReader = bytes.NewReader(originalData)
 		}
 
+		// Try to compress the image with failback mechanism
 		compressed, err := CompressImage(finalReader, file.ContentType, size)
 		if err != nil {
-			return nil, err
+			// Log the error and use original file as fallback
+			log.Warn("Failed to compress image (content-type: %s, file: %s): %v. Using original file.",
+				file.ContentType, file.Filename, err)
+			// Use original data
+			compressed = originalData
 		}
 
 		// Re-apply gzip if it was requested
@@ -395,12 +590,12 @@ func (manager Manager) Upload(ctx context.Context, fileheader *FileHeader, reade
 	return file, nil
 }
 
-// compressStoredImage compresses an already stored image
-func (manager Manager) compressStoredImage(ctx context.Context, file *File, option UploadOption) error {
+// compressStoredImageAndGetSize compresses the stored image and returns the compressed size
+func (manager Manager) compressStoredImageAndGetSize(ctx context.Context, file *File, option UploadOption) (int, error) {
 	// Download the stored file using storage path
 	reader, err := manager.storage.Reader(ctx, file.Path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer reader.Close()
 
@@ -409,15 +604,30 @@ func (manager Manager) compressStoredImage(ctx context.Context, file *File, opti
 		size = 1920
 	}
 
-	// Compress the image
-	compressed, err := CompressImage(reader, file.ContentType, size)
+	// Read original data for fallback
+	originalData, err := io.ReadAll(reader)
 	if err != nil {
-		return err
+		return 0, err
+	}
+
+	// Try to compress the image with failback mechanism
+	compressed, err := CompressImage(bytes.NewReader(originalData), file.ContentType, size)
+	if err != nil {
+		// Log the error and keep original file
+		log.Warn("Failed to compress stored image (content-type: %s, file: %s): %v. Keeping original file.",
+			file.ContentType, file.Filename, err)
+		// File is already stored (merged chunks), just return original size
+		return len(originalData), nil
 	}
 
 	// Re-upload the compressed image using storage path
 	_, err = manager.storage.Upload(ctx, file.Path, bytes.NewReader(compressed), file.ContentType)
-	return err
+	if err != nil {
+		return 0, err
+	}
+
+	// Return the compressed size
+	return len(compressed), nil
 }
 
 // Download downloads a file
@@ -509,9 +719,9 @@ func (manager Manager) List(ctx context.Context, option ListOption) (*ListResult
 
 	// Add select fields
 	if len(option.Select) > 0 {
-		queryParam.Select = make([]interface{}, len(option.Select))
-		for i, field := range option.Select {
-			queryParam.Select[i] = field
+		queryParam.Select = make([]interface{}, 0, len(option.Select))
+		for _, field := range option.Select {
+			queryParam.Select = append(queryParam.Select, field)
 		}
 	}
 
@@ -535,6 +745,14 @@ func (manager Manager) List(ctx context.Context, option ListOption) (*ListResult
 
 			queryParam.Wheres = append(queryParam.Wheres, where)
 		}
+	}
+
+	// Add advanced where clauses (for permission filtering, etc.)
+	if len(option.Wheres) > 0 {
+		if queryParam.Wheres == nil {
+			queryParam.Wheres = make([]model.QueryWhere, 0, len(option.Wheres))
+		}
+		queryParam.Wheres = append(queryParam.Wheres, option.Wheres...)
 	}
 
 	// Add ordering
@@ -678,9 +896,6 @@ func (manager Manager) makeFile(file *FileHeader, option UploadOption) (*File, e
 		return nil, fmt.Errorf("file size %d exceeds the maximum size of %d", file.Size, manager.maxsize)
 	}
 
-	// Get the content type
-	contentType := file.Header.Get("Content-Type")
-
 	// Use original filename if provided, otherwise use the file header filename
 	filename := file.Filename
 	userPath := option.OriginalFilename
@@ -690,6 +905,22 @@ func (manager Manager) makeFile(file *FileHeader, option UploadOption) (*File, e
 	}
 
 	extension := filepath.Ext(filename)
+
+	// Get the content type
+	// For chunked uploads, file.Header may have incorrect content-type (e.g., application/octet-stream for Blob)
+	// Try to detect from filename extension first, then fallback to header
+	contentType := file.Header.Get("Content-Type")
+	if extension != "" {
+		// Try to get content type from extension
+		detectedType := mime.TypeByExtension(extension)
+		if detectedType != "" {
+			// If detected type is not the generic octet-stream, use it
+			// This handles chunked uploads where the header has incorrect type
+			if detectedType != "application/octet-stream" || contentType == "application/octet-stream" {
+				contentType = detectedType
+			}
+		}
+	}
 
 	// Get the extension from the content type if not available from filename
 	if extension == "" {
@@ -933,25 +1164,10 @@ func (manager Manager) Delete(ctx context.Context, fileID string) error {
 }
 
 // saveFileToDatabase saves file information to the database
+// For chunked uploads, it only updates bytes/status/progress if record exists
 func (manager Manager) saveFileToDatabase(ctx context.Context, file *File, storagePath string, option UploadOption) error {
 
 	m := model.Select("__yao.attachment")
-
-	// Prepare data for database
-	data := map[string]interface{}{
-		"file_id":      file.ID,
-		"uploader":     manager.Name,
-		"content_type": file.ContentType,
-		"name":         file.Filename,
-		"user_path":    option.OriginalFilename,
-		"path":         storagePath,
-		"bytes":        int64(file.Bytes),
-		"status":       file.Status,
-		"gzip":         option.Gzip,
-		"groups":       option.Groups,
-		"client_id":    option.ClientID,
-		"openid":       option.OpenID,
-	}
 
 	// Check if record exists first
 	records, err := m.Get(model.QueryParam{
@@ -966,17 +1182,61 @@ func (manager Manager) saveFileToDatabase(ctx context.Context, file *File, stora
 	}
 
 	if len(records) > 0 {
-		// Update existing record
+		// Record exists - this is a chunked upload update
+		// Only update bytes, status, and progress (don't overwrite metadata)
+		updateData := map[string]interface{}{
+			"bytes":  int64(file.Bytes),
+			"status": file.Status,
+		}
+
 		_, err = m.UpdateWhere(model.QueryParam{
 			Wheres: []model.QueryWhere{
 				{Column: "file_id", Value: file.ID},
 			},
-		}, data)
-	} else {
-		// Create new record
-		_, err = m.Create(data)
+		}, updateData)
+
+		return err
 	}
 
+	// Record doesn't exist - create new record with full metadata
+	// Set default value for share if empty
+	share := option.Share
+	if share == "" {
+		share = "private"
+	}
+
+	// Prepare data for database
+	data := map[string]interface{}{
+		"file_id":      file.ID,
+		"uploader":     manager.Name,
+		"content_type": file.ContentType,
+		"name":         file.Filename,
+		"user_path":    option.OriginalFilename,
+		"path":         storagePath,
+		"bytes":        int64(file.Bytes),
+		"status":       file.Status,
+		"gzip":         option.Gzip,
+		"groups":       option.Groups,
+		"public":       option.Public,
+		"share":        share,
+	}
+
+	// Add Yao permission fields if provided
+	if option.YaoCreatedBy != "" {
+		data["__yao_created_by"] = option.YaoCreatedBy
+	}
+	if option.YaoUpdatedBy != "" {
+		data["__yao_updated_by"] = option.YaoUpdatedBy
+	}
+	if option.YaoTeamID != "" {
+		data["__yao_team_id"] = option.YaoTeamID
+	}
+	if option.YaoTenantID != "" {
+		data["__yao_tenant_id"] = option.YaoTenantID
+	}
+
+	// Create new record
+	_, err = m.Create(data)
 	return err
 }
 
@@ -985,9 +1245,14 @@ func (manager Manager) getFileFromDatabase(ctx context.Context, fileID string) (
 	m := model.Select("__yao.attachment")
 
 	records, err := m.Get(model.QueryParam{
+		Select: []interface{}{
+			"file_id", "name", "content_type", "status", "user_path", "path", "bytes",
+			"public", "share", "__yao_created_by", "__yao_team_id", "__yao_tenant_id",
+		},
 		Wheres: []model.QueryWhere{
 			{Column: "file_id", Value: fileID},
 		},
+		Limit: 1,
 	})
 
 	if err != nil {
@@ -1021,6 +1286,13 @@ func (manager Manager) getFileFromDatabase(ctx context.Context, fileID string) (
 	if bytes, ok := record["bytes"].(int64); ok {
 		file.Bytes = int(bytes)
 	}
+
+	// Handle permission fields with safe conversion
+	file.Public = toBool(record["public"])
+	file.Share = toString(record["share"])
+	file.YaoCreatedBy = toString(record["__yao_created_by"])
+	file.YaoTeamID = toString(record["__yao_team_id"])
+	file.YaoTenantID = toString(record["__yao_tenant_id"])
 
 	return file, nil
 }

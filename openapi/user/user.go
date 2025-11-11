@@ -28,16 +28,18 @@ func init() {
 			Name:        ScopeTeamSelection,
 			Description: "Team selection - temporary access for selecting a team after login",
 			Endpoints: []string{
-				"POST /user/teams/select",
+				"GET /user/profile",
+				"GET /user/teams",
 				"GET /user/teams/config",
+				"POST /user/teams/select",
+				"GET /file/:uploaderID/:fileID/content",
 			},
 		},
-		// Invite verification scope - allows users to accept team invitations
+		// Invite verification scope - allows users to view invitation details before accepting
 		&acl.ScopeDefinition{
 			Name:        ScopeInviteVerification,
-			Description: "Invite verification - temporary access for accepting team invitations",
+			Description: "Invite verification - temporary access for viewing invitation details",
 			Endpoints: []string{
-				"POST /user/teams/invitations/:invitation_id/accept",
 				"GET /user/teams/invitations/:invitation_id",
 			},
 		},
@@ -56,11 +58,26 @@ func init() {
 
 	// Register user process handlers
 	process.RegisterGroup("user", map[string]process.Handler{
-		"team.list":              ProcessTeamList,
-		"team.get":               ProcessTeamGet,
-		"team.create":            ProcessTeamCreate,
-		"team.update":            ProcessTeamUpdate,
-		"team.delete":            ProcessTeamDelete,
+		// Profile
+		"profile.get":    ProcessProfileGet,
+		"profile.update": ProcessProfileUpdate,
+
+		// Team Management
+		"team.list":   ProcessTeamList,
+		"team.get":    ProcessTeamGet,
+		"team.create": ProcessTeamCreate,
+		"team.update": ProcessTeamUpdate,
+		"team.delete": ProcessTeamDelete,
+
+		// Team Member Management
+		"member.list":           ProcessMemberList,
+		"member.get":            ProcessMemberGet,
+		"member.update":         ProcessMemberUpdate,
+		"member.profile.get":    ProcessMemberGetProfile,
+		"member.profile.update": ProcessMemberUpdateProfile,
+		"member.delete":         ProcessMemberDelete,
+
+		// Team Invitation Management
 		"team.invitation.list":   ProcessTeamInvitationList,
 		"team.invitation.get":    ProcessTeamInvitationGet,
 		"team.invitation.create": ProcessTeamInvitationCreate,
@@ -83,6 +100,9 @@ func Attach(group *gin.RouterGroup, oauth types.OAuth) {
 	group.POST("/entry/invite/verify", oauth.Guard, GinVerifyInvite) // Verify invitation code (redeem)
 	group.POST("/entry/otp", oauth.Guard, GinSendOTP)                // Send OTP
 	group.POST("/logout", oauth.Guard, GinLogout)                    // User logout
+
+	// Features query endpoint
+	group.GET("/features", oauth.Guard, GinFeatures)
 
 	// Logined User Settings
 	attachProfile(group, oauth)      // User profile management
@@ -133,11 +153,15 @@ func attachTeam(group *gin.RouterGroup, oauth types.OAuth) {
 	team.GET("/current", GinTeamCurrent)
 
 	// Team Members - Nested resource endpoints
-	team.GET("/:id/members", GinMemberList)                 // GET /teams/:id/members - List team members
-	team.POST("/:id/members", GinMemberCreateDirect)        // POST /teams/:id/members - Add team member
-	team.GET("/:id/members/:member_id", GinMemberGet)       // GET /teams/:id/members/:member_id - Get member details
-	team.PUT("/:id/members/:member_id", GinMemberUpdate)    // PUT /teams/:id/members/:member_id - Update member
-	team.DELETE("/:id/members/:member_id", GinMemberDelete) // DELETE /teams/:id/members/:member_id - Remove member
+	team.GET("/:id/members", GinMemberList)                              // GET /api/user/teams/:id/members - List team members
+	team.GET("/:id/members/check-robot-email", GinMemberCheckRobotEmail) // GET /api/user/teams/:id/members/check-robot-email?robot_email=xxx - Check if robot email exists globally
+	team.POST("/:id/members/robots", GinMemberCreateRobot)               // POST /api/user/teams/:id/members/robots - Add robot member
+	team.PUT("/:id/members/robots/:member_id", GinMemberUpdateRobot)     // PUT /api/user/teams/:id/members/robots/:member_id - Update robot member
+	team.GET("/:id/members/:member_id/profile", GinMemberGetProfile)     // GET /api/user/teams/:id/members/:member_id/profile - Get member profile (display_name, bio, avatar, email)
+	team.PUT("/:id/members/:member_id/profile", GinMemberUpdateProfile)  // PUT /api/user/teams/:id/members/:member_id/profile - Update member profile (display_name, bio, avatar, email)
+	team.GET("/:id/members/:member_id", GinMemberGet)                    // GET /api/user/teams/:id/members/:member_id - Get member details
+	team.PUT("/:id/members/:member_id", GinMemberUpdate)                 // PUT /api/user/teams/:id/members/:member_id - Update member (admin: role, status)
+	team.DELETE("/:id/members/:member_id", GinMemberDelete)              // DELETE /api/user/teams/:id/members/:member_id - Remove member
 
 	// Team Invitations - Nested resource endpoints
 	team.GET("/:id/invitations", GinTeamInvitationList)                         // GET /teams/:id/invitations - List invitations
@@ -243,8 +267,8 @@ func attachProfile(group *gin.RouterGroup, oauth types.OAuth) {
 	profile := group.Group("/profile")
 	profile.Use(oauth.Guard)
 
-	profile.GET("/", GinProfileGet) // Get user profile
-	profile.PUT("/", placeholder)   // Update user profile
+	profile.GET("/", GinProfileGet)    // Get user profile
+	profile.PUT("/", GinProfileUpdate) // Update user profile
 }
 
 // User management (CRUD)

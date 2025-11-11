@@ -132,8 +132,8 @@ func TestFileUpload(t *testing.T) {
 			"original_filename": testFileName,
 			"path":              "documents/reports/quarterly-report.txt",
 			"groups":            "documents,reports",
-			"client_id":         "test-client",
-			"openid":            "test-user",
+			"public":            "false",
+			"share":             "private",
 		})
 		assert.NoError(t, err)
 
@@ -164,7 +164,9 @@ func TestFileUpload(t *testing.T) {
 		assert.Contains(t, response, "path")
 		assert.Contains(t, response, "user_path")
 		assert.Equal(t, testFileName, response["filename"])
-		assert.Equal(t, testContentType, response["content_type"])
+		// Content type may include charset
+		contentType, _ := response["content_type"].(string)
+		assert.True(t, strings.HasPrefix(contentType, testContentType), "Content-Type should start with %s, got %s", testContentType, contentType)
 		assert.Equal(t, "uploaded", response["status"])
 
 		// The file_id should be URL-safe (no slashes) and be an MD5 hash (32 chars)
@@ -519,7 +521,9 @@ func TestFileRetrieve(t *testing.T) {
 		assert.Contains(t, response, "content_type")
 		assert.Equal(t, testFileID, response["file_id"])
 		assert.Equal(t, testFileName, response["filename"])
-		assert.Equal(t, testContentType, response["content_type"])
+		// Content type may include charset
+		contentType, _ := response["content_type"].(string)
+		assert.True(t, strings.HasPrefix(contentType, testContentType), "Content-Type should start with %s, got %s", testContentType, contentType)
 
 		t.Logf("Successfully retrieved file metadata: %s", testFileID)
 	})
@@ -627,7 +631,9 @@ func TestFileContent(t *testing.T) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, testContentType, resp.Header.Get("Content-Type"))
+		// Content type may include charset
+		assert.True(t, strings.HasPrefix(resp.Header.Get("Content-Type"), testContentType),
+			"Content-Type should start with %s, got %s", testContentType, resp.Header.Get("Content-Type"))
 
 		// Read and verify content
 		content, err := io.ReadAll(resp.Body)
@@ -1006,5 +1012,98 @@ func TestFileIntegration(t *testing.T) {
 		assert.Equal(t, false, finalExistsResponse["exists"])
 
 		t.Logf("Completed full file lifecycle test for: %s", testFileID)
+	})
+}
+
+// TestFilePermissionFields tests the new permission and auth fields
+func TestFilePermissionFields(t *testing.T) {
+	serverURL := testutils.Prepare(t)
+	defer testutils.Clean()
+
+	setupTestUploader(t)
+
+	baseURL := ""
+	if openapi.Server != nil && openapi.Server.Config != nil {
+		baseURL = openapi.Server.Config.BaseURL
+	}
+
+	client := testutils.RegisterTestClient(t, "File Permission Test Client", []string{"https://localhost/callback"})
+	defer testutils.CleanupTestClient(t, client.ClientID)
+	tokenInfo := testutils.ObtainAccessToken(t, serverURL, client.ClientID, client.ClientSecret, "https://localhost/callback", "openid profile")
+
+	t.Run("UploadWithPublicTeamShare", func(t *testing.T) {
+		// Upload file with public=true and share=team
+		requestURL := serverURL + baseURL + "/file/" + testUploaderID
+		req, err := createMultipartRequest(requestURL, "file", "public-team-file.txt", []byte("Public team content"), map[string]string{
+			"original_filename": "public-team-file.txt",
+			"groups":            "shared,public",
+			"public":            "true",
+			"share":             "team",
+		})
+		assert.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+tokenInfo.AccessToken)
+
+		resp, err := http.DefaultClient.Do(req)
+		assert.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var response map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		assert.NoError(t, err)
+
+		assert.Contains(t, response, "file_id")
+		t.Logf("Successfully uploaded public team file: %s", response["file_id"])
+	})
+
+	t.Run("UploadWithPrivateShare", func(t *testing.T) {
+		// Upload file with public=false and share=private (default)
+		requestURL := serverURL + baseURL + "/file/" + testUploaderID
+		req, err := createMultipartRequest(requestURL, "file", "private-file.txt", []byte("Private content"), map[string]string{
+			"original_filename": "private-file.txt",
+			"groups":            "personal",
+			"public":            "false",
+			"share":             "private",
+		})
+		assert.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+tokenInfo.AccessToken)
+
+		resp, err := http.DefaultClient.Do(req)
+		assert.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var response map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		assert.NoError(t, err)
+
+		assert.Contains(t, response, "file_id")
+		t.Logf("Successfully uploaded private file: %s", response["file_id"])
+	})
+
+	t.Run("UploadWithoutPermissionFields", func(t *testing.T) {
+		// Upload file without specifying public/share (should use defaults)
+		requestURL := serverURL + baseURL + "/file/" + testUploaderID
+		req, err := createMultipartRequest(requestURL, "file", "default-permissions.txt", []byte("Default permissions content"), map[string]string{
+			"original_filename": "default-permissions.txt",
+			"groups":            "defaults",
+		})
+		assert.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+tokenInfo.AccessToken)
+
+		resp, err := http.DefaultClient.Do(req)
+		assert.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var response map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		assert.NoError(t, err)
+
+		assert.Contains(t, response, "file_id")
+		t.Logf("Successfully uploaded file with default permissions: %s", response["file_id"])
 	})
 }
