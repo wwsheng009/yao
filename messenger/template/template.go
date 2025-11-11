@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -93,7 +94,7 @@ func (m *Manager) ReloadTemplates() error {
 func loadTemplates(m *Manager) error {
 	// Check if templates directory exists
 	templatesPath := "messengers/templates"
-	exists, err := application.App.Exists(templatesPath)
+		exists, err := application.App.Exists(templatesPath)
 	if err != nil {
 		log.Error("[Template] Error checking templates directory: %v", err)
 		return err
@@ -117,8 +118,8 @@ func loadTemplates(m *Manager) error {
 		log.Info("[Template] Processing file: %s", file)
 		// Generate template ID manually to avoid share.ID's dot-to-underscore conversion
 		// Format: {language}.{name} (e.g., "en.invite_member")
-		relativePath := strings.TrimPrefix(file, root+"/")
-		pathParts := strings.Split(relativePath, "/")
+		relativePath := strings.TrimPrefix(file, root + string(os.PathSeparator))
+		pathParts := strings.Split(relativePath, string(os.PathSeparator))
 		language := pathParts[0]
 		filename := pathParts[len(pathParts)-1]
 		baseName := strings.TrimSuffix(filename, filepath.Ext(filename))

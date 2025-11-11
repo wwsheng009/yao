@@ -10,6 +10,7 @@ import (
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/exception"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/agent"
 	"github.com/yaoapp/yao/aigc"
 	"github.com/yaoapp/yao/api"

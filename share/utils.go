@@ -45,7 +45,7 @@ func File(id string, ext string) string {
 
 // SpecName 解析名称  root: "/tests/apis"  file: "/tests/apis/foo/bar.http.json"
 func SpecName(root string, file string) string {
-	filename := strings.TrimPrefix(file, root+string(os.PathSeparator)) // "foo/bar.http.json", "foo/bar2.0.http.json"
+	filename := strings.TrimPrefix(file, filepath.FromSlash(root)+string(os.PathSeparator)) // "foo/bar.http.json", "foo/bar2.0.http.json"
 	parts := strings.Split(filename, string(os.PathSeparator))          // ["foo", "bar.http.json"], ["foo", "bar2.0.http.json"]
 	basename := parts[len(parts)-1]                // "bar.http.json", "bar2.0.http.json"
 	paths := parts[:len(parts)-1]                  // ["foo"], ["foo"]

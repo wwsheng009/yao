@@ -264,7 +264,7 @@ func (ast *Assistant) GetPlaceholder(locale string) *store.Placeholder {
 
 	prompts := []string{}
 	if ast.Placeholder == nil {
-		return &Placeholder{
+		return &store.Placeholder{
 			Title:       ast.GetName(locale),
 			Description: ast.GetDescription(locale),
 			Prompts:     prompts,
