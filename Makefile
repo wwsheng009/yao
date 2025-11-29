@@ -16,11 +16,11 @@ TESTTAGS ?= ""
 # TESTWIDGETS := $(shell $(GO) list ./widgets/...)
 
 # Unit Test
-.PHONY: test
-test:
+.PHONY: unit-test
+unit-test:
 	echo "mode: count" > coverage.out
 	for d in $(TESTFOLDER); do \
-		$(GO) test -tags $(TESTTAGS) -v -covermode=count -coverprofile=profile.out -coverpkg=$$(echo $$d | sed "s/\/test$$//g") $$d > tmp.out; \
+		$(GO) test -tags $(TESTTAGS) -v -covermode=count -coverprofile=profile.out -coverpkg=$$(echo $$d | sed "s/\/test$$//g") -skip='TestMemoryLeak|TestIsolateDisposal' $$d > tmp.out; \
 		cat tmp.out; \
 		if grep -q "^--- FAIL" tmp.out; then \
 			rm tmp.out; \
@@ -40,6 +40,50 @@ test:
 			rm profile.out; \
 		fi; \
 	done
+
+# Benchmark Test
+.PHONY: benchmark
+benchmark:
+	@echo ""
+	@echo "============================================="
+	@echo "Running Benchmark Tests (agent & trace)..."
+	@echo "============================================="
+	@for d in $$($(GO) list ./agent/... ./trace/...); do \
+		if $(GO) test -list=Benchmark $$d 2>/dev/null | grep -q "^Benchmark"; then \
+			echo ""; \
+			echo "📊 Benchmarking: $$d"; \
+			echo "---------------------------------------------"; \
+			$(GO) test -bench=. -benchmem -benchtime=100x -run='^$$' $$d || true; \
+		fi; \
+	done
+	@echo ""
+	@echo "============================================="
+	@echo "✅ All benchmarks completed"
+	@echo "============================================="
+
+# Memory Leak Detection Test
+.PHONY: memory-leak
+memory-leak:
+	@echo ""
+	@echo "============================================="
+	@echo "Running Memory Leak Detection (agent & trace)..."
+	@echo "============================================="
+	@for d in $$($(GO) list ./agent/... ./trace/...); do \
+		if $(GO) test -list='TestMemoryLeak|TestIsolateDisposal|TestGoroutineLeak' $$d 2>/dev/null | grep -qE "^Test(MemoryLeak|IsolateDisposal|GoroutineLeak)"; then \
+			echo ""; \
+			echo "🔍 Memory Leak Detection: $$d"; \
+			echo "---------------------------------------------"; \
+			$(GO) test -run='TestMemoryLeak|TestIsolateDisposal|TestGoroutineLeak' -v -timeout=60s $$d || exit 1; \
+		fi; \
+	done
+	@echo ""
+	@echo "============================================="
+	@echo "✅ All memory leak tests passed"
+	@echo "============================================="
+
+# Run all tests (unit + benchmark + memory leak)
+.PHONY: test
+test: unit-test benchmark memory-leak
 
 .PHONY: fmt
 fmt:

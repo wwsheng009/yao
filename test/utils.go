@@ -172,6 +172,7 @@ import (
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/connector"
+	"github.com/yaoapp/gou/mcp"
 	"github.com/yaoapp/gou/model"
 	"github.com/yaoapp/gou/query"
 	"github.com/yaoapp/gou/query/gou"
@@ -223,6 +224,7 @@ var testSystemStores = map[string]string{
 	"__yao.oauth.client": "yao/stores/oauth/client.badger.yao",
 	"__yao.oauth.cache":  "yao/stores/oauth/cache.lru.yao",
 	"__yao.agent.memory": "yao/stores/agent/memory.badger.yao",
+	"__yao.agent.cache":  "yao/stores/agent/cache.lru.yao",
 	"__yao.kb.store":     "yao/stores/kb/store.badger.yao",
 	"__yao.kb.cache":     "yao/stores/kb/cache.lru.yao",
 }
@@ -344,12 +346,42 @@ func loadSystemModels(t *testing.T, cfg config.Config) error {
 	return nil
 }
 
-// Prepare test environment
-func Prepare(t *testing.T, cfg config.Config, rootEnv ...string) {
+// PrepareOption options for test preparation
+type PrepareOption struct {
+	// V8Mode sets the V8 runtime mode: "standard" (default) or "performance"
+	// - standard: Lower memory usage, creates/disposes isolates for each execution
+	// - performance: Higher memory usage, maintains isolate pool for better performance
+	// Use "performance" mode for benchmarks and stress tests
+	V8Mode string
+}
+
+// Prepare test environment with optional configuration
+// Usage:
+//
+//	test.Prepare(t, config.Conf)                                    // standard mode (default)
+//	test.Prepare(t, config.Conf, test.PrepareOption{V8Mode: "performance"}) // performance mode
+func Prepare(t *testing.T, cfg config.Config, opts ...interface{}) {
 
 	appRootEnv := "YAO_TEST_APPLICATION"
-	if len(rootEnv) > 0 {
-		appRootEnv = rootEnv[0]
+	v8Mode := "standard" // default to standard mode
+
+	// Parse options
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case string:
+			// Legacy: string parameter for appRootEnv
+			appRootEnv = v
+		case PrepareOption:
+			// New: structured options
+			if v.V8Mode != "" {
+				v8Mode = v.V8Mode
+			}
+		}
+	}
+
+	// Override with environment variable if set
+	if envMode := os.Getenv("YAO_RUNTIME_MODE"); envMode != "" {
+		v8Mode = envMode
 	}
 
 	// Remove the data store
@@ -450,6 +482,19 @@ func Prepare(t *testing.T, cfg config.Config, rootEnv ...string) {
 		share.App.Prefix = "yao_"
 	}
 
+	// Apply V8 mode to config
+	cfg.Runtime.Mode = v8Mode
+
+	// Ensure MinSize and MaxSize are set for performance mode
+	if v8Mode == "performance" {
+		if cfg.Runtime.MinSize == 0 {
+			cfg.Runtime.MinSize = 3
+		}
+		if cfg.Runtime.MaxSize == 0 {
+			cfg.Runtime.MaxSize = 10
+		}
+	}
+
 	utils.Init()
 	dbconnect(t, cfg)
 	startRuntime(t, cfg)
@@ -547,6 +592,7 @@ func load(t *testing.T, cfg config.Config) {
 	loadScript(t, cfg)
 	loadModel(t, cfg)
 	loadConnector(t, cfg)
+	loadMCP(t, cfg)
 	loadMessenger(t, cfg)
 	loadQuery(t, cfg)
 }
@@ -567,6 +613,27 @@ func loadConnector(t *testing.T, cfg config.Config) {
 		_, err := connector.Load(file, share.ID(root, file))
 		return err
 	}, exts...)
+}
+
+func loadMCP(t *testing.T, cfg config.Config) {
+	// Check if mcps directory exists
+	exists, err := application.App.Exists("mcps")
+	if err != nil || !exists {
+		return
+	}
+
+	exts := []string{"*.mcp.yao", "*.mcp.json", "*.mcp.jsonc"}
+	err = application.App.Walk("mcps", func(root, file string, isdir bool) error {
+		if isdir {
+			return nil
+		}
+		_, err := mcp.LoadClient(file, share.ID(root, file))
+		return err
+	}, exts...)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func loadScript(t *testing.T, cfg config.Config) {

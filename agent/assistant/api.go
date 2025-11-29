@@ -309,7 +309,7 @@ func (ast *Assistant) Call(c *gin.Context, payload APIPayload) (interface{}, err
 		return nil, fmt.Errorf(HookErrorMethodNotFound)
 	}
 
-	if payload.Args == nil || len(payload.Args) == 0 {
+	if len(payload.Args) == 0 {
 		return scriptCtx.CallWith(ctx, method)
 	}
 
@@ -780,7 +780,7 @@ func (ast *Assistant) withOptions(options map[string]interface{}) map[string]int
 
 	// Add tool_calls
 	if ast.Tools != nil && ast.Tools.Tools != nil && len(ast.Tools.Tools) > 0 {
-		if settings, has := connectorSettings[ast.Connector]; has && settings.Tools {
+		if capabilities, has := modelCapabilities[ast.Connector]; has && capabilities.Tools {
 			options["tools"] = ast.Tools.Tools
 			if options["tool_choice"] == nil {
 				options["tool_choice"] = "auto"
@@ -805,8 +805,8 @@ func (ast *Assistant) withPrompts(messages_history []chatMessage.Message) []chat
 
 	// Add tool_calls
 	if ast.Tools != nil && ast.Tools.Tools != nil && len(ast.Tools.Tools) > 0 {
-		settings, has := connectorSettings[ast.Connector]
-		if !has || !settings.Tools {
+		capabilities, has := modelCapabilities[ast.Connector]
+		if !has || !capabilities.Tools {
 			// Convert store tools to runtime tools if not already done
 			if ast.runtimeTools == nil {
 				runtimeTools, err := ToRuntimeTools(ast.Tools.Tools)

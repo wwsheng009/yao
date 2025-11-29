@@ -1,4 +1,4 @@
-package agent
+package types
 
 import (
 	"github.com/gin-gonic/gin"
@@ -12,15 +12,17 @@ type DSL struct {
 
 	// Agent Global Settings
 	// ===============================
-	Use          *Use          `json:"use,omitempty" yaml:"use,omitempty"` // Which assistant to use default, title, prompt
-	StoreSetting store.Setting `json:"store" yaml:"store"`                 // The store setting of the assistant
+	Uses         *Uses         `json:"uses,omitempty" yaml:"uses,omitempty"` // Which assistant to use default, title, prompt
+	StoreSetting store.Setting `json:"store" yaml:"store"`                   // The store setting of the assistant
+	Cache        string        `json:"cache" yaml:"cache"`                   // The cache store of the assistant, if not set, default is "__yao.agent.cache"
+
 	// AuthSetting      *Auth         `json:"auth,omitempty" yaml:"auth,omitempty"`           // Authenticate Settings
 	// UploadSetting    *Upload       `json:"upload,omitempty" yaml:"upload,omitempty"`       // Upload Settings
 	// KnowledgeSetting *Knowledge    `json:"knowledge,omitempty" yaml:"knowledge,omitempty"` // Knowledge base Settings
 
-	// Global External Settings - connectors, tools, etc.
+	// Global External Settings - model capabilities, tools, etc.
 	// ===============================
-	Connectors map[string]assistant.ConnectorSetting `json:"connectors,omitempty" yaml:"connectors,omitempty"` // The connectors of the assistant
+	Models map[string]assistant.ModelCapabilities `json:"models,omitempty" yaml:"models,omitempty"` // The model capabilities configuration
 
 	// Agent API Settings
 	// ===============================s
@@ -29,20 +31,21 @@ type DSL struct {
 
 	// Internal
 	// ===============================
-	ID            string            `json:"-" yaml:"-"` // The id of the instance
+	// ID            string            `json:"-" yaml:"-"` // The id of the instance
 	Assistant     assistant.API     `json:"-" yaml:"-"` // The default assistant
 	Store         store.Store       `json:"-" yaml:"-"` // The store of the assistant
 	Vision        *vision.Vision    `json:"-" yaml:"-"`
 	GuardHandlers []gin.HandlerFunc `json:"-" yaml:"-"`
 }
 
-// Use the default assistant settings
+// Uses the default assistant settings
 // ===============================
-type Use struct {
+type Uses struct {
 	Default string `json:"default,omitempty" yaml:"default,omitempty"` // The default assistant to use
 	Title   string `json:"title,omitempty" yaml:"title,omitempty"`     // The assistant for generating the topic title.
 	Prompt  string `json:"prompt,omitempty" yaml:"prompt,omitempty"`   // The assistant for generating the prompt.
-	Vision  string `json:"vision,omitempty" yaml:"vision,omitempty"`   // The assistant for generating the image/video description, if the assistant enable the vision and model not support vision, use the vision model to describe the image/video, and return the messages with the image/video's description.
+	Vision  string `json:"vision,omitempty" yaml:"vision,omitempty"`   // The assistant for generating the image/video description, if the assistant enable the vision and model not support vision, use the vision model to describe the image/video, and return the messages with the image/video's description. Format: "agent" or "mcp:mcp_server_id"
+	Audio   string `json:"audio,omitempty" yaml:"audio,omitempty"`     // The assistant for processing audio (speech-to-text, text-to-speech). If the model doesn't support audio, use this to convert audio to text. Format: "agent" or "mcp:mcp_server_id"
 	Search  string `json:"search,omitempty" yaml:"search,omitempty"`   // The assistant for searching the knowledge, global web search. If not set, and the assistant enable the knowledge, it will search the result from the knowledge automatically.
 	Fetch   string `json:"fetch,omitempty" yaml:"fetch,omitempty"`     // The assistant for fetching the http/https/ftp/sftp/etc. file, and return the file's content. if not set, use the http process to fetch the file.
 }
