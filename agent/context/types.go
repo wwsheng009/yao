@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/yaoapp/gou/plan"
 	"github.com/yaoapp/gou/store"
@@ -194,21 +195,99 @@ type Skip struct {
 	Trace   bool `json:"trace"`   // Skip trace logging
 }
 
+// MessageMetadata stores metadata for sent messages
+// Used to inherit BlockID and ThreadID in delta operations
+type MessageMetadata struct {
+	MessageID  string    // Message ID
+	BlockID    string    // Block ID
+	ThreadID   string    // Thread ID
+	Type       string    // Message type (text, thinking, etc.)
+	StartTime  time.Time // Message start time (for calculating duration)
+	ChunkCount int       // Number of chunks sent for this message
+}
+
+// BlockMetadata stores metadata for output blocks
+type BlockMetadata struct {
+	BlockID      string    // Block ID
+	Type         string    // Block type (llm, mcp, agent, etc.)
+	StartTime    time.Time // Block start time
+	MessageCount int       // Number of messages in this block
+}
+
+// messageMetadataStore provides thread-safe storage for message and block metadata
+type messageMetadataStore struct {
+	messages map[string]*MessageMetadata // Message metadata by MessageID
+	blocks   map[string]*BlockMetadata   // Block metadata by BlockID
+	mu       sync.RWMutex
+}
+
+// newMessageMetadataStore creates a new message metadata store
+func newMessageMetadataStore() *messageMetadataStore {
+	return &messageMetadataStore{
+		messages: make(map[string]*MessageMetadata),
+		blocks:   make(map[string]*BlockMetadata),
+	}
+}
+
+// setMessage stores metadata for a message (thread-safe)
+func (s *messageMetadataStore) setMessage(messageID string, metadata *MessageMetadata) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages[messageID] = metadata
+}
+
+// getMessage retrieves metadata for a message (thread-safe)
+func (s *messageMetadataStore) getMessage(messageID string) *MessageMetadata {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.messages[messageID]
+}
+
+// setBlock stores metadata for a block (thread-safe)
+func (s *messageMetadataStore) setBlock(blockID string, metadata *BlockMetadata) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blocks[blockID] = metadata
+}
+
+// getBlock retrieves metadata for a block (thread-safe)
+func (s *messageMetadataStore) getBlock(blockID string) *BlockMetadata {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.blocks[blockID]
+}
+
+// updateBlock updates block metadata (thread-safe)
+func (s *messageMetadataStore) updateBlock(blockID string, update func(*BlockMetadata)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if block, exists := s.blocks[blockID]; exists {
+		update(block)
+	}
+}
+
 // Context the context
 type Context struct {
 
 	// Context
 	context.Context
-	ID          string               `json:"id"`             // Context ID for external interrupt identification
-	Space       plan.Space           `json:"-"`              // Shared data space, it will be used to share data between the request and the call
-	Cache       store.Store          `json:"-"`              // Cache store, it will be used to store the message cache, default is "__yao.agent.cache"
-	Stack       *Stack               `json:"-"`              // Stack, current active stack of the request
-	Stacks      map[string]*Stack    `json:"-"`              // Stacks, all stacks in this request (for trace logging)
-	Writer      Writer               `json:"-"`              // Writer, it will be used to write response data to the client
-	Skip        *Skip                `json:"skip,omitempty"` // Skip configuration (history, trace, etc.), nil means don't skip anything
-	trace       traceTypes.Manager   `json:"-"`              // Trace manager, lazy initialized on first access
-	output      *output.Output       `json:"-"`              // Output, it will be used to write response data to the client
-	IDGenerator *message.IDGenerator `json:"-"`              // ID generator for this context (chunk, message, block, thread IDs)
+
+	// External
+	ID          string               `json:"id"` // Context ID for external interrupt identification
+	Space       plan.Space           `json:"-"`  // Shared data space, it will be used to share data between the request and the call
+	Cache       store.Store          `json:"-"`  // Cache store, it will be used to store the message cache, default is "__yao.agent.cache"
+	Stack       *Stack               `json:"-"`  // Stack, current active stack of the request
+	Stacks      map[string]*Stack    `json:"-"`  // Stacks, all stacks in this request (for trace logging)
+	Writer      Writer               `json:"-"`  // Writer, it will be used to write response data to the client
+	IDGenerator *message.IDGenerator `json:"-"`  // ID generator for this context (chunk, message, block, thread IDs)
+
+	// Internal
+	trace           traceTypes.Manager    `json:"-"` // Trace manager, lazy initialized on first access
+	output          *output.Output        `json:"-"` // Output, it will be used to write response data to the client
+	messageMetadata *messageMetadataStore `json:"-"` // Thread-safe message metadata store for delta operations
+
+	// Skip configuration (history, trace, etc.), nil means don't skip anything
+	Skip *Skip `json:"skip,omitempty"` // Skip configuration (history, trace, etc.), nil means don't skip anything
 
 	// Model capabilities (set by assistant, used by output adapters)
 	Capabilities *ModelCapabilities `json:"-"` // Model capabilities for the current connector
@@ -220,7 +299,6 @@ type Context struct {
 	Authorized  *types.AuthorizedInfo `json:"authorized,omitempty"`   // Authorized information
 	ChatID      string                `json:"chat_id,omitempty"`      // Chat ID, use to select chat
 	AssistantID string                `json:"assistant_id,omitempty"` // Assistant ID, use to select assistant
-	Sid         string                `json:"sid" yaml:"-"`           // Session ID (Deprecated, use Authorized instead)
 	Connector   string                `json:"connector,omitempty"`    // Connector, use to select the connector of the LLM Model, Default is Assistant.Connector
 	Search      *bool                 `json:"search,omitempty"`       // Search mode, default is true
 
@@ -241,8 +319,6 @@ type Context struct {
 	// CUI Context information
 	Route    string                 `json:"route,omitempty"`    // The route of the request, it will be used to identify the route of the request
 	Metadata map[string]interface{} `json:"metadata,omitempty"` // The metadata of the request, it will be used to pass data to the page
-
-	Silent bool `json:"silent,omitempty"` // Silent mode (Deprecated, use Referer instead)
 }
 
 // Stack represents the call stack node for tracing agent-to-agent calls
@@ -274,15 +350,14 @@ type Stack struct {
 // Response the response
 // 100% compatible with the OpenAI API
 type Response struct {
-	RequestID   string                `json:"request_id"`   // Request ID for the response
-	ContextID   string                `json:"context_id"`   // Context ID for the response
-	ChatID      string                `json:"chat_id"`      // Chat ID for the response
-	AssistantID string                `json:"assistant_id"` // Assistant ID for the response
-	Create      *HookCreateResponse   `json:"create,omitempty"`
-	MCP         *ResponseHookMCP      `json:"mcp,omitempty"`
-	Done        *ResponseHookDone     `json:"done,omitempty"`
-	Failback    *ResponseHookFailback `json:"failback,omitempty"`
-	Completion  *CompletionResponse   `json:"completion,omitempty"`
+	RequestID   string              `json:"request_id"`           // Request ID for the response
+	ContextID   string              `json:"context_id"`           // Context ID for the response
+	TraceID     string              `json:"trace_id"`             // Trace ID for the response
+	ChatID      string              `json:"chat_id"`              // Chat ID for the response
+	AssistantID string              `json:"assistant_id"`         // Assistant ID for the response
+	Create      *HookCreateResponse `json:"create,omitempty"`     // Create response from the create hook
+	Next        interface{}         `json:"next,omitempty"`       // Next response from the next hook
+	Completion  *CompletionResponse `json:"completion,omitempty"` // Completion response from the completion hook
 }
 
 // HookCreateResponse the response of the create hook
@@ -299,6 +374,9 @@ type HookCreateResponse struct {
 	MaxTokens           *int     `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int     `json:"max_completion_tokens,omitempty"`
 
+	// MCP configuration - allow hook to add/override MCP servers for this request
+	MCPServers []MCPServerConfig `json:"mcp_servers,omitempty"`
+
 	// Context adjustments - allow hook to modify context fields
 	AssistantID string                 `json:"assistant_id,omitempty"` // Override assistant ID
 	Connector   string                 `json:"connector,omitempty"`    // Override connector
@@ -308,8 +386,65 @@ type HookCreateResponse struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`     // Override or merge metadata
 }
 
-// ResponseHookDone the response of the done hook
-type ResponseHookDone struct{}
+// NextHookPayload payload for the next hook
+type NextHookPayload struct {
+	Messages   []Message           `json:"messages,omitempty"`   // Messages to be sent to the assistant
+	Completion *CompletionResponse `json:"completion,omitempty"` // Completion response from the completion hook
+	Tools      []ToolCallResponse  `json:"tools,omitempty"`      // Tools results from the assistant
+	Error      string              `json:"error,omitempty"`      // Error message if failed
+}
+
+// ToolCallResponse the response of a tool call
+type ToolCallResponse struct {
+	ToolCallID string      `json:"toolcall_id"`
+	Server     string      `json:"server"`
+	Tool       string      `json:"tool"`
+	Arguments  interface{} `json:"arguments,omitempty"`
+	Result     interface{} `json:"result,omitempty"`
+	Error      string      `json:"error,omitempty"`
+}
+
+// NextHookResponse represents the response from Next hook
+type NextHookResponse struct {
+	// Delegate: if provided, delegate to another agent (recursive call)
+	Delegate *DelegateConfig `json:"delegate,omitempty"`
+
+	// Data: custom response data to return to user
+	// If both Delegate and Data are nil, use standard CompletionResponse
+	Data interface{} `json:"data,omitempty"`
+
+	// Metadata: for debugging and logging
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// DelegateConfig configuration for delegating to another agent
+type DelegateConfig struct {
+	AgentID  string    `json:"agent_id"` // Required: target agent ID
+	Messages []Message `json:"messages"` // Messages to send to target agent
+
+}
+
+// NextAction defines the action determined by Next hook response
+type NextAction string
+
+const (
+	// NextActionReturn returns data to user (standard or custom)
+	NextActionReturn NextAction = "return"
+
+	// NextActionDelegate delegates to another agent
+	NextActionDelegate NextAction = "delegate"
+)
+
+// Action returns the determined action based on NextHookResponse fields
+func (n *NextHookResponse) Action() NextAction {
+	if n.Delegate != nil {
+		return NextActionDelegate
+	}
+	return NextActionReturn
+}
+
+// ResponseHookNext the response of the next hook
+type ResponseHookNext interface{}
 
 // ResponseHookMCP the response of the mcp hook
 type ResponseHookMCP struct{}
@@ -466,4 +601,12 @@ type AudioConfig struct {
 // StreamOptions represents options for streaming responses
 type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage,omitempty"` // If true, include usage statistics in the final chunk
+}
+
+// MCPServerConfig represents an MCP server configuration
+// This mirrors agent/store/types.MCPServerConfig to avoid import cycles
+type MCPServerConfig struct {
+	ServerID  string   `json:"server_id"`           // MCP server ID (required)
+	Tools     []string `json:"tools,omitempty"`     // Tool name filter (empty = all tools)
+	Resources []string `json:"resources,omitempty"` // Resource URI filter (empty = all resources)
 }

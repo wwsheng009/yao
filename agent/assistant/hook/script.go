@@ -1,6 +1,8 @@
 package hook
 
 import (
+	"strings"
+
 	"github.com/yaoapp/yao/agent/context"
 )
 
@@ -10,7 +12,12 @@ func (s *Script) Execute(ctx *context.Context, method string, args ...interface{
 		return nil, nil
 	}
 
-	scriptCtx, err := s.NewContext(ctx.Sid, nil)
+	var sid = ""
+	if ctx.Authorized != nil {
+		sid = ctx.Authorized.SessionID
+	}
+
+	scriptCtx, err := s.NewContext(sid, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -18,5 +25,16 @@ func (s *Script) Execute(ctx *context.Context, method string, args ...interface{
 
 	// The first argument is the context
 	args = append([]interface{}{ctx}, args...)
-	return scriptCtx.CallWith(ctx.Context, method, args...)
+
+	// Try to call the method
+	result, err := scriptCtx.CallWith(ctx.Context, method, args...)
+
+	// If method doesn't exist (ReferenceError or similar), return nil without error
+	if err != nil && (strings.Contains(err.Error(), "is not defined") ||
+		strings.Contains(err.Error(), "is not a function") ||
+		strings.Contains(err.Error(), "is not a Function")) {
+		return nil, nil
+	}
+
+	return result, err
 }

@@ -21,55 +21,60 @@ var (
 	contextRegistry = &sync.Map{} // map[contextID]*Context
 )
 
-// New create a new context
-func New(parent context.Context, authorized *types.AuthorizedInfo, chatID, payload string) Context {
-
+// New create a new context with basic initialization
+func New(parent context.Context, authorized *types.AuthorizedInfo, chatID string) *Context {
 	if parent == nil {
 		parent = context.Background()
 	}
 
-	// Validate the client type
-	ctx := Context{
-		Context:     parent,
-		ID:          generateContextID(), // Generate unique ID for the context
-		Space:       plan.NewMemorySharedSpace(),
-		ChatID:      chatID,
-		IDGenerator: message.NewIDGenerator(), // Initialize ID generator for this context
+	ctx := &Context{
+		Context:         parent,
+		ID:              generateContextID(), // Generate unique ID for the context
+		Authorized:      authorized,          // Set authorized info
+		Space:           plan.NewMemorySharedSpace(),
+		ChatID:          chatID,
+		IDGenerator:     message.NewIDGenerator(),  // Initialize ID generator for this context
+		messageMetadata: newMessageMetadataStore(), // Initialize message metadata store
 	}
 
-	if payload == "" {
-		return ctx
-	}
+	return ctx
+}
 
-	err := jsoniter.Unmarshal([]byte(payload), &ctx)
-	if err != nil {
-		log.Error("%s", err.Error())
+// NewWithPayload create a new context and unmarshal from payload
+func NewWithPayload(parent context.Context, authorized *types.AuthorizedInfo, chatID, payload string) *Context {
+	ctx := New(parent, authorized, chatID)
+
+	if payload != "" {
+		err := jsoniter.Unmarshal([]byte(payload), ctx)
+		if err != nil {
+			log.Error("%s", err.Error())
+		}
 	}
 
 	return ctx
 }
 
 // NewWithCancel create a new context with cancel
-func NewWithCancel(parent context.Context, authorized *types.AuthorizedInfo, chatID, payload string) (Context, context.CancelFunc) {
-	ctx := New(parent, authorized, chatID, payload)
+func NewWithCancel(parent context.Context, authorized *types.AuthorizedInfo, chatID string) (*Context, context.CancelFunc) {
+	ctx := New(parent, authorized, chatID)
 	return WithCancel(ctx)
 }
 
 // NewWithTimeout create a new context with timeout
-func NewWithTimeout(parent context.Context, authorized *types.AuthorizedInfo, chatID, payload string, timeout time.Duration) (Context, context.CancelFunc) {
-	ctx := New(parent, authorized, chatID, payload)
+func NewWithTimeout(parent context.Context, authorized *types.AuthorizedInfo, chatID string, timeout time.Duration) (*Context, context.CancelFunc) {
+	ctx := New(parent, authorized, chatID)
 	return WithTimeout(ctx, timeout)
 }
 
 // WithCancel create a new context
-func WithCancel(parent Context) (Context, context.CancelFunc) {
+func WithCancel(parent *Context) (*Context, context.CancelFunc) {
 	new, cancel := context.WithCancel(parent.Context)
 	parent.Context = new
 	return parent, cancel
 }
 
 // WithTimeout create a new context
-func WithTimeout(parent Context, timeout time.Duration) (Context, context.CancelFunc) {
+func WithTimeout(parent *Context, timeout time.Duration) (*Context, context.CancelFunc) {
 	new, cancel := context.WithTimeout(parent.Context, timeout)
 	parent.Context = new
 	return parent, cancel
@@ -374,4 +379,28 @@ func (ctx *Context) TraceID() string {
 		return ctx.Stack.TraceID
 	}
 	return ""
+}
+
+// recordMessageMetadata records metadata for a sent message
+// Used to inherit BlockID and ThreadID in subsequent delta operations
+func (ctx *Context) recordMessageMetadata(msg *message.Message) {
+	if msg.MessageID == "" || ctx.messageMetadata == nil {
+		return
+	}
+
+	ctx.messageMetadata.setMessage(msg.MessageID, &MessageMetadata{
+		MessageID: msg.MessageID,
+		BlockID:   msg.BlockID,
+		ThreadID:  msg.ThreadID,
+		Type:      msg.Type,
+	})
+}
+
+// getMessageMetadata retrieves metadata for a message by ID
+// Returns nil if message metadata is not found
+func (ctx *Context) getMessageMetadata(messageID string) *MessageMetadata {
+	if ctx.messageMetadata == nil {
+		return nil
+	}
+	return ctx.messageMetadata.getMessage(messageID)
 }

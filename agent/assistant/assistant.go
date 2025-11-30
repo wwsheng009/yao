@@ -11,6 +11,62 @@ import (
 	sui "github.com/yaoapp/yao/sui/core"
 )
 
+// Get get the assistant by id
+func Get(id string) (*Assistant, error) {
+	return LoadStore(id)
+}
+
+// GetByConnector get the assistant by connector
+func GetByConnector(connector string, name string) (*Assistant, error) {
+	id := "connector:" + connector
+
+	assistant, exists := loaded.Get(id)
+	if exists {
+		return assistant, nil
+	}
+
+	data := map[string]interface{}{
+		"assistant_id": id,
+		"connector":    connector,
+		"description":  "Default assistant for " + connector,
+		"name":         name,
+		"type":         "assistant",
+	}
+
+	assistant, err := loadMap(data)
+	if err != nil {
+		return nil, err
+	}
+	loaded.Put(assistant)
+	return assistant, nil
+}
+
+// GetPlaceholder returns the placeholder of the assistant
+func (ast *Assistant) GetPlaceholder(locale string) *store.Placeholder {
+
+	prompts := []string{}
+	if ast.Placeholder.Prompts != nil {
+		prompts = i18n.Translate(ast.ID, locale, ast.Placeholder.Prompts).([]string)
+	}
+	title := i18n.Translate(ast.ID, locale, ast.Placeholder.Title).(string)
+	description := i18n.Translate(ast.ID, locale, ast.Placeholder.Description).(string)
+	return &store.Placeholder{
+		Title:       title,
+		Description: description,
+		Prompts:     prompts,
+	}
+}
+
+// GetName returns the name of the assistant
+func (ast *Assistant) GetName(locale string) string {
+	return i18n.Translate(ast.ID, locale, ast.Name).(string)
+}
+
+// GetDescription returns the description of the assistant
+func (ast *Assistant) GetDescription(locale string) string {
+	return i18n.Translate(ast.ID, locale, ast.Description).(string)
+}
+
 // Save save the assistant
 func (ast *Assistant) Save() error {
 	if storage == nil {
@@ -152,8 +208,22 @@ func (ast *Assistant) Clone() *Assistant {
 	if ast.MCP != nil {
 		clone.MCP = &store.MCPServers{}
 		if ast.MCP.Servers != nil {
-			clone.MCP.Servers = make([]string, len(ast.MCP.Servers))
-			copy(clone.MCP.Servers, ast.MCP.Servers)
+			clone.MCP.Servers = make([]store.MCPServerConfig, len(ast.MCP.Servers))
+			for i, server := range ast.MCP.Servers {
+				clone.MCP.Servers[i] = store.MCPServerConfig{
+					ServerID: server.ServerID,
+				}
+				// Deep copy Resources slice
+				if server.Resources != nil {
+					clone.MCP.Servers[i].Resources = make([]string, len(server.Resources))
+					copy(clone.MCP.Servers[i].Resources, server.Resources)
+				}
+				// Deep copy Tools slice
+				if server.Tools != nil {
+					clone.MCP.Servers[i].Tools = make([]string, len(server.Tools))
+					copy(clone.MCP.Servers[i].Tools, server.Tools)
+				}
+			}
 		}
 		if ast.MCP.Options != nil {
 			clone.MCP.Options = make(map[string]interface{})
