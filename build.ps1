@@ -12,6 +12,10 @@ New-Item -ItemType Directory -Force -Path dist\release
 
 # Create directory .tmp
 New-Item -ItemType Directory -Force -Path .tmp
+# Remove directory .tmp\data
+Remove-Item .tmp\data -Recurse -Force
+# Remove directory .tmp\cui
+Remove-Item .tmp\cui -Recurse -Force
 
 # Create directory .tmp\cui\v0.9\dist
 New-Item -ItemType Directory -Force -Path .tmp\cui\v0.9\dist
