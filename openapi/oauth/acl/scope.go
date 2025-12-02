@@ -529,7 +529,7 @@ func (m *ScopeManager) Check(req *AccessRequest) *AccessDecision {
 	if endpoint == nil {
 		// No match found, use default policy
 		decision.Allowed = m.defaultAction == "allow"
-		decision.Reason = fmt.Sprintf("no match, default policy: %s", m.defaultAction)
+		decision.Reason = fmt.Sprintf("no endpoint match, default policy: %s", m.defaultAction)
 		return decision
 	}
 

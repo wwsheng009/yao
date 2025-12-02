@@ -1,20 +1,14 @@
 package service
 
 import (
-	"fmt"
-	"os"
-	"runtime"
-	"runtime/debug"
 	"time"
 
-	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/server/http"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/openapi"
 	"github.com/yaoapp/yao/share"
-	"github.com/yaoapp/xun"
 )
 
 // Start the yao service
