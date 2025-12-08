@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/connector"
 	"github.com/yaoapp/gou/fs"
+	"github.com/yaoapp/gou/mcp"
 	"github.com/yaoapp/gou/plugin"
 	"github.com/yaoapp/gou/schedule"
 	"github.com/yaoapp/gou/server/http"
@@ -77,11 +79,30 @@ var startCmd = &cobra.Command{
 			config.Development()
 		}
 
+		startTime := time.Now()
+
 		// load the application engine
-		loadWarnings, err := engine.Load(config.Conf, engine.LoadOption{Action: "start"})
+		var progressCallback func(string, string)
+		if config.Conf.Mode == "development" {
+			fmt.Println(color.CyanString("Loading application engine..."))
+			progressCallback = func(name string, duration string) {
+				fmt.Printf("  %s %s %s\n", color.GreenString("✓"), name, color.GreenString("(%s)", duration))
+			}
+		}
+
+		loadWarnings, err := engine.Load(config.Conf, engine.LoadOption{
+			Action: "start",
+		}, progressCallback)
 		if err != nil {
 			fmt.Println(color.RedString(L("Load: %s"), err.Error()))
 			os.Exit(1)
+		}
+
+		loadDuration := time.Since(startTime)
+		if config.Conf.Mode == "development" {
+			fmt.Printf("\n%s Engine loaded successfully in %s\n\n",
+				color.GreenString("✓"),
+				color.CyanString("%v", loadDuration))
 		}
 
 		port := fmt.Sprintf(":%d", config.Conf.Port)
@@ -144,6 +165,7 @@ var startCmd = &cobra.Command{
 			printSchedules(false)
 			printConnectors(false)
 			printStores(false)
+			printMCPs(false)
 			// printStudio(false, host)
 
 		}
@@ -230,6 +252,7 @@ var startCmd = &cobra.Command{
 			printSchedules(true)
 			printConnectors(true)
 			printStores(true)
+			printMCPs(true)
 		}
 
 		// Print the warnings
@@ -494,6 +517,120 @@ func printApis(silent bool) {
 				colorMehtod("GET"),
 				color.WhiteString(path.Join("/websocket", name)),
 				"\tprocess:", upgrader.Process)
+		}
+	}
+}
+
+func printMCPs(silent bool) {
+	clients := mcp.ListClients()
+	if len(clients) == 0 {
+		return
+	}
+
+	if silent {
+		for _, clientID := range clients {
+			log.Info("[MCP] %s loaded", clientID)
+		}
+		return
+	}
+
+	// Separate agent MCPs from standard MCPs by Type field
+	agentClients := []string{}
+	standardClients := []string{}
+	for _, clientID := range clients {
+		client, err := mcp.Select(clientID)
+		if err != nil {
+			standardClients = append(standardClients, clientID)
+			continue
+		}
+
+		info := client.Info()
+		if info != nil && info.Type == "agent" {
+			agentClients = append(agentClients, clientID)
+		} else {
+			standardClients = append(standardClients, clientID)
+		}
+	}
+
+	fmt.Println(color.WhiteString("\n---------------------------------"))
+	fmt.Println(color.WhiteString(L("MCP Clients List (%d)"), len(clients)))
+	fmt.Println(color.WhiteString("---------------------------------"))
+
+	if len(standardClients) > 0 {
+		fmt.Println(color.WhiteString("\n%s (%d)", "Standard MCPs", len(standardClients)))
+		fmt.Println(color.WhiteString("--------------------------"))
+		for _, clientID := range standardClients {
+			client, err := mcp.Select(clientID)
+			if err != nil {
+				fmt.Print(color.CyanString("[MCP] %s", clientID))
+				fmt.Print(color.WhiteString("\tloaded\n"))
+				continue
+			}
+
+			info := client.Info()
+			transport := "unknown"
+			label := clientID
+			if info != nil {
+				if info.Transport != "" {
+					transport = string(info.Transport)
+				}
+				if info.Label != "" {
+					label = info.Label
+				}
+			}
+
+			fmt.Print(color.CyanString("[MCP] %s", label))
+			fmt.Print(color.WhiteString("\t%s\tid: %s", transport, clientID))
+
+			// Only show tools count for process transport
+			if transport == "process" {
+				toolsCount := 0
+				mapping, err := mcp.GetClientMapping(clientID)
+				if err == nil && mapping.Tools != nil {
+					toolsCount = len(mapping.Tools)
+				}
+				fmt.Print(color.WhiteString("\ttools: %d", toolsCount))
+			}
+			fmt.Print("\n")
+		}
+	}
+
+	if len(agentClients) > 0 {
+		fmt.Println(color.WhiteString("\n%s (%d)", "Agent MCPs", len(agentClients)))
+		fmt.Println(color.WhiteString("--------------------------"))
+		for _, clientID := range agentClients {
+			client, err := mcp.Select(clientID)
+			if err != nil {
+				fmt.Print(color.CyanString("[MCP] %s", clientID))
+				fmt.Print(color.WhiteString("\tloaded\n"))
+				continue
+			}
+
+			info := client.Info()
+			transport := "unknown"
+			label := clientID
+			if info != nil {
+				if info.Transport != "" {
+					transport = string(info.Transport)
+				}
+				if info.Label != "" {
+					label = info.Label
+				}
+			}
+
+			fmt.Print(color.CyanString("[MCP] %s", label))
+			fmt.Print(color.WhiteString("\t%s\tid: %s", transport, clientID))
+
+			// Only show tools count for process transport
+			if transport == "process" {
+				toolsCount := 0
+				mapping, err := mcp.GetClientMapping(clientID)
+				if err == nil && mapping.Tools != nil {
+					toolsCount = len(mapping.Tools)
+				}
+				fmt.Print(color.WhiteString("\ttools: %d", toolsCount))
+			}
+			fmt.Print("\n")
 		}
 	}
 }

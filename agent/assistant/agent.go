@@ -8,7 +8,6 @@ import (
 	"github.com/yaoapp/gou/connector"
 	"github.com/yaoapp/gou/connector/openai"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/kun/utils"
 	"github.com/yaoapp/yao/agent/assistant/handlers"
 	"github.com/yaoapp/yao/agent/context"
 	"github.com/yaoapp/yao/agent/i18n"
@@ -84,9 +83,9 @@ func (ast *Assistant) Stream(ctx *context.Context, inputMessages []context.Messa
 	// ================================================
 	// Request Create hook ( Optional )
 	var createResponse *context.HookCreateResponse
-	if ast.Script != nil {
+	if ast.HookScript != nil {
 		var err error
-		createResponse, opts, err = ast.Script.Create(ctx, fullMessages, opts)
+		createResponse, opts, err = ast.HookScript.Create(ctx, fullMessages, opts)
 		if err != nil {
 			ast.traceAgentFail(agentNode, err)
 			// Send error stream_end for root stack
@@ -234,9 +233,9 @@ func (ast *Assistant) Stream(ctx *context.Context, inputMessages []context.Messa
 	var finalResponse interface{}
 	var nextResponse *context.NextHookResponse = nil
 
-	if ast.Script != nil {
+	if ast.HookScript != nil {
 		var err error
-		nextResponse, opts, err = ast.Script.Next(ctx, &context.NextHookPayload{
+		nextResponse, opts, err = ast.HookScript.Next(ctx, &context.NextHookPayload{
 			Messages:   fullMessages,
 			Completion: completionResponse,
 			Tools:      toolCallResponses,
@@ -471,10 +470,6 @@ func (ast *Assistant) initializeCapabilities(ctx *context.Context, opts *context
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("--- initializeCapabilities debug ---")
-	utils.Dump(capabilities)
-	fmt.Println("--- end initializeCapabilities debug ---")
 
 	// Set capabilities in context for output adapters to use
 	if capabilities != nil {
