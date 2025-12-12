@@ -257,3 +257,8 @@ func CloseLog() {
 		}
 	}
 }
+
+// IsDevelopment returns true if the current mode is development
+func IsDevelopment() bool {
+	return Conf.Mode == "development"
+}

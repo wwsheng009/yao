@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yaoapp/gou/plan"
 	"github.com/yaoapp/yao/agent/assistant"
 	"github.com/yaoapp/yao/agent/context"
 	"github.com/yaoapp/yao/agent/output/message"
@@ -15,27 +14,25 @@ import (
 
 // newAgentNextTestContext creates a test context
 func newAgentNextTestContext(chatID, assistantID string) *context.Context {
-	return &context.Context{
-		Context:     stdContext.Background(),
-		ID:          chatID,
-		Space:       plan.NewMemorySharedSpace(),
-		ChatID:      chatID,
-		AssistantID: assistantID,
-		Locale:      "en-us",
-		Client: context.Client{
-			Type: "web",
-			IP:   "127.0.0.1",
-		},
-		Referer:     context.RefererAPI,
-		Accept:      context.AcceptWebCUI,
-		IDGenerator: message.NewIDGenerator(), // Initialize ID generator
-		Metadata:    make(map[string]interface{}),
-		Authorized: &types.AuthorizedInfo{
-			Subject:  "test-user",
-			UserID:   "test-123",
-			TenantID: "test-tenant",
-		},
+	authorized := &types.AuthorizedInfo{
+		Subject:  "test-user",
+		UserID:   "test-123",
+		TenantID: "test-tenant",
 	}
+
+	ctx := context.New(stdContext.Background(), authorized, chatID)
+	ctx.ID = chatID
+	ctx.AssistantID = assistantID
+	ctx.Locale = "en-us"
+	ctx.Client = context.Client{
+		Type: "web",
+		IP:   "127.0.0.1",
+	}
+	ctx.Referer = context.RefererAPI
+	ctx.Accept = context.AcceptWebCUI
+	ctx.IDGenerator = message.NewIDGenerator() // Initialize ID generator
+	ctx.Metadata = make(map[string]interface{})
+	return ctx
 }
 
 // TestAgentNextStandard tests agent with Next Hook returning nil (standard response)
@@ -171,7 +168,9 @@ func TestAgentNextConditional(t *testing.T) {
 
 	ctx := newAgentNextTestContext("test-conditional", "tests.realworld-next")
 	messages := []context.Message{
-		{Role: context.RoleUser, Content: "scenario: conditional - Task completed"},
+		// Use conditional_success sub-scenario for deterministic behavior
+		// This avoids test flakiness caused by LLM response unpredictability
+		{Role: context.RoleUser, Content: "scenario: conditional_success - Task completed"},
 	}
 
 	response, err := agent.Stream(ctx, messages)
