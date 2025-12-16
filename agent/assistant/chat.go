@@ -34,13 +34,15 @@ func (ast *Assistant) InitializeConversation(ctx *agentcontext.Context, options 
 
 	// Check if authorized info is available
 	if ctx.Authorized == nil {
-		ctx.Logger.Warn("no authorized info, skipping KB collection preparation")
+		if ctx.Logger != nil {
+			ctx.Logger.Warn("no authorized info, skipping KB collection preparation")
+		}
 		return nil
 	}
 
 	// Prepare kb collection
 	err := ast.prepareKBCollection(ctx, opts)
-	if err != nil {
+	if err != nil && ctx.Logger != nil {
 		// Log but don't fail the chat
 		ctx.Logger.Warn("failed to prepare KB collection: %v", err)
 	}
@@ -74,8 +76,10 @@ func (ast *Assistant) prepareKBCollection(ctx *agentcontext.Context, opts *agent
 
 	chatKB := kbSetting.Chat
 
-	// Debug: log locale information
-	ctx.Logger.Debug("prepareKBCollection: locale=%s", ctx.Locale)
+	if ctx.Logger != nil {
+		// Debug: log locale information
+		ctx.Logger.Debug("prepareKBCollection: locale=%s", ctx.Locale)
+	}
 
 	// Get KB collection ID for this chat session
 	// Same team + user always produces the same ID (idempotent)
@@ -83,7 +87,9 @@ func (ast *Assistant) prepareKBCollection(ctx *agentcontext.Context, opts *agent
 
 	// Check if this collection is currently being created by another goroutine
 	if _, isCreating := kbCollectionCreating.LoadOrStore(collectionID, true); isCreating {
-		ctx.Logger.Debug("KB collection %s is already being created, skipping", collectionID)
+		if ctx.Logger != nil {
+			ctx.Logger.Debug("KB collection %s is already being created, skipping", collectionID)
+		}
 		return nil
 	}
 	// Ensure cleanup even if panic occurs
@@ -93,10 +99,14 @@ func (ast *Assistant) prepareKBCollection(ctx *agentcontext.Context, opts *agent
 	existsResult, err := kb.API.CollectionExists(ctx.Context, collectionID)
 	if err != nil {
 		// If check fails, log and continue to create (let create handle conflicts)
-		ctx.Logger.Warn("failed to check collection existence: %v, will attempt to create", err)
+		if ctx.Logger != nil {
+			ctx.Logger.Warn("failed to check collection existence: %v, will attempt to create", err)
+		}
 	} else if existsResult != nil && existsResult.Exists {
 		// Collection exists, no need to create
-		ctx.Logger.Debug("KB collection already exists: %s", collectionID)
+		if ctx.Logger != nil {
+			ctx.Logger.Debug("KB collection already exists: %s", collectionID)
+		}
 		return nil
 	}
 
