@@ -245,6 +245,10 @@ func LoadScriptsFromData(data map[string]interface{}, assistantID string) (*hook
 					hookScript = &hook.Script{Script: v}
 				}
 			}
+		} else if scriptsMap, ok := data["scripts"].(map[string]*Script); ok {
+			if indexSource, hasIndex := scriptsMap["index"]; hasIndex {
+				hookScript = &hook.Script{Script: indexSource.Script}
+			}
 		}
 
 		// Then load other scripts (loadScriptsField automatically filters out index)
