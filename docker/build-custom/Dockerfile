@@ -30,10 +30,10 @@ RUN apt-get update && \
     apt-get install -y unzip
 
 
-# Install Go 1.23.3 
-RUN wget https://golang.org/dl/go1.24.3.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz && \
-    rm go1.24.3.linux-amd64.tar.gz
+# Install Go
+RUN wget https://golang.org/dl/go1.25.0.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.25.0.linux-amd64.tar.gz && \
+    rm go1.25.0.linux-amd64.tar.gz
 
 
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
