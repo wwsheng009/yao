@@ -15,6 +15,7 @@ func (ast *Assistant) processNextResponse(npc *NextProcessContext) (*agentContex
 	}
 
 	// Handle Delegate: call another agent
+	// Note: User input is already buffered by root agent, delegated agent will skip buffering
 	if npc.NextResponse.Delegate != nil {
 		return ast.handleDelegation(npc.Context, npc.NextResponse.Delegate, npc.StreamHandler)
 	}
@@ -30,6 +31,7 @@ func (ast *Assistant) processNextResponse(npc *NextProcessContext) (*agentContex
 			Create:      npc.CreateResponse,
 			Next:        npc.NextResponse.Data, // Put custom data in Next field
 			Completion:  npc.CompletionResponse,
+			Tools:       npc.ToolCallResponses,
 		}, nil
 	}
 
@@ -72,5 +74,6 @@ func (ast *Assistant) buildStandardResponse(npc *NextProcessContext) *agentConte
 		Create:      npc.CreateResponse,
 		Next:        npc.NextResponse,
 		Completion:  npc.CompletionResponse,
+		Tools:       npc.ToolCallResponses,
 	}
 }

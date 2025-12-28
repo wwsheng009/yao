@@ -349,6 +349,7 @@ type Response struct {
 	Create      *HookCreateResponse `json:"create,omitempty"`     // Create response from the create hook
 	Next        interface{}         `json:"next,omitempty"`       // Next response from the next hook
 	Completion  *CompletionResponse `json:"completion,omitempty"` // Completion response from the completion hook
+	Tools       []ToolCallResponse  `json:"tools,omitempty"`      // Tool call results (if any tools were executed)
 }
 
 // HookCreateResponse the response of the create hook
@@ -390,6 +391,10 @@ type HookCreateResponse struct {
 	// - SearchIntent: fine-grained control with specific types, confidence, etc.
 	// - nil: use default behavior (determined by __yao.needsearch agent)
 	Search any `json:"search,omitempty"` // Search mode: bool | SearchIntent | nil
+
+	// Delegate: if provided, delegate to another agent immediately (skip LLM call)
+	// This allows Create hook to route to sub-agents before any LLM processing
+	Delegate *DelegateConfig `json:"delegate,omitempty"`
 }
 
 // NextHookPayload payload for the next hook
