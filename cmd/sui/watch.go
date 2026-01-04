@@ -33,8 +33,8 @@ var WatchCmd = &cobra.Command{
 	Short: L("Auto-build when the template file changes"),
 	Long:  L("Auto-build when the template file changes"),
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, color.RedString(L("yao sui watch <sui> <template> [data]")))
+		if len(args) < 1 {
+			fmt.Fprintln(os.Stderr, color.RedString(L("yao sui watch <sui> [template] [data]")))
 			return
 		}
 
@@ -54,7 +54,15 @@ var WatchCmd = &cobra.Command{
 		}
 
 		id := args[0]
-		template := args[1]
+		template := "default"
+		if len(args) >= 2 {
+			template = args[1]
+		}
+
+		// For agent SUI, use "agent" as default template
+		if id == "agent" && template == "default" {
+			template = "agent"
+		}
 
 		var sessionData map[string]interface{}
 		err = jsoniter.UnmarshalFromString(strings.TrimPrefix(data, "::"), &sessionData)
@@ -94,7 +102,20 @@ var WatchCmd = &cobra.Command{
 			return
 		}
 
-		go watch(root, func(event, name string) {
+		// Get all directories to watch
+		watchDirs := []string{root}
+		if watchDirsProvider, ok := tmpl.(core.IWatchDirs); ok {
+			watchDirs = []string{}
+			watchRoot := cfg.DataRoot
+			if watchDirsProvider.GetWatchRoot() == "app" {
+				watchRoot = cfg.Root
+			}
+			for _, dir := range watchDirsProvider.GetWatchDirs() {
+				watchDirs = append(watchDirs, filepath.Join(watchRoot, dir))
+			}
+		}
+
+		go watchMultiple(watchDirs, func(event, name string) {
 			if event == "WRITE" || event == "CREATE" || event == "RENAME" {
 				// @Todo build single page and sync single asset file to public
 				fmt.Print(color.WhiteString("Building...  "))
@@ -129,6 +150,15 @@ var WatchCmd = &cobra.Command{
 		fmt.Println(color.WhiteString("Public Root: /public%s", publicRoot))
 		fmt.Println(color.WhiteString("   Template: %s", tmpl.GetRoot()))
 		fmt.Println(color.WhiteString("    Session: %s", strings.TrimLeft(data, "::")))
+		fmt.Println(color.WhiteString("Watch Dirs:"))
+		for _, dir := range watchDirs {
+			// Show path relative to either app root or data root
+			displayDir := strings.TrimPrefix(dir, cfg.Root)
+			if displayDir == dir {
+				displayDir = strings.TrimPrefix(dir, cfg.DataRoot)
+			}
+			fmt.Println(color.WhiteString("  - %s", displayDir))
+		}
 		fmt.Println(color.WhiteString("-----------------------"))
 		fmt.Println(color.GreenString("Watching..."))
 		fmt.Println(color.GreenString("Press Ctrl+C to exit"))
@@ -144,6 +174,116 @@ var WatchCmd = &cobra.Command{
 			return
 		}
 	},
+}
+
+func watchMultiple(roots []string, handler func(event string, name string), interrupt chan uint8) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer watcher.Close()
+	shutdown := make(chan bool, 1)
+
+	// Walk all root directories
+	watchedCount := 0
+	for _, root := range roots {
+		// Check if root exists
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			fmt.Println(color.YellowString("[Watch] Directory not found: %s", root))
+			continue
+		}
+
+		err = filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				log.Warn("[Watch] Error accessing path %s: %v", path, err)
+				return nil // Skip this path and continue walking
+			}
+			if info.IsDir() {
+				if filepath.Base(path) == ".tmp" {
+					return filepath.SkipDir
+				}
+
+				err = watcher.Add(path)
+				if err != nil {
+					return err
+				}
+				watchedCount++
+				log.Info("[Watch] Watching: %s", path)
+				watched.Store(path, true)
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Println(color.YellowString("[Watch] Error walking root %s: %v", root, err))
+		}
+	}
+	fmt.Println(color.GreenString("[Watch] Total directories watched: %d", watchedCount))
+
+	go func() {
+		for {
+			select {
+			case <-shutdown:
+				log.Info("[Watch] handler exit")
+				return
+
+			case event, ok := <-watcher.Events:
+				if !ok {
+					interrupt <- 1
+					return
+				}
+
+				basname := filepath.Base(event.Name)
+				isdir := true
+				if strings.Contains(basname, ".") {
+					isdir = false
+				}
+
+				events := strings.Split(event.Op.String(), "|")
+				for _, eventType := range events {
+					// ADD / REMOVE Watching dir
+					if isdir {
+						switch eventType {
+						case "CREATE":
+							log.Info("[Watch] Watching: %s", event.Name)
+							watcher.Add(event.Name)
+							watched.Store(event.Name, true)
+							break
+
+						case "REMOVE":
+							log.Info("[Watch] Unwatching: %s", event.Name)
+							watcher.Remove(event.Name)
+							watched.Delete(event.Name)
+							break
+						}
+						continue
+					}
+
+					handler(eventType, event.Name)
+					log.Info("[Watch] %s %s", eventType, event.Name)
+				}
+
+				break
+
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					interrupt <- 2
+					return
+				}
+				log.Error("[Watch] Error: %s", err.Error())
+				break
+			}
+		}
+	}()
+
+	for {
+		select {
+		case code := <-interrupt:
+			shutdown <- true
+			log.Info("[Watch] Exit(%d)", code)
+			fmt.Println(color.YellowString("[Watch] Exit(%d)", code))
+			return nil
+		}
+	}
 }
 
 func watch(root string, handler func(event string, name string), interrupt chan uint8) error {
@@ -163,6 +303,10 @@ func watch(root string, handler func(event string, name string), interrupt chan 
 		rel := strings.TrimPrefix(path, string(os.PathSeparator))
 		if gitignore.MatchesPath(rel) {
 			return nil
+		}
+		if err != nil {
+			log.Warn("[Watch] Error accessing path %s: %v", path, err)
+			return nil // Skip this path and continue walking
 		}
 		if info.IsDir() {
 			if filepath.Base(path) == ".tmp" {
