@@ -484,7 +484,7 @@ func printApis(silent bool) {
 			}
 			log.Info("[API] %s(%d)", api.ID, len(api.HTTP.Paths))
 			for _, p := range api.HTTP.Paths {
-				log.Info("%s %s %s", p.Method, filepath.Join(apiRoot, api.HTTP.Group, p.Path), p.Process)
+				log.Info("%s %s %s", p.Method, path.Join(apiRoot, api.HTTP.Group, p.Path), p.Process)
 			}
 		}
 		for name, upgrader := range websocket.Upgraders { // WebSocket
@@ -518,7 +518,7 @@ func printApis(silent bool) {
 		for _, p := range api.HTTP.Paths {
 			fmt.Println(
 				colorMehtod(p.Method),
-				color.WhiteString(filepath.Join(apiRoot, api.HTTP.Group, p.Path)),
+				color.WhiteString(path.Join(apiRoot, api.HTTP.Group, p.Path)),
 				"\tprocess:", p.Process)
 		}
 	}
