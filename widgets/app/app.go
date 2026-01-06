@@ -306,7 +306,9 @@ func processService(process *process.Process) interface{} {
 		return nil
 	}
 	defer v8ctx.Close()
-
+	if process.Authorized != nil {
+		v8ctx = v8ctx.WithAuthorized(process.Authorized.AuthorizedToMap())
+	}
 	res, err := v8ctx.CallWith(ctx, method, args...)
 	if err != nil {
 		exception.New(err.Error(), 500).Throw()
