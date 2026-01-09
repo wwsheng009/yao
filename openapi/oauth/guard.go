@@ -13,6 +13,7 @@ import (
 	"github.com/yaoapp/yao/openapi/oauth/authorized"
 	"github.com/yaoapp/yao/openapi/oauth/types"
 	"github.com/yaoapp/yao/openapi/response"
+	"github.com/yaoapp/yao/openapi/utils"
 )
 
 // Guard is the OAuth guard middleware
@@ -108,6 +109,9 @@ func (s *Service) tryAutoRefreshToken(c *gin.Context, _ *types.TokenClaims) {
 
 func (s *Service) getAccessToken(c *gin.Context) string {
 	token := c.GetHeader("Authorization")
+	if token == ""{
+		token = utils.GetAccessToken(c)
+	}
 	if token == "" {
 		cookie, err := c.Cookie("__Host-access_token")
 		if err != nil {

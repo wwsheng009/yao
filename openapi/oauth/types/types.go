@@ -593,7 +593,7 @@ type TokenClaims struct {
 	TenantID string `json:"tenant_id,omitempty"` // Tenant identifier
 
 	// Extra claims for flexibility
-	Extra map[string]interface{} `json:"-"` // Additional custom claims (not serialized directly)
+	Extra map[string]interface{} `json:"extra,omitempty"` // Additional custom claims
 }
 
 // DataConstraints represents data access constraints
