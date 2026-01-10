@@ -11,7 +11,7 @@ import (
 func TestJwt(t *testing.T) {
 	data := map[string]interface{}{"hello": "world", "id": 1}
 	option := map[string]interface{}{"subject": "Unit Test", "audience": "Test", "issuer": "UnitTest", "timeout": 1, "sid": ""}
-	token := JwtMake(1, data, option)
+	token := JwtMake("1", data, option)
 	tokenString := token.Token
 	res := JwtValidate(tokenString)
 	assert.NotNil(t, res)

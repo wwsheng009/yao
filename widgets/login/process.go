@@ -1,6 +1,7 @@
 package login
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/yaoapp/gou/model"
@@ -103,7 +104,7 @@ func auth(field string, value string, password string, sid string) maps.Map {
 
 	// token := MakeToken(row, expiresAt)
 	id := any.Of(row.Get("id")).CInt()
-	token := helper.JwtMake(id, map[string]interface{}{}, map[string]interface{}{
+	token := helper.JwtMake(fmt.Sprint(id), map[string]interface{}{}, map[string]interface{}{
 		"expires_at": expiresAt,
 		"sid":        sid,
 		"issuer":     "yao",
@@ -122,7 +123,7 @@ func auth(field string, value string, password string, sid string) maps.Map {
 	studio := map[string]interface{}{}
 	if config.Conf.Mode == "development" {
 
-		studioToken := helper.JwtMake(id, map[string]interface{}{}, map[string]interface{}{
+		studioToken := helper.JwtMake(fmt.Sprint(id), map[string]interface{}{}, map[string]interface{}{
 			"expires_at": expiresAt,
 			"sid":        sid,
 			"issuer":     "yao",

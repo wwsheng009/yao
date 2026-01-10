@@ -1,7 +1,10 @@
 package helper
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +26,7 @@ const (
 
 // JwtClaims 用户Token
 type JwtClaims struct {
-	ID   int                    `json:"id"`
+	ID   string                 `json:"id"`
 	SID  string                 `json:"sid"`
 	Data map[string]interface{} `json:"data"`
 	jwt.RegisteredClaims
@@ -75,7 +78,7 @@ func JwtValidate(tokenString string, secret ...[]byte) *JwtClaims {
 
 // JwtMake  生成 JWT
 // option: {"subject":"<主题>", "audience": "<接收人>", "issuer":"<签发人>", "timeout": "<有效期,单位秒>", "sid":"<会话ID>"}
-func JwtMake(id int, data map[string]interface{}, option map[string]interface{}, secret ...[]byte) JwtToken {
+func JwtMake(id string, data map[string]interface{}, option map[string]interface{}, secret ...[]byte) JwtToken {
 
 	jwtSecret := []byte(config.Conf.JWTSecret)
 	if len(secret) > 0 {
@@ -85,10 +88,10 @@ func JwtMake(id int, data map[string]interface{}, option map[string]interface{},
 	now := time.Now()
 	sid := ""
 	timeout := time.Hour
-	uid := fmt.Sprintf("%d", id)
+	uid := id
 	subject := "User Token"
 	audience := []string{"Yao Process utils.jwt.Make"}
-	issuer := fmt.Sprintf("xiang:%d", id)
+	issuer := fmt.Sprintf("xiaong:%s", id)
 
 	if v, has := option["subject"]; has {
 		subject = fmt.Sprintf("%v", v)
@@ -120,7 +123,7 @@ func JwtMake(id int, data map[string]interface{}, option map[string]interface{},
 	}
 
 	claims := &JwtClaims{
-		ID:   id,
+		ID:   uid,
 		SID:  sid, // 会话ID
 		Data: data,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -149,7 +152,11 @@ func JwtMake(id int, data map[string]interface{}, option map[string]interface{},
 // ProcessJwtMake xiang.helper.JwtMake 生成JWT
 func ProcessJwtMake(process *process.Process) interface{} {
 	process.ValidateArgNums(2)
-	id := process.ArgsInt(0)
+	uid, err := InterfaceToString(process.Args[0])
+	if err != nil || uid == "" {
+		exception.New("Invalid id format:%s", 401, err.Error()).Throw()
+	}
+
 	data := process.ArgsMap(1)
 	option := map[string]interface{}{}
 	if process.NumOfArgs() > 2 {
@@ -160,9 +167,9 @@ func ProcessJwtMake(process *process.Process) interface{} {
 		secret = process.ArgsString(3)
 	}
 	if secret != "" {
-		return JwtMake(id, data, option, []byte(secret))
+		return JwtMake(uid, data, option, []byte(secret))
 	}
-	return JwtMake(id, data, option)
+	return JwtMake(uid, data, option)
 }
 
 // ProcessJwtValidate xiang.helper.JwtValidate 校验JWT
@@ -170,4 +177,60 @@ func ProcessJwtValidate(process *process.Process) interface{} {
 	process.ValidateArgNums(1)
 	tokenString := process.ArgsString(0)
 	return JwtValidate(tokenString)
+}
+
+func InterfaceToString(v interface{}) (string, error) {
+	if v == nil {
+		return "", errors.New("value is nil")
+	}
+
+	switch val := v.(type) {
+
+	case string:
+		return val, nil
+
+	case []byte:
+		return string(val), nil
+
+	// signed integers
+	case int:
+		return strconv.Itoa(val), nil
+	case int8:
+		return strconv.FormatInt(int64(val), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(val), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(val), 10), nil
+	case int64:
+		return strconv.FormatInt(val, 10), nil
+
+	// unsigned integers
+	case uint:
+		return strconv.FormatUint(uint64(val), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(val), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(val), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(val), 10), nil
+	case uint64:
+		return strconv.FormatUint(val, 10), nil
+
+	// floats
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64), nil
+
+	// JSON number
+	case json.Number:
+		return val.String(), nil
+
+	// implements Stringer
+	case fmt.Stringer:
+		return val.String(), nil
+
+	default:
+		return "", fmt.Errorf("unsupported type %T", v)
+	}
 }
