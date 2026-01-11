@@ -2,7 +2,6 @@ package template
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -118,8 +117,8 @@ func loadTemplates(m *Manager) error {
 		log.Info("[Template] Processing file: %s", file)
 		// Generate template ID manually to avoid share.ID's dot-to-underscore conversion
 		// Format: {language}.{name} (e.g., "en.invite_member")
-		relativePath := strings.TrimPrefix(file, root + string(os.PathSeparator))
-		pathParts := strings.Split(relativePath, string(os.PathSeparator))
+		relativePath := strings.TrimPrefix(file, root+"/")
+		pathParts := strings.Split(relativePath, "/")
 		language := pathParts[0]
 		filename := pathParts[len(pathParts)-1]
 		baseName := strings.TrimSuffix(filename, filepath.Ext(filename))
