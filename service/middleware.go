@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/openapi"
+	"github.com/yaoapp/yao/service/fs"
 	"github.com/yaoapp/yao/share"
 	"github.com/yaoapp/yao/sui/api"
 )
@@ -133,7 +134,17 @@ func withStaticFileServer(c *gin.Context) {
 		return
 	}
 
+	path := c.Request.URL.Path
+	staticDir := fs.Dir("public")
+    if f, err := staticDir.Open(path); err == nil {
+        f.Close()
+        AppFileServer.ServeHTTP(c.Writer, c.Request)
+        c.Abort()
+        return
+    }
+
 	// static file server
-	AppFileServer.ServeHTTP(c.Writer, c.Request)
-	c.Abort()
+	// AppFileServer.ServeHTTP(c.Writer, c.Request)
+	// c.Abort()
+	c.Next()
 }

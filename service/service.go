@@ -3,11 +3,14 @@ package service
 import (
 	"time"
 
+	nethttp "net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/yaoapp/gou/api"
 	"github.com/yaoapp/gou/server/http"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/openapi"
+	"github.com/yaoapp/yao/service/fs"
 	"github.com/yaoapp/yao/share"
 )
 
@@ -24,6 +27,7 @@ func Start(cfg config.Config) (*http.Server, error) {
 	}
 
 	router := gin.New()
+	
 	router.Use(Middlewares...)
 
 	var apiRoot string
@@ -49,6 +53,26 @@ func Start(cfg config.Config) (*http.Server, error) {
 		api.SetGuards(Guards)
 		api.SetRoutes(router, "/api", cfg.AllowFrom...)
 	}
+	router.NoRoute(func(c *gin.Context) {
+		staticDir := fs.Dir("public") // 获取 Yao 文件系统实例
+		files := []string{"/404.html", "/notFound.html"}
+		for _, file := range files {
+			if f, err := staticDir.Open(file); err == nil {
+				defer f.Close()
+				
+				// 利用 http.ServeContent 直接渲染 http.File
+				// 这会自动处理 Content-Type、修改时间以及可能的 Range 请求
+				stat, err := f.Stat()
+				if err == nil {
+					c.Header("Content-Type", "text/html; charset=utf-8")
+					nethttp.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), f)
+					return
+				}
+			}
+		}
+		// 兜底逻辑：如果 public 下没有 404 相关 HTML，则返回 JSON
+		c.JSON(nethttp.StatusNotFound, gin.H{"code": 404, "message": "Resource Not Found"})
+	})
 
 	srv := http.New(router, http.Option{
 		Host:    cfg.Host,
