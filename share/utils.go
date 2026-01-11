@@ -45,10 +45,19 @@ func File(id string, ext string) string {
 
 // SpecName 解析名称  root: "/tests/apis"  file: "/tests/apis/foo/bar.http.json"
 func SpecName(root string, file string) string {
-	filename := strings.TrimPrefix(file, filepath.FromSlash(root)+string(os.PathSeparator)) // "foo/bar.http.json", "foo/bar2.0.http.json"
-	parts := strings.Split(filename, string(os.PathSeparator))          // ["foo", "bar.http.json"], ["foo", "bar2.0.http.json"]
-	basename := parts[len(parts)-1]                // "bar.http.json", "bar2.0.http.json"
-	paths := parts[:len(parts)-1]                  // ["foo"], ["foo"]
+	//check filename contains "\\"
+	osSep := string(os.PathSeparator)
+	filename := ""
+	parts := []string{}
+	if strings.Contains(file, osSep) {
+		filename := strings.TrimPrefix(file, root+string(os.PathSeparator)) // "foo/bar.http.json", "foo/bar2.0.http.json"
+		parts = strings.Split(filename, osSep)// ["foo", "bar.http.json"], ["foo", "bar2.0.http.json"]
+	} else {
+		filename = strings.TrimPrefix(file, root+"/")
+		parts = strings.Split(filename, "/")
+	}
+	basename := parts[len(parts)-1] // "bar.http.json", "bar2.0.http.json"
+	paths := parts[:len(parts)-1]   // ["foo"], ["foo"]
 	for i, path := range paths {
 		paths[i] = strings.ReplaceAll(path, ".", "_") // ["foo"], ["foo"]
 	}
@@ -59,7 +68,7 @@ func SpecName(root string, file string) string {
 	// 	extcnt = 2
 	// }
 	// names = names[:len(names)-extcnt]                 // ["bar"], ["bar2", "0"]
-	if namelen > 0  {
+	if namelen > 0 {
 		names = names[:1]
 	}
 	basename = strings.Join(names, ".")               // "bar", "bar2.0"

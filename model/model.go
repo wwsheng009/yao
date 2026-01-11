@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -114,15 +115,15 @@ func Load(cfg config.Config) error {
 func loadSystemModels() (map[string]*model.Model, error) {
 	models := make(map[string]*model.Model)
 
-	for id, path := range systemModels {
-		content, err := data.Read(path)
+	for id, mpath := range systemModels {
+		content, err := data.Read(mpath)
 		if err != nil {
 			return nil, err
 		}
 
 		// Parse model
 		var data map[string]interface{}
-		err = application.Parse(path, content, &data)
+		err = application.Parse(mpath, content, &data)
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +141,7 @@ func loadSystemModels() (map[string]*model.Model, error) {
 		}
 
 		// Load Model (just parse, no migration)
-		mod, err := model.LoadSource(content, id, filepath.Join("__system", path))
+		mod, err := model.LoadSource(content, id, path.Join("__system", mpath))
 		if err != nil {
 			log.Error("load system model %s error: %s", id, err.Error())
 			return nil, err
