@@ -520,6 +520,13 @@ linux-release: clean
 	CGO_ENABLED=1 CGO_LDFLAGS="-static" go build -v -o dist/release/yao
 	chmod +x  dist/release/yao
 
+.PHONY: xgen
+cui:
+	export NODE_ENV=production
+	echo "BASE=__yao_admin_root" > ../cui-v1.0/packages/cui/.env
+	cd ../cui-v1.0 && pnpm install --no-frozen-lockfile && pnpm run build
+	cd ../cui-v1.0/packages/setup  && pnpm install --no-frozen-lockfile && pnpm run build
+
 .PHONY: debug1
 debug1: clean
 	rm -rf dist/release
