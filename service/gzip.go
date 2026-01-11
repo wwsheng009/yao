@@ -32,11 +32,11 @@ func gzipHandler(h http.Handler, allows ...string) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Encoding", "gzip")
+		// w.Header().Set("Content-Encoding", "gzip")
 		gz := gzip.NewWriter(w)
 		defer gz.Close()
 
-		gzWriter := gzipResponseWriter{ResponseWriter: w, Writer: gz}
+		gzWriter := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
 		h.ServeHTTP(gzWriter, r)
 	}
 }
@@ -44,21 +44,30 @@ func gzipHandler(h http.Handler, allows ...string) http.HandlerFunc {
 type gzipResponseWriter struct {
 	http.ResponseWriter
 	*gzip.Writer
+	skip bool
 }
 
-func (w gzipResponseWriter) WriteHeader(code int) {
-	w.ResponseWriter.Header().Del("Content-Length")
-	w.ResponseWriter.WriteHeader(code)
+func (w *gzipResponseWriter) WriteHeader(code int) {
+	if code != http.StatusOK {
+        w.skip = true
+    } else {
+        w.Header().Set("Content-Encoding", "gzip")
+        w.Header().Del("Content-Length")
+    }
+    w.ResponseWriter.WriteHeader(code)
 }
 
-func (w gzipResponseWriter) Write(b []byte) (int, error) {
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	if w.skip {
+        return w.ResponseWriter.Write(b)
+    }
 	return w.Writer.Write(b)
 }
 
-func (w gzipResponseWriter) Flush() {
+func (w *gzipResponseWriter) Flush() {
 	w.Writer.Flush()
 }
 
-func (w gzipResponseWriter) Header() http.Header {
+func (w *gzipResponseWriter) Header() http.Header {
 	return w.ResponseWriter.Header()
 }
