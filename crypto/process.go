@@ -19,6 +19,7 @@ func init() {
 	process.Register("crypto.rsa2verify", ProcessRsa2Verify)
 	process.Register("crypto.aes256encrypt", ProcessAes256Encrypt)
 	process.Register("crypto.aes256decrypt", ProcessAes256Decrypt)
+	process.Register("crypto.xml.parse", ProcessXMLParse)
 }
 
 // ProcessRSA2 yao.crypto.rsa Crypto RSA
@@ -199,6 +200,32 @@ func ProcessAes256Decrypt(process *process.Process) interface{} {
 	additionalData := process.ArgsString(4)
 	encoding := process.ArgsString(5)
 	res, err := AES256Decrypt(key, algorithm, nonce, crypted, additionalData, encoding)
+	if err != nil {
+		exception.Err(err, 500).Throw()
+	}
+	return res
+}
+
+// ProcessXMLParse crypto.xml.parse
+// Args[0] string: XML string to parse
+// Args[1] string: attrPrefix (optional, default "@")
+// Args[2] string: textPrefix (optional, default "#text")
+func ProcessXMLParse(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	xmlStr := process.ArgsString(0)
+
+	attrPrefix := "@"
+	if process.NumOfArgs() > 1 {
+		attrPrefix = process.ArgsString(1)
+	}
+
+	textPrefix := "#text"
+	if process.NumOfArgs() > 2 {
+		textPrefix = process.ArgsString(2)
+	}
+
+	decoder := NewDecoderWithPrefix(strings.NewReader(xmlStr), attrPrefix, textPrefix)
+	res, err := decoder.Decode()
 	if err != nil {
 		exception.Err(err, 500).Throw()
 	}

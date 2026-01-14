@@ -246,3 +246,78 @@ func TestHmacWith(t *testing.T) {
 		})
 	}
 }
+
+func TestXMLParse(t *testing.T) {
+	// Test simple XML
+	xmlStr := `<root><name>John</name><age>30</age></root>`
+	args := []interface{}{xmlStr}
+	res, err := process.New("crypto.xml.parse", args...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := res.(map[string]interface{})
+	root, ok := result["root"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "John", root["name"])
+	assert.Equal(t, "30", root["age"])
+
+	// Test XML with attributes
+	xmlStr2 := `<user id="1" name="test"><email>test@example.com</email></user>`
+	args2 := []interface{}{xmlStr2}
+	res2, err := process.New("crypto.xml.parse", args2...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result2 := res2.(map[string]interface{})
+	user, ok := result2["user"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "1", user["@id"])
+	assert.Equal(t, "test", user["@name"])
+	assert.Equal(t, "test@example.com", user["email"])
+
+	// Test XML with custom prefixes
+	xmlStr3 := `<item attr="value">text</item>`
+	args3 := []interface{}{xmlStr3, "attr_", "text_"}
+	res3, err := process.New("crypto.xml.parse", args3...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result3 := res3.(map[string]interface{})
+	item, ok := result3["item"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "value", item["attr_attr"])
+	assert.Equal(t, "text", item["text_"])
+
+	// Test XML with nested elements
+	xmlStr4 := `<root><parent><child>value</child></parent></root>`
+	args4 := []interface{}{xmlStr4}
+	res4, err := process.New("crypto.xml.parse", args4...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result4 := res4.(map[string]interface{})
+	root4, ok := result4["root"].(map[string]interface{})
+	assert.True(t, ok)
+	parent, ok := root4["parent"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "value", parent["child"])
+}
+
+func TestXMLParseWithNamespace(t *testing.T) {
+	// Test XML with namespace
+	xmlStr := `<root xmlns:ns="http://example.com"><ns:element>value</ns:element></root>`
+	args := []interface{}{xmlStr}
+	res, err := process.New("crypto.xml.parse", args...).Exec()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := res.(map[string]interface{})
+	root, ok := result["root"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.NotNil(t, root["example.com:element"])
+}
