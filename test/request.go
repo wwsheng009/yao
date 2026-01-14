@@ -197,7 +197,7 @@ func AutoLogin(id int) (map[string]interface{}, error) {
 	}
 	expiresAt := time.Now().Unix() + 3600
 	sid := session.ID()
-	token := helper.JwtMake(id, map[string]interface{}{}, map[string]interface{}{
+	token := helper.JwtMake(fmt.Sprint(id), map[string]interface{}{}, map[string]interface{}{
 		"expires_at": expiresAt,
 		"sid":        sid,
 		"issuer":     "admin",

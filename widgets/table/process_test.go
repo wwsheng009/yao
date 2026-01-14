@@ -432,7 +432,7 @@ func TestProcessDownload(t *testing.T) {
 	clear(t)
 	testData(t)
 
-	jwt := helper.JwtMake(1, map[string]interface{}{"id": 1}, map[string]interface{}{"sid": 1})
+	jwt := helper.JwtMake("1", map[string]interface{}{"id": 1}, map[string]interface{}{"sid": 1})
 	fs := fs.MustGet("system")
 	_, err := fs.WriteFile("/text.txt", []byte("Hello"), uint32(os.ModePerm))
 	if err != nil {
