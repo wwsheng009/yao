@@ -12,9 +12,18 @@ import (
 
 // Load load store
 func Load(cfg config.Config) error {
+
+	// Ignore if the connectors directory does not exist
+	exists, err := application.App.Exists("connectors")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	exts := []string{"*.yao", "*.json", "*.jsonc"}
 	messages := []string{}
-	err := application.App.Walk("connectors", func(root, file string, isdir bool) error {
+	err = application.App.Walk("connectors", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}

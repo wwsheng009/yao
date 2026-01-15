@@ -37,9 +37,15 @@ type OpenAPI struct {
 
 // Load loads the OpenAPI server from the configuration
 func Load(appConfig config.Config) (*OpenAPI, error) {
-
+	exists, err := application.App.Exists("openapi")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, err
+	}
 	var configPath string = filepath.Join("openapi", "openapi.yao")
-	var configRaw, err = application.App.Read(configPath)
+	configRaw, err := application.App.Read(configPath)
 	if err != nil {
 		return nil, err
 	}

@@ -40,8 +40,16 @@ func New(dsl *core.DSL) (core.SUI, error) {
 
 // Load load the sui
 func Load(cfg config.Config) error {
+	// Ignore if the suis directory does not exist
+	exists, err := application.App.Exists("suis")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	exts := []string{"*.sui.yao", "*.sui.jsonc", "*.sui.json"}
-	err := application.App.Walk("suis", func(root, file string, isdir bool) error {
+	err = application.App.Walk("suis", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}

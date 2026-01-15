@@ -13,9 +13,9 @@ type Config struct {
 	Port          int      `json:"port,omitempty" env:"YAO_PORT" envDefault:"5099"`                 // The server port
 	Cert          string   `json:"cert,omitempty" env:"YAO_CERT"`                                   // The HTTPS certificate path
 	Key           string   `json:"key,omitempty" env:"YAO_KEY"`                                     // The HTTPS certificate key path
-	Log           string   `json:"log,omitempty" env:"YAO_LOG"`                                     // The log file path
+	Log           string   `json:"log,omitempty" env:"YAO_LOG" envDefault:"application.log"`        // The log file path
 	LogMode       string   `json:"log_mode,omitempty" env:"YAO_LOG_MODE" envDefault:"TEXT"`         // The log mode TEXT|JSON
-	LogLevel      string   `json:"log_level,omitempty" env:"YAO_LOG_LEVEL"`       					// The log Level
+	LogLevel      string   `json:"log_level,omitempty" env:"YAO_LOG_LEVEL"`                         // The log Level
 	LogMaxSize    int      `json:"log_max_size,omitempty" env:"YAO_LOG_MAX_SIZE" envDefault:"100"`  // The max log size in MB, the default is 100
 	LogMaxAage    int      `json:"log_max_age,omitempty" env:"YAO_LOG_MAX_AGE" envDefault:"7"`      // The max log age in day, the default is 7
 	LogMaxBackups int      `json:"log_max_backups" env:"YAO_LOG_MAX_BACKUPS" envDefault:"3"`        // The max log backups, the default is 3
@@ -38,10 +38,10 @@ type Studio struct {
 
 // Database 数据库配置
 type Database struct {
-	Driver    string   `json:"driver,omitempty" env:"YAO_DB_DRIVER" envDefault:"sqlite3"`                        // 数据库驱动 sqlite3| mysql| postgres
-	Primary   []string `json:"primary,omitempty" env:"YAO_DB_PRIMARY" envSeparator:"|" envDefault:"./db/yao.db"` // 主库连接DSN
-	Secondary []string `json:"secondary,omitempty" env:"YAO_DB_SECONDARY" envSeparator:"|"`                      // 从库连接DSN
-	AESKey    string   `json:"aeskey,omitempty" env:"YAO_DB_AESKEY"`                                             // 加密存储KEY
+	Driver    string   `json:"driver,omitempty" env:"YAO_DB_DRIVER" envDefault:"sqlite3"`                     // 数据库驱动 sqlite3| mysql| postgres
+	Primary   []string `json:"primary,omitempty" env:"YAO_DB_PRIMARY" envSeparator:"|" envDefault:"./yao.db"` // 主库连接DSN
+	Secondary []string `json:"secondary,omitempty" env:"YAO_DB_SECONDARY" envSeparator:"|"`                   // 从库连接DSN
+	AESKey    string   `json:"aeskey,omitempty" env:"YAO_DB_AESKEY"`                                          // 加密存储KEY
 }
 
 // Session 会话服务器

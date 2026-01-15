@@ -47,6 +47,7 @@ import (
 // Setting the application setting
 var Setting *DSL
 var regExcp = regexp.MustCompile(`^Exception\|([0-9]+):(.+)$`)
+var envRe = regexp.MustCompile(`\$ENV\.([0-9a-zA-Z_-]+)`)
 
 // LoadAndExport load app
 func LoadAndExport(cfg config.Config) error {
@@ -65,17 +66,27 @@ func Load(cfg config.Config) error {
 		return err
 	}
 
-	data, err := application.App.Read(file)
+	appData, err := application.App.Read(file)
 	if err != nil {
 		return err
 	}
 
-	if data == nil {
-		return fmt.Errorf("app.yao not found")
+	if appData == nil {
+		return fmt.Errorf("app.yao or app.jsonc or app.json not found")
 	}
 
+	// Replace $ENV with os.Getenv (keep original token when env is empty)
+	appData = envRe.ReplaceAllFunc(appData, func(s []byte) []byte {
+		key := string(s[5:])
+		val := os.Getenv(key)
+		if val == "" {
+			return s
+		}
+		return []byte(val)
+	})
+
 	dsl := &DSL{Optional: OptionalDSL{}, Lang: cfg.Lang}
-	err = application.Parse(file, data, dsl)
+	err = application.Parse(file, appData, dsl)
 	if err != nil {
 		return err
 	}
@@ -95,22 +106,14 @@ func Load(cfg config.Config) error {
 
 func getAppFile() (string, error) {
 
-	file := filepath.Join(string(os.PathSeparator), "app.yao")
-	if has, _ := application.App.Exists(file); has {
-		return file, nil
+	// Keep the same priority as engine/load.go
+	for _, file := range []string{"app.yao", "app.jsonc", "app.json"} {
+		if has, _ := application.App.Exists(file); has {
+			return file, nil
+		}
 	}
 
-	file = filepath.Join(string(os.PathSeparator), "app.jsonc")
-	if has, _ := application.App.Exists(file); has {
-		return file, nil
-	}
-
-	file = filepath.Join(string(os.PathSeparator), "app.json")
-	if has, _ := application.App.Exists(file); has {
-		return file, nil
-	}
-
-	return "", fmt.Errorf("app.yao not found")
+	return "", fmt.Errorf("app.yao or app.jsonc or app.json does not exists")
 }
 
 // exportAPI export login api

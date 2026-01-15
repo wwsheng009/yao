@@ -25,6 +25,13 @@ func Load(cfg config.Config) error {
 	if err != nil {
 		return err
 	}
+	exists, err := application.App.Exists("uploaders")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 
 	// Load filesystem uploaders
 	exts := []string{"*.s3.yao", "*.local.yao", "*.s3.json", "*.local.json", "*.s3.jsonc", "*.local.jsonc"}

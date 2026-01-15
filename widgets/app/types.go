@@ -1,6 +1,13 @@
 package app
 
-// DSL the app DSL
+// DSL the app DSL.
+//
+// This structure is used by `widgets/app` to build Xgen settings (e.g. `yao.app.Xgen`).
+// It is parsed from `app.yao` / `app.jsonc` / `app.json` but is NOT the same as `share.AppInfo`
+// (which is used by the engine startup).
+//
+// Keep this struct minimal and frontend-oriented: only include fields needed by Xgen and
+// `widgets/app` processes.
 type DSL struct {
 	Name        string      `json:"name,omitempty"`
 	Short       string      `json:"short,omitempty"`
@@ -14,9 +21,12 @@ type DSL struct {
 	Menu        MenuDSL     `json:"menu,omitempty"`
 	AdminRoot   string      `json:"adminRoot,omitempty"`
 	Optional    OptionalDSL `json:"optional,omitempty"`
-	Token       OptionalDSL `json:"token,omitempty"`
-	Setting     string      `json:"setting,omitempty"` // custom setting process
-	Setup       string      `json:"setup,omitempty"`   // setup process
+
+	// Token is the Xgen-side token persistence config. It is exposed by `yao.app.Xgen`.
+	// (The login process still lives in `logins/*.login.*`.)
+	Token   OptionalDSL `json:"token,omitempty"`
+	Setting string      `json:"setting,omitempty"` // custom setting process
+	Setup   string      `json:"setup,omitempty"`   // setup process
 }
 
 // MenuDSL the menu DSL

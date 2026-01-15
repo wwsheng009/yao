@@ -32,7 +32,13 @@ func Load(cfg config.Config) error {
 			TTL:     90 * 24 * 60 * 60, // 90 days in seconds
 		},
 	}
-
+	exists, err := application.App.Exists("agent")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	bytes, err := application.App.Read(filepath.Join("agent", "agent.yml"))
 	if err != nil {
 		return err

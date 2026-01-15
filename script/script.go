@@ -11,9 +11,16 @@ import (
 
 // Load load all scripts and services
 func Load(cfg config.Config) error {
+	exists, err := application.App.Exists("scripts")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	v8.CLearModules()
 	exts := []string{"*.js", "*.ts"}
-	err := application.App.Walk("scripts", func(root, file string, isdir bool) error {
+	err = application.App.Walk("scripts", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}

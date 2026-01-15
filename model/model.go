@@ -58,20 +58,24 @@ func Load(cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-
-	// Load filesystem models
-	exts := []string{"*.mod.yao", "*.mod.json", "*.mod.jsonc"}
-	err = application.App.Walk("models", func(root, file string, isdir bool) error {
-		if isdir {
-			return nil
-		}
-		_, err := model.Load(file, share.ID(root, file))
-		if err != nil {
-			messages = append(messages, err.Error())
-		}
+	exists, err := application.App.Exists("models")
+	if err != nil {
 		return err
-	}, exts...)
-
+	}
+	// Load filesystem models
+	if exists {
+		exts := []string{"*.mod.yao", "*.mod.json", "*.mod.jsonc"}
+		err = application.App.Walk("models", func(root, file string, isdir bool) error {
+			if isdir {
+				return nil
+			}
+			_, err := model.Load(file, share.ID(root, file))
+			if err != nil {
+				messages = append(messages, err.Error())
+			}
+			return err
+		}, exts...)
+	}
 	if len(messages) > 0 {
 		for _, message := range messages {
 			log.Error("Load filesystem models error: %s", message)
