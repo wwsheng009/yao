@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/yaoapp/kun/exception"
+	"github.com/yaoapp/kun/log"
 )
 
 var contexts = sync.Map{}
@@ -20,7 +21,8 @@ func (pipe *Pipe) Create() *Context {
 		in:      map[*Node][]any{},
 		out:     map[*Node]any{},
 		history: map[*Node][]Prompt{},
-		current: nil,
+		current:  nil,
+		gotoNext: "",
 
 		input:  []any{},
 		output: nil,
@@ -32,6 +34,11 @@ func (pipe *Pipe) Create() *Context {
 	}
 
 	contexts.Store(id, ctx)
+	if ctx.current != nil {
+		log.Debug("pipe: create ctx=%s pipe=%s(%s) node=%s", ctx.id, pipe.Name, pipe.ID, ctx.current.Name)
+	} else {
+		log.Debug("pipe: create ctx=%s pipe=%s(%s) node=<nil>", ctx.id, pipe.Name, pipe.ID)
+	}
 	return ctx
 }
 
@@ -47,6 +54,7 @@ func Open(id string) (*Context, error) {
 // Close the context
 func Close(id string) {
 	contexts.Delete(id)
+	log.Debug("pipe: close ctx=%s", id)
 }
 
 // Resume the context by id
@@ -106,14 +114,24 @@ func (ctx *Context) Exec(args ...any) (any, error) {
 
 	input, err := ctx.parseInput(args)
 	if err != nil {
+		log.Error("pipe: exec parse input error pipe=%s(%s) ctx=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, err)
 		return nil, err
 	}
 
-	return ctx.exec(ctx.current, input)
+	log.Debug("pipe: exec start pipe=%s(%s) ctx=%s node=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name)
+	out, err := ctx.exec(ctx.current, input)
+	if err != nil {
+		log.Error("pipe: exec error pipe=%s(%s) ctx=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, err)
+		return nil, err
+	}
+	log.Debug("pipe: exec finish pipe=%s(%s) ctx=%s", ctx.Name, ctx.Pipe.ID, ctx.id)
+	return out, nil
 }
 
 // Exec and return error
 func (ctx *Context) exec(node *Node, input Input) (output any, err error) {
+
+	log.Debug("pipe: step pipe=%s(%s) ctx=%s node[%d]=%s type=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.index, node.Name, node.Type)
 
 	var out any
 	switch node.Type {
@@ -186,10 +204,31 @@ func (ctx *Context) next() (*Node, bool, error) {
 		return nil, true, nil
 	}
 
+	// Runtime goto override (e.g. switch case pipe with goto but no nodes)
+	if ctx.gotoNext != "" {
+		next := ctx.gotoNext
+		ctx.gotoNext = ""
+		log.Debug("pipe: gotoNext pipe=%s(%s) ctx=%s from=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name, next)
+
+		if next == "EOF" {
+			return nil, true, nil
+		}
+
+		var has = false
+		ctx.current, has = ctx.mapping[next]
+		if !has {
+			return nil, false, ctx.Errorf("node %s not found", next)
+		}
+		return ctx.current, false, nil
+	}
+
 	// if the goto is not empty, then goto the node
 	if ctx.current.Goto != "" {
 		data := ctx.data(ctx.current)
 		next, err := data.replaceString(ctx.current.Goto)
+		if err == nil {
+			log.Debug("pipe: goto pipe=%s(%s) ctx=%s from=%s expr=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name, ctx.current.Goto, next)
+		}
 		if err != nil {
 			return nil, false, err
 		}
@@ -221,7 +260,7 @@ func (ctx *Context) parseNodeInput(node *Node, input Input) (Input, error) {
 	ctx.in[node] = input
 	if node.Input != nil && len(node.Input) > 0 {
 		data := ctx.data(node)
-		input, err := data.replaceArray(node.Input)
+		input, err := data.replaceInput(node.Input)
 		if err != nil {
 			return nil, err
 		}
@@ -253,7 +292,7 @@ func (ctx *Context) parseInput(input Input) (Input, error) {
 	ctx.input = input
 	if ctx.Input != nil && len(ctx.Input) > 0 {
 		data := ctx.data(nil)
-		input, err := data.replaceArray(ctx.Input)
+		input, err := data.replaceInput(ctx.Input)
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +339,27 @@ func (ctx *Context) data(node *Node) Data {
 	}
 
 	if ctx.out != nil {
+		// Always expose node outputs with stable keys
 		for k, v := range ctx.out {
+			key := fmt.Sprintf("$node.%s.out", k.Name)
+			data[key] = v
+		}
+
+		// Prefer current pipe node outputs when names collide (nested pipes may reuse names)
+		if ctx.Pipe != nil && ctx.Pipe.Nodes != nil {
+			for i := range ctx.Pipe.Nodes {
+				n := &ctx.Pipe.Nodes[i]
+				if v, ok := ctx.out[n]; ok {
+					data[n.Name] = v
+				}
+			}
+		}
+
+		// Fallback: fill remaining names (do not override)
+		for k, v := range ctx.out {
+			if _, has := data[k.Name]; has {
+				continue
+			}
 			data[k.Name] = v
 		}
 	}

@@ -31,6 +31,7 @@ type Context struct {
 	global  map[string]interface{} // $global
 	sid     string                 // $sid
 	current *Node                  // current position
+	gotoNext string                // override next node (set by runtime), node name / EOF
 
 	in      map[*Node][]any    // $in the current node input value
 	out     map[*Node]any      // $out the current node output value

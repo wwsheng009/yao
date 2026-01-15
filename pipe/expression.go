@@ -171,7 +171,39 @@ func (data Data) replaceArray(value []any) ([]any, error) {
 }
 
 func (data Data) replaceInput(value Input) (Input, error) {
-	return data.replaceArray(value)
+	newValue := []any{}
+	if value == nil {
+		return newValue, nil
+	}
+
+	for _, raw := range value {
+		res, err := data.replace(raw)
+		if err != nil {
+			return nil, err
+		}
+
+		// Spread/flatten only when the original item is an expression string.
+		// This is important for patterns like: input: "{{ user.args }}".
+		if s, ok := raw.(string); ok && IsExpression(s) {
+			switch v := res.(type) {
+			case Input:
+				newValue = append(newValue, []any(v)...)
+				continue
+			case []any:
+				newValue = append(newValue, v...)
+				continue
+			case []string:
+				for _, it := range v {
+					newValue = append(newValue, it)
+				}
+				continue
+			}
+		}
+
+		newValue = append(newValue, res)
+	}
+
+	return newValue, nil
 }
 
 func anyToInput(v any) Input {

@@ -62,8 +62,7 @@ func (input *Input) UnmarshalJSON(data []byte) error {
 		*input = value
 
 	case []interface{}:
-		value := []any{}
-		*input = value
+		*input = v
 
 	case string:
 		value := []any{v}

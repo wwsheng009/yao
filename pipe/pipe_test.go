@@ -87,6 +87,55 @@ func TestRunWeb(t *testing.T) {
 	assert.Len(t, res.Get("switch"), 2)
 }
 
+func TestSwitchCaseGotoWithoutNodes(t *testing.T) {
+	source := []byte(`{
+		"name": "switch-goto-no-nodes",
+		"nodes": [
+			{
+				"name": "user",
+				"label": "Enter the command",
+				"ui": "cli",
+				"autofill": { "value": "{{ $in[0].placeholder }}", "action": "exit" },
+				"output": { "cmd": "{{$out[0]}}", "args": "{{$out[1:]}}" }
+			},
+			{
+				"name": "switch",
+				"case": {
+					"default": { "goto": "help", "input": ["{{ user }}"] }
+				}
+			},
+			{
+				"name": "help",
+				"label": "Help",
+				"ui": "web"
+			}
+		]
+	}`)
+
+	pip, err := New(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sid := session.ID()
+	ctx := pip.Create().
+		With(context.Background()).
+		WithSid(sid)
+
+	ret, err := ctx.Exec(map[string]interface{}{"placeholder": "unknown"})
+	if err != nil {
+		defer Close(ctx.id)
+		t.Fatal(err)
+	}
+
+	resume := ret.(ResumeContext)
+	assert.Equal(t, "help", resume.Node.Name)
+	assert.Len(t, resume.Input, 1)
+	cmd := any.Of(resume.Input[0]).Map().Get("cmd")
+	assert.Equal(t, "unknown", cmd)
+	Close(resume.ID)
+}
+
 func prepare(t *testing.T) {
 	test.Prepare(t, config.Conf)
 	mirror := os.Getenv("TEST_MOAPI_MIRROR")
