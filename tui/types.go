@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yaoapp/yao/tui/components"
 )
 
 // Config represents the parsed .tui.yao configuration file.
@@ -124,6 +125,14 @@ type StateBatchUpdateMsg struct {
 	Updates map[string]interface{}
 }
 
+// InputUpdateMsg is sent to update an input component.
+type InputUpdateMsg struct {
+	// ID is the input component ID
+	ID string
+	// Value is the new value for the input
+	Value string
+}
+
 // StreamChunkMsg is sent when a chunk of streaming data is received (e.g., from AI).
 type StreamChunkMsg struct {
 	// ID identifies the stream
@@ -156,6 +165,9 @@ func (e ErrorMsg) Error() string {
 	return fmt.Sprintf("[TUI Error] %v", e.Err)
 }
 
+// QuitMsg is sent to request the TUI to quit.
+type QuitMsg struct {}
+
 // Model implements the Bubble Tea tea.Model interface.
 // It manages the reactive state and handles the message loop.
 type Model struct {
@@ -167,6 +179,12 @@ type Model struct {
 
 	// StateMu protects State for concurrent access
 	StateMu sync.RWMutex
+
+	// InputModels holds the input component models
+	InputModels map[string]*components.InputModel
+
+	// CurrentFocus holds the ID of the currently focused input component
+	CurrentFocus string
 
 	// Width is the terminal width
 	Width int

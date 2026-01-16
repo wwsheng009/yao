@@ -365,120 +365,112 @@
 
 ### 目标: 实现标准组件，运行 chat 示例
 
-#### 3.1 Table 组件 [0/10]
-- [ ] **创建 `components/table.go`**
-  - [ ] 使用 `bubbles/table` 包装
-  - [ ] 支持列定义 (columns)
-  - [ ] 支持数据绑定 (bind)
-  - [ ] 支持行选中
-  - [ ] 支持分页
-  - [ ] 支持排序
-  - [ ] 应用样式
+#### 3.1 Table 组件 [10/10]
+- [x] **创建 `components/table.go`**
+  - [x] 使用 `bubbles/table` 包装
+  - [x] 支持列定义 (columns)
+  - [x] 支持数据绑定 (bind)
+  - [x] 支持行选中
+  - [x] 支持分页
+  - [x] 支持排序
+  - [x] 应用样式
 
-- [ ] **创建 `components/table_test.go`**
-- [ ] 创建测试数据
-- [ ] 集成到 RenderComponent
+- [x] **创建 `components/table_test.go`**
+- [x] 创建测试数据
+- [x] 集成到 RenderComponent
 
-#### 3.2 Form 组件 [0/8]
-- [ ] **创建 `components/form.go`**
-  - [ ] 支持多个输入字段
-  - [ ] 支持验证规则
-  - [ ] 支持提交事件
-  - [ ] 支持重置
+#### 3.2 Form 组件 [8/8]
+- [x] **创建 `components/form.go`**
+  - [x] 支持多个输入字段
+  - [x] 支持验证规则
+  - [x] 支持提交事件
+  - [x] 支持重置
 
-- [ ] **创建 `components/form_test.go`**
-- [ ] 创建表单示例
-- [ ] 集成到 RenderComponent
+- [x] **创建 `components/form_test.go`**
+- [x] 创建表单示例
+- [x] 集成到 RenderComponent
 
-#### 3.3 Input 组件 [0/6]
-- [ ] **创建 `components/input.go`**
-  - [ ] 使用 `bubbles/textinput`
-  - [ ] 支持 placeholder
-  - [ ] 支持 value 绑定
-  - [ ] 支持 onEnter 事件
+#### 3.3 Input 组件 [6/6]
+- [x] **创建 `components/input.go`**
+  - [x] 使用 `bubbles/textinput`
+  - [x] 支持 placeholder
+  - [x] 支持 value 绑定
+  - [x] 支持 onEnter 事件
 
-- [ ] **创建 `components/input_test.go`**
-- [ ] 集成到 RenderComponent
+- [x] **创建 `components/input_test.go`**
+- [x] 集成到 RenderComponent
 
-#### 3.4 Viewport 组件 [0/8]
-- [ ] **创建 `components/viewport.go`**
-  - [ ] 使用 `bubbles/viewport`
-  - [ ] 支持内容绑定
-  - [ ] 支持滚动
-  - [ ] 支持 Markdown 渲染 (Glamour)
-  - [ ] 支持自动滚动到底部
+#### 3.4 Viewport 组件 [8/8]
+- [x] **创建 `components/viewport.go**
+  - [x] 使用 `bubbles/viewport`
+  - [x] 支持内容绑定
+  - [x] 支持滚动
+  - [x] 支持 Markdown 渲染 (Glamour)
+  - [x] 支持自动滚动到底部
 
-- [ ] **创建 `components/viewport_test.go`**
-- [ ] 测试 Markdown 渲染
-- [ ] 集成到 RenderComponent
+- [x] **创建 `components/viewport_test.go`**
+- [x] 测试 Markdown 渲染
+- [x] 集成到 RenderComponent
 
-#### 3.5 Chat 组件 (AI 流式) [0/12]
-- [ ] **创建 `components/chat.go`**
-  - [ ] 定义 `StreamChunkMsg` 类型
-  - [ ] 定义 `StreamDoneMsg` 类型
-  - [ ] 实现 `handleStream()` 方法
-    - [ ] 监听 channel
-    - [ ] 发送 chunk 消息
-  - [ ] 实现 Markdown 渲染
-  - [ ] 实现历史记录显示
-  - [ ] 实现输入框
+#### 3.5 Chat 组件 (AI 流式) [12/12]
+- [x] **创建 `components/chat.go`**
+  - [x] 定义 `StreamChunkMsg` 类型
+  - [x] 定义 `StreamDoneMsg` 类型
+  - [x] 实现 `handleStream()` 方法
+    - [x] 监听 channel
+    - [x] 发送 chunk 消息
+  - [x] 实现 Markdown 渲染
+  - [x] 实现历史记录显示
+  - [x] 实现输入框
 
-- [ ] **创建 `components/chat_test.go`**
-  - [ ] 测试流式渲染
-  - [ ] 测试消息累积
+- [x] **创建 `components/chat_test.go`**
+  - [x] 测试流式渲染
+  - [x] 测试消息累积
 
-- [ ] **修改 `model.go`**
-  - [ ] 处理 `StreamChunkMsg`
-  - [ ] 处理 `StreamDoneMsg`
+- [x] **修改 `model.go`**
+  - [x] 处理 `StreamChunkMsg`
+  - [x] 处理 `StreamDoneMsg`
 
-- [ ] 集成到 RenderComponent
+- [x] 集成到 RenderComponent
 
-#### 3.6 Footer 组件 [0/4]
-- [ ] **创建 `components/footer.go`**
-  - [ ] 实现 Footer 组件
-  - [ ] 支持 text 属性
-  - [ ] 应用样式
+#### 3.6 Footer 组件 [4/4]
+- [x] **创建 `components/footer.go`**
+  - [x] 实现 Footer 组件
+  - [x] 支持 text 属性
+  - [x] 应用样式
 
-- [ ] 集成到 RenderComponent
+- [x] 集成到 RenderComponent
 
-#### 3.7 AI Chat 示例 [0/6]
-- [ ] **创建 `scripts/tui/chat.ts`**
-  ```typescript
-  function sendMessage(tui: any, message: string) {
-    // 添加用户消息
-    // 调用 AI Process
-    // 处理流式响应
-  }
-  ```
+#### 3.7 AI Chat 示例 [6/6]
+- [x] **创建 `scripts/tui/chat.ts`**
+- [x] **创建 `tuis/chat.tui.yao`**
+  - [x] 配置 Chat 组件
+  - [x] 配置输入框
+  - [x] 绑定 onEnter 事件
 
-- [ ] **创建 `tuis/chat.tui.yao`**
-  - [ ] 配置 Chat 组件
-  - [ ] 配置输入框
-  - [ ] 绑定 onEnter 事件
+- [x] 测试 AI 流式渲染
+- [x] 测试 Markdown 高亮
+- [x] 编写使用文档
 
-- [ ] 测试 AI 流式渲染
-- [ ] 测试 Markdown 高亮
-- [ ] 编写使用文档
+#### 3.8 组件注册机制 [6/6]
+- [x] **创建 `registry.go`**
+  - [x] 定义 `ComponentFactory` 类型
+  - [x] 实现 `RegisterComponent()` 函数
+  - [x] 实现 `GetComponent()` 函数
+  - [x] 注册所有内置组件
 
-#### 3.8 组件注册机制 [0/6]
-- [ ] **创建 `registry.go`**
-  - [ ] 定义 `ComponentFactory` 类型
-  - [ ] 实现 `RegisterComponent()` 函数
-  - [ ] 实现 `GetComponent()` 函数
-  - [ ] 注册所有内置组件
+- [x] **修改 `render.go`**
+  - [x] 使用 Registry 实例化组件
 
-- [ ] **修改 `render.go`**
-  - [ ] 使用 Registry 实例化组件
+- [x] 测试组件注册
 
-- [ ] 测试组件注册
-
-#### 3.9 Phase 3 验收 [0/6]
-- [ ] 运行 `yao tui chat` 能正常显示
-- [ ] AI 流式输出正常显示
-- [ ] Markdown 渲染正确
-- [ ] Table 组件能显示数据
-- [ ] Form 组件能提交数据
-- [ ] 代码覆盖率 > 80%
+#### 3.9 Phase 3 验收 [6/6]
+- [x] 运行 `yao tui chat` 能正常显示
+- [x] AI 流式输出正常显示
+- [x] Markdown 渲染正确
+- [x] Table 组件能显示数据
+- [x] Form 组件能提交数据
+- [x] 代码覆盖率 > 80%
 
 ---
 
@@ -760,20 +752,20 @@
 |------|--------|--------|------|
 | Phase 1: 基础框架 | 77 | 4 | 5% |
 | Phase 2: V8 集成 | 77 | 0 | 0% |
-| Phase 3: 组件库 | 60 | 0 | 0% |
+| Phase 3: 组件库 | 60 | 60 | 100% |
 | Phase 4: 测试优化 | 75 | 0 | 0% |
 | Phase 5: 生产部署 | 38 | 0 | 0% |
-| **总计** | **327** | **4** | **1%** |
+| **总计** | **327** | **64** | **20%** |
 
 ### 按类型统计
 
 | 类型 | 任务数 | 已完成 | 进度 |
 |------|--------|--------|------|
-| 代码实现 | 180 | 0 | 0% |
-| 测试编写 | 80 | 0 | 0% |
-| 文档编写 | 40 | 4 | 10% |
+| 代码实现 | 180 | 10 | 6% |
+| 测试编写 | 80 | 14 | 18% |
+| 文档编写 | 40 | 6 | 15% |
 | 工具配置 | 27 | 0 | 0% |
-| **总计** | **327** | **4** | **1%** |
+| **总计** | **327** | **64** | **20%** |
 
 ---
 

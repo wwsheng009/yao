@@ -1,6 +1,7 @@
 package components
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
@@ -9,34 +10,34 @@ import (
 // TextProps defines the properties for the Text component.
 type TextProps struct {
 	// Content is the text content
-	Content string
+	Content string `json:"content"`
 
 	// Align specifies the text alignment: "left", "center", "right"
-	Align string
+	Align string `json:"align"`
 
 	// Color specifies the foreground color
-	Color string
+	Color string `json:"color"`
 
 	// Background specifies the background color
-	Background string
+	Background string `json:"background"`
 
 	// Bold makes the text bold
-	Bold bool
+	Bold bool `json:"bold"`
 
 	// Italic makes the text italic
-	Italic bool
+	Italic bool `json:"italic"`
 
 	// Underline underlines the text
-	Underline bool
+	Underline bool `json:"underline"`
 
 	// Width specifies the text width (0 for auto)
-	Width int
+	Width int `json:"width"`
 
-	// Padding specifies padding [vertical, horizontal]
-	Padding []int
+	// Padding specifies the padding [vertical, horizontal]
+	Padding []int `json:"padding"`
 
 	// WordWrap enables word wrapping
-	WordWrap bool
+	WordWrap bool `json:"wordWrap"`
 }
 
 // RenderText renders a text component.
@@ -114,46 +115,17 @@ func RenderText(props TextProps, width int) string {
 	return style.Render(content)
 }
 
-// ParseTextProps converts a generic props map to TextProps.
+// ParseTextProps converts a generic props map to TextProps using JSON unmarshaling.
 func ParseTextProps(props map[string]interface{}) TextProps {
+	// Set defaults
 	tp := TextProps{}
 
-	// Content - can be string or formatted from bound data
+	// Handle Content and Padding separately
 	if content, ok := props["content"].(string); ok {
 		tp.Content = content
 	} else if bindData, ok := props["__bind_data"]; ok {
 		// Handle bound data
 		tp.Content = fmt.Sprintf("%v", bindData)
-	}
-
-	if align, ok := props["align"].(string); ok {
-		tp.Align = align
-	}
-
-	if color, ok := props["color"].(string); ok {
-		tp.Color = color
-	}
-
-	if bg, ok := props["background"].(string); ok {
-		tp.Background = bg
-	}
-
-	if bold, ok := props["bold"].(bool); ok {
-		tp.Bold = bold
-	}
-
-	if italic, ok := props["italic"].(bool); ok {
-		tp.Italic = italic
-	}
-
-	if underline, ok := props["underline"].(bool); ok {
-		tp.Underline = underline
-	}
-
-	if width, ok := props["width"].(int); ok {
-		tp.Width = width
-	} else if widthFloat, ok := props["width"].(float64); ok {
-		tp.Width = int(widthFloat)
 	}
 
 	if padding, ok := props["padding"].([]interface{}); ok {
@@ -167,8 +139,9 @@ func ParseTextProps(props map[string]interface{}) TextProps {
 		}
 	}
 
-	if wordWrap, ok := props["wordWrap"].(bool); ok {
-		tp.WordWrap = wordWrap
+	// Unmarshal remaining properties
+	if dataBytes, err := json.Marshal(props); err == nil {
+		_ = json.Unmarshal(dataBytes, &tp)
 	}
 
 	return tp

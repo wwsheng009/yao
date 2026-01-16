@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/yaoapp/gou/application"
+	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/share"
@@ -170,5 +171,80 @@ func loadFile(file string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
+	// If the config has data property, flatten it using kun/any
+	if cfg.Data != nil {
+		wrappedRes := any.Of(cfg.Data)
+		flattened := wrappedRes.Map().MapStrAny.Dot()
+		cfg.Data = flattened
+	}
+
+	// Add default bindings if none exist
+	if cfg.Bindings == nil {
+		cfg.Bindings = make(map[string]Action)
+	}
+	
+	// Set default bindings if they don't exist
+	setMissingBinding(cfg.Bindings, "q", Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "ctrl+c", Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "tab", Action{Process: "tui.focus.next"})
+	setMissingBinding(cfg.Bindings, "shift+tab", Action{Process: "tui.focus.prev"})
+	setMissingBinding(cfg.Bindings, "enter", Action{Process: "tui.form.submit"})
+	setMissingBinding(cfg.Bindings, "ctrl+r", Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+l", Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+z", Action{Process: "tui.suspend"})
+	
+	// Add default submit bindings for input components
+	setDefaultInputSubmitBindings(&cfg)
+
 	return &cfg, nil
+}
+
+// setDefaultInputSubmitBindings adds default submit bindings for input components
+func setDefaultInputSubmitBindings(cfg *Config) {
+	// This function would analyze the layout and set up appropriate submit bindings
+	// for input components based on their configuration and placement
+	// For now, we ensure that enter key triggers form submission if it's not already bound differently
+	
+	// We already set the general enter binding above, so this is more about
+	// specific input component actions
+	walkComponents(&cfg.Layout, func(comp *Component) {
+		// If it's an input component, we can set default actions
+		if comp.Type == "input" {
+			// Ensure submit action is available for input components
+			if comp.Actions == nil {
+				comp.Actions = make(map[string]Action)
+			}
+			// Add default submit action if not already defined
+			setMissingAction(comp.Actions, "submit", Action{Process: "tui.form.submit"})
+			setMissingAction(comp.Actions, "general_submit", Action{Process: "tui.submit"})
+		}
+	})
+}
+
+// walkComponents walks through all components in a layout recursively
+func walkComponents(layout *Layout, fn func(*Component)) {
+	for i := range layout.Children {
+		comp := &layout.Children[i]
+		fn(comp)
+		// If it's a layout component, walk its children too
+		if comp.Type == "layout" {
+			if nestedLayout, ok := comp.Props["layout"].(*Layout); ok {
+				walkComponents(nestedLayout, fn)
+			}
+		}
+	}
+}
+
+// setMissingAction adds an action only if the key doesn't already exist
+func setMissingAction(actions map[string]Action, key string, action Action) {
+	if _, exists := actions[key]; !exists {
+		actions[key] = action
+	}
+}
+
+// setMissingBinding adds a binding only if the key doesn't already exist
+func setMissingBinding(bindings map[string]Action, key string, action Action) {
+	if _, exists := bindings[key]; !exists {
+		bindings[key] = action
+	}
 }

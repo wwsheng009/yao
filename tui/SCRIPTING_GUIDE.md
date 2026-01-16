@@ -114,6 +114,78 @@ ctx.tui.ExecuteAction({
 ctx.tui.Refresh();
 ```
 
+#### `ctx.tui.Quit()`
+- **描述**: 退出 TUI 应用
+
+**示例**:
+```javascript
+// 退出应用
+ctx.tui.Quit();
+```
+
+#### `ctx.tui.Interrupt()`
+- **描述**: 中断 TUI 应用
+
+**示例**:
+```javascript
+// 中断应用
+ctx.tui.Interrupt();
+```
+
+#### `ctx.tui.Suspend()`
+- **描述**: 暂停 TUI 应用
+
+**示例**:
+```javascript
+// 暂停应用
+ctx.tui.Suspend();
+```
+
+#### `ctx.tui.ClearScreen()`
+- **描述**: 清除屏幕内容
+
+**示例**:
+```javascript
+// 清屏
+ctx.tui.ClearScreen();
+```
+
+#### `ctx.tui.EnterAltScreen()`
+- **描述**: 进入备用屏幕模式
+
+**示例**:
+```javascript
+// 进入备用屏幕
+ctx.tui.EnterAltScreen();
+```
+
+#### `ctx.tui.ExitAltScreen()`
+- **描述**: 退出备用屏幕模式
+
+**示例**:
+```javascript
+// 退出备用屏幕
+ctx.tui.ExitAltScreen();
+```
+
+#### `ctx.tui.ShowCursor()`
+- **描述**: 显示光标
+
+**示例**:
+```javascript
+// 显示光标
+ctx.tui.ShowCursor();
+```
+
+#### `ctx.tui.HideCursor()`
+- **描述**: 隐藏光标
+
+**示例**:
+```javascript
+// 隐藏光标
+ctx.tui.HideCursor();
+```
+
 #### `ctx.tui.Release()` / `ctx.tui.__release()`
 - **描述**: 释放内部 Go 对象资源（通常不需要手动调用）
 

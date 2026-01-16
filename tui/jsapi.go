@@ -41,6 +41,15 @@ func NewTUIObject(v8ctx *v8go.Context, model *Model) (*v8go.Value, error) {
 	jsObjTbl.Set("ExecuteAction", tuiExecuteActionMethod(v8ctx.Isolate(), model))
 	jsObjTbl.Set("Refresh", tuiRefreshMethod(v8ctx.Isolate(), model))
 	jsObjTbl.Set("Quit", tuiQuitMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("Interrupt", tuiInterruptMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("Suspend", tuiSuspendMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("ClearScreen", tuiClearScreenMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("EnterAltScreen", tuiEnterAltScreenMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("ExitAltScreen", tuiExitAltScreenMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("ShowCursor", tuiShowCursorMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("HideCursor", tuiHideCursorMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("FocusNextInput", tuiFocusNextInputMethod(v8ctx.Isolate(), model))
+	jsObjTbl.Set("SubmitForm", tuiSubmitFormMethod(v8ctx.Isolate(), model))
 	
 	instance, err := jsObjTbl.NewInstance(v8ctx)
 	if err != nil {
@@ -381,6 +390,97 @@ func tuiQuitMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
 	})
 }
 
+// tuiInterruptMethod returns a function that interrupts the TUI application
+// Usage: tui.Interrupt()
+func tuiInterruptMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send an interrupt message
+		if model.Program != nil {
+			model.Program.Send(tea.InterruptMsg{})
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiSuspendMethod returns a function that suspends the TUI application
+// Usage: tui.Suspend()
+func tuiSuspendMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send a suspend message
+		if model.Program != nil {
+			model.Program.Send(tea.SuspendMsg{})
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiClearScreenMethod returns a function that clears the screen
+// Usage: tui.ClearScreen()
+func tuiClearScreenMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send a clear screen message
+		if model.Program != nil {
+			model.Program.Send(tea.ClearScreen())
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiEnterAltScreenMethod returns a function that enters alternate screen
+// Usage: tui.EnterAltScreen()
+func tuiEnterAltScreenMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send an enter alt screen message
+		if model.Program != nil {
+			model.Program.Send(tea.EnterAltScreen())
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiExitAltScreenMethod returns a function that exits alternate screen
+// Usage: tui.ExitAltScreen()
+func tuiExitAltScreenMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send an exit alt screen message
+		if model.Program != nil {
+			model.Program.Send(tea.ExitAltScreen())
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiShowCursorMethod returns a function that shows the cursor
+// Usage: tui.ShowCursor()
+func tuiShowCursorMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send a show cursor message
+		if model.Program != nil {
+			model.Program.Send(tea.ShowCursor())
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiHideCursorMethod returns a function that hides the cursor
+// Usage: tui.HideCursor()
+func tuiHideCursorMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Send a hide cursor message
+		if model.Program != nil {
+			model.Program.Send(tea.HideCursor())
+		}
+
+		return v8go.Undefined(iso)
+	})
+}
+
 // NewContextObject creates a JavaScript context object that wraps the TUI object
 // This allows JavaScript code to interact with the TUI through ctx.tui.xxx
 func NewContextObject(v8ctx *v8go.Context, model *Model) (*v8go.Value, error) {
@@ -432,4 +532,65 @@ func injectModelToContext(v8ctx *v8go.Context, model *Model) error {
 	}
 
 	return nil
+}
+
+// tuiFocusNextInputMethod returns a function that focuses the next input component
+// Usage: tui.FocusNextInput()
+func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Find the next input component ID after the current focus
+		currentFocus := model.CurrentFocus
+		
+		// Find all input component IDs in the layout
+		inputIDs := []string{}
+		for _, comp := range model.Config.Layout.Children {
+			if comp.Type == "input" && comp.ID != "" {
+				inputIDs = append(inputIDs, comp.ID)
+			}
+		}
+		
+		// Find current position and move to next
+		currentIndex := -1
+		for i, id := range inputIDs {
+			if id == currentFocus {
+				currentIndex = i
+				break
+			}
+		}
+		
+		// Move to next input, wrap around if needed
+		if currentIndex >= 0 && currentIndex < len(inputIDs)-1 {
+				model.CurrentFocus = inputIDs[currentIndex+1]
+		} else if len(inputIDs) > 0 {
+				model.CurrentFocus = inputIDs[0] // Wrap to first
+			}
+		
+		// Update focus states in input models
+		for id, inputModel := range model.InputModels {
+			if id == model.CurrentFocus {
+				inputModel.Model.Focus()
+			} else {
+				inputModel.Model.Blur()
+			}
+			model.InputModels[id] = inputModel
+		}
+		
+		return v8go.Undefined(iso)
+	})
+}
+
+// tuiSubmitFormMethod returns a function that submits the form
+// Usage: tui.SubmitForm()
+func tuiSubmitFormMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
+	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		// Collect all input values and update state
+		model.StateMu.Lock()
+		defer model.StateMu.Unlock()
+		
+		for id, inputModel := range model.InputModels {
+			model.State[id] = inputModel.Value()
+		}
+		
+		return v8go.Undefined(iso)
+	})
 }

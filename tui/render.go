@@ -45,11 +45,42 @@ var exprOptions = []expr.Option{
 		if !ok {
 			return nil, fmt.Errorf("index key must be a string")
 		}
-		if m, ok := container.(map[string]interface{}); ok {
-			if val, exists := m[key]; exists {
-				return val, nil
+		
+		// Helper function to get value from various map types
+		getValue := func(container interface{}, key string) (interface{}, bool) {
+			switch v := container.(type) {
+			case map[string]interface{}:
+				if val, exists := v[key]; exists {
+					return val, true
+				}
+			case map[interface{}]interface{}:
+				for k, v := range v {
+					if kStr, ok := k.(string); ok && kStr == key {
+						return v, true
+					}
+				}
+			case *map[string]interface{}:
+				if v != nil {
+					if val, exists := (*v)[key]; exists {
+						return val, true
+					}
+				}
+			case *map[interface{}]interface{}:
+				if v != nil {
+					for k, v := range *v {
+						if kStr, ok := k.(string); ok && kStr == key {
+							return v, true
+						}
+					}
+				}
 			}
+			return nil, false
 		}
+		
+		if val, exists := getValue(container, key); exists {
+			return val, nil
+		}
+		
 		return nil, nil
 	}),
 	expr.Function("P_", func(params ...interface{}) (interface{}, error) {
@@ -165,12 +196,20 @@ func (m *Model) applyState(text string) string {
 		fullMatch := match[0]   // {{ expression }}
 		expression := strings.TrimSpace(match[1])  // expression without {{ }}
 
+		// Skip empty expressions to avoid compilation errors
+		if expression == "" {
+			log.Warn("Skipping empty expression in: %s", text)
+			continue
+		}
+
 		// Evaluate the expression with current state
 		m.StateMu.RLock()
 		env := make(map[string]interface{})
 		for k, v := range m.State {
 			env[k] = v
 		}
+		// Add special $ variable to reference the entire state object
+		env["$"] = m.State
 		m.StateMu.RUnlock()
 
 		// Compile expression with custom functions
@@ -276,6 +315,33 @@ func (m *Model) RenderComponent(comp *Component) string {
 		// Nested layout
 		if nestedLayout, ok := props["layout"].(*Layout); ok {
 			return m.renderLayoutNode(nestedLayout, m.Width, m.Height)
+		}
+		return ""
+
+	case "input":
+		// Special handling for input components
+		if comp.ID != "" {
+			// Create or update input model if it doesn't exist
+			if _, exists := m.InputModels[comp.ID]; !exists {
+				inputProps := components.ParseInputProps(props)
+				inputModel := components.NewInputModel(inputProps)
+				m.InputModels[comp.ID] = &inputModel
+				
+				// Set this input as focused if it's the first one or no other input is focused
+				if m.CurrentFocus == "" {
+					m.CurrentFocus = comp.ID
+					inputModel.Model.Focus()
+				} else if m.CurrentFocus == comp.ID {
+					inputModel.Model.Focus()
+				} else {
+					inputModel.Model.Blur()
+				}
+				m.InputModels[comp.ID] = &inputModel
+			}
+			
+			// Return the input view
+			inputModel := m.InputModels[comp.ID]
+			return inputModel.View()
 		}
 		return ""
 

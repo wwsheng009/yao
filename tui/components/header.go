@@ -1,28 +1,30 @@
 package components
 
 import (
+	"encoding/json"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
 // HeaderProps defines the properties for the Header component.
 type HeaderProps struct {
 	// Title is the header text
-	Title string
+	Title string `json:"title"`
 
 	// Align specifies the text alignment: "left", "center", "right"
-	Align string
+	Align string `json:"align"`
 
 	// Color specifies the foreground color
-	Color string
+	Color string `json:"color"`
 
 	// Background specifies the background color
-	Background string
+	Background string `json:"background"`
 
 	// Bold makes the text bold
-	Bold bool
+	Bold bool `json:"bold"`
 
 	// Width specifies the header width (0 for auto)
-	Width int
+	Width int `json:"width"`
 }
 
 // RenderHeader renders a header component.
@@ -75,36 +77,16 @@ func RenderHeader(props HeaderProps, width int) string {
 	return style.Render(props.Title)
 }
 
-// ParseHeaderProps converts a generic props map to HeaderProps.
+// ParseHeaderProps converts a generic props map to HeaderProps using JSON unmarshaling.
 func ParseHeaderProps(props map[string]interface{}) HeaderProps {
+	// Set defaults
 	hp := HeaderProps{
 		Bold: true, // Default to bold
 	}
 
-	if title, ok := props["title"].(string); ok {
-		hp.Title = title
-	}
-
-	if align, ok := props["align"].(string); ok {
-		hp.Align = align
-	}
-
-	if color, ok := props["color"].(string); ok {
-		hp.Color = color
-	}
-
-	if bg, ok := props["background"].(string); ok {
-		hp.Background = bg
-	}
-
-	if bold, ok := props["bold"].(bool); ok {
-		hp.Bold = bold
-	}
-
-	if width, ok := props["width"].(int); ok {
-		hp.Width = width
-	} else if widthFloat, ok := props["width"].(float64); ok {
-		hp.Width = int(widthFloat)
+	// Unmarshal properties
+	if dataBytes, err := json.Marshal(props); err == nil {
+		_ = json.Unmarshal(dataBytes, &hp)
 	}
 
 	return hp

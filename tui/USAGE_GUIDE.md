@@ -39,6 +39,24 @@ TUI 提供了多种内置函数：
 "content": "总计: {{index(stats, 'total')}}"
 ```
 
+**注意事项：** 当键名包含特殊字符（如连字符 `-`、点号 `.` 等）时，需要使用 `index` 函数来安全访问，而不是直接使用 `{{key-name}}` 语法，因为后者会被解释为运算表达式（如 `key - name`）。
+
+**错误示例：**
+```json
+// 错误：会被解释为减法运算
+"content": "用户名: {{username-input}}"  // 错误！
+```
+
+**正确示例：**
+```json
+// 正确：使用 index 函数访问包含连字符的键
+"content": "用户名: {{index($, 'username-input')}}"
+"content": "邮箱: {{index($, 'email-input')}}"
+"content": "密码: {{index($, 'password-input')}}"
+```
+
+其中 `$` 代表根上下文（当前状态对象）。
+
 #### 三元运算符
 支持条件表达式：
 

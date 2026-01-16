@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
+	"github.com/yaoapp/yao/tui/components"
 )
 
 // NewModel creates a new Bubble Tea Model from a TUI configuration.
@@ -12,10 +13,11 @@ import (
 // the reactive environment.
 func NewModel(cfg *Config, program *tea.Program) *Model {
 	model := &Model{
-		Config:  cfg,
-		State:   make(map[string]interface{}),
-		Program: program,
-		Ready:   false,
+		Config:      cfg,
+		State:       make(map[string]interface{}),
+		InputModels: make(map[string]*components.InputModel),
+		Program:     program,
+		Ready:       false,
 	}
 
 	// Copy initial data to State
@@ -23,6 +25,11 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 		for key, value := range cfg.Data {
 			model.State[key] = value
 		}
+	}
+
+	// Register the model if it has an ID
+	if cfg.ID != "" {
+		RegisterModel(cfg.ID, model)
 	}
 
 	return model
@@ -79,6 +86,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		log.Trace("TUI StateBatchUpdate: %d keys", len(msg.Updates))
 		return m, nil
 
+	case InputUpdateMsg:
+		// Handle input component updates
+		m.StateMu.Lock()
+		m.State[msg.ID] = msg.Value
+		m.StateMu.Unlock()
+		log.Trace("TUI InputUpdate: %s = %s", msg.ID, msg.Value)
+		return m, nil
+
 	case StreamChunkMsg:
 		// Handle streaming chunk (e.g., from AI)
 		return m.handleStreamChunk(msg)
@@ -90,6 +105,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		// Handle error
 		return m.handleError(msg)
+
+	case QuitMsg:
+		// Handle quit request
+		return m, tea.Quit
 
 	default:
 		return m, nil
@@ -112,6 +131,49 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Default quit key
 	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
+	}
+
+	// Handle input component if there's a focused input
+	if m.CurrentFocus != "" {
+		if inputModel, exists := m.InputModels[m.CurrentFocus]; exists {
+			updatedInputModel, cmd := components.HandleInputUpdate(msg, inputModel)
+			m.InputModels[m.CurrentFocus] = &updatedInputModel
+			
+			// Update the state with the current input value
+			m.StateMu.Lock()
+			m.State[m.CurrentFocus] = updatedInputModel.Value()
+			m.StateMu.Unlock()
+			
+			// If Enter is pressed, submit the form
+			if msg.Type == tea.KeyEnter {
+				log.Trace("Input submitted: %s = %s", m.CurrentFocus, updatedInputModel.Value())
+				// Submit form action if bound
+				if m.Config.Bindings != nil {
+					if action, ok := m.Config.Bindings["Enter"]; ok {
+						log.Trace("TUI KeyPress: Enter -> action")
+						return m, m.executeAction(&action)
+					}
+				}
+			}
+			
+			// If Tab is pressed, move to next input
+			if msg.Type == tea.KeyTab {
+				log.Trace("Tab pressed, moving to next input")
+				// Call focus next input
+				m.focusNextInput()
+				// Update focus states in input models
+				for id, inputModel := range m.InputModels {
+					if id == m.CurrentFocus {
+						inputModel.Model.Focus()
+					} else {
+						inputModel.Model.Blur()
+					}
+					m.InputModels[id] = inputModel
+				}
+			}
+			
+			return m, cmd
+		}
 	}
 
 	// Build key string for matching
@@ -347,5 +409,32 @@ func (m *Model) setStateValue(key string, value interface{}) {
 	m.StateMu.Lock()
 	defer m.StateMu.Unlock()
 	m.State[key] = value
+}
+
+// focusNextInput finds the next input component and sets it as focused
+func (m *Model) focusNextInput() {
+	// Find all input component IDs in the layout
+	inputIDs := []string{}
+	for _, comp := range m.Config.Layout.Children {
+		if comp.Type == "input" && comp.ID != "" {
+			inputIDs = append(inputIDs, comp.ID)
+		}
+	}
+	
+	// Find current position and move to next
+	currentIndex := -1
+	for i, id := range inputIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
+			break
+		}
+	}
+	
+	// Move to next input, wrap around if needed
+	if currentIndex >= 0 && currentIndex < len(inputIDs)-1 {
+		m.CurrentFocus = inputIDs[currentIndex+1]
+	} else if len(inputIDs) > 0 {
+		m.CurrentFocus = inputIDs[0] // Wrap to first
+	}
 }
 

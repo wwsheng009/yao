@@ -15,6 +15,14 @@ func init() {
 	process.Register("tui.count", ProcessCount)
 	process.Register("tui.reload", ProcessReload)
 	process.Register("tui.quit", ProcessQuit)
+	process.Register("tui.exit", ProcessExit)
+	process.Register("tui.focus.next", ProcessFocusNext)
+	process.Register("tui.focus.prev", ProcessFocusPrev)
+	process.Register("tui.form.submit", ProcessFormSubmit)
+	process.Register("tui.submit", ProcessSubmit)
+	process.Register("tui.refresh", ProcessRefresh)
+	process.Register("tui.clear", ProcessClear)
+	process.Register("tui.suspend", ProcessSuspend)
 }
 
 // ProcessLoad loads all TUI configurations
@@ -70,14 +78,28 @@ func ProcessReload(process *process.Process) interface{} {
 	}
 }
 
-// ProcessQuit is a placeholder for quit action
-// This will be handled by the TUI model's key bindings
-// Usage: Process("tui.quit")
+// ProcessQuit handles quit action
+// Usage: Process("tui.quit", modelID)
 func ProcessQuit(process *process.Process) interface{} {
-	return map[string]interface{}{
-		"action":  "quit",
-		"message": "Quit signal sent",
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
 	}
+
+	action := &Action{Process: "tui.quit"}
+	result, err := ProcessQuitAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
 }
 
 // ProcessExecute executes a TUI action
@@ -126,4 +148,196 @@ func ProcessExecute(proc *process.Process) interface{} {
 	}
 
 	return nil
+}
+
+// ProcessExit exits the TUI application
+// Usage: Process("tui.exit", modelID)
+func ProcessExit(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.exit"}
+	result, err := ProcessQuitAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessFocusNext focuses the next input component
+// Usage: Process("tui.focus.next", modelID)
+func ProcessFocusNext(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.focus.next"}
+	result, err := ProcessFocusNextAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessFocusPrev focuses the previous input component
+// Usage: Process("tui.focus.prev", modelID)
+func ProcessFocusPrev(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.focus.prev"}
+	result, err := ProcessFocusPrevAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessFormSubmit submits the current form
+// Usage: Process("tui.form.submit", modelID)
+func ProcessFormSubmit(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.form.submit"}
+	result, err := ProcessFormSubmitAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessSubmit handles general form/data submission
+// Usage: Process("tui.submit", modelID)
+func ProcessSubmit(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.submit"}
+	result, err := ProcessSubmitAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessRefresh refreshes the TUI
+// Usage: Process("tui.refresh", modelID)
+func ProcessRefresh(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.refresh"}
+	result, err := ProcessRefreshAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessClear clears the screen
+// Usage: Process("tui.clear", modelID)
+func ProcessClear(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.clear"}
+	result, err := ProcessClearAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessSuspend suspends the TUI application
+// Usage: Process("tui.suspend", modelID)
+func ProcessSuspend(process *process.Process) interface{} {
+	process.ValidateArgNums(1)
+	modelID := process.ArgsString(0)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.suspend"}
+	result, err := ProcessSuspendAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
 }
