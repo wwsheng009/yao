@@ -136,6 +136,18 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle input component if there's a focused input
 	if m.CurrentFocus != "" {
 		if inputModel, exists := m.InputModels[m.CurrentFocus]; exists {
+			// Check if the key pressed is Escape to blur the input
+			if msg.Type == tea.KeyEsc {
+				// Blur the input and clear focus
+				inputModel.Blur()
+				m.InputModels[m.CurrentFocus] = inputModel
+				m.CurrentFocus = ""
+				log.Trace("Input blurred via ESC, focus cleared")
+				// Now that focus is cleared, we should continue to check for key bindings
+				// But since we return here, we'll fall through to general key handling
+				return m, nil
+			}
+			
 			updatedInputModel, cmd := components.HandleInputUpdate(msg, inputModel)
 			m.InputModels[m.CurrentFocus] = &updatedInputModel
 			
@@ -185,8 +197,14 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Check for bound actions with the character
 		if m.Config.Bindings != nil {
 			if action, ok := m.Config.Bindings[char]; ok {
-				log.Trace("TUI KeyPress: %s -> action", char)
-				return m, m.executeAction(&action)
+				// If the action is a quit action, execute it
+				if action.Process == "tui.quit" || action.Process == "tui.exit" {
+					log.Trace("TUI KeyPress: %s -> quit action", char)
+					return m, m.executeAction(&action)
+				} else {
+					log.Trace("TUI KeyPress: %s -> action", char)
+					return m, m.executeAction(&action)
+				}
 			}
 		}
 	}
@@ -194,8 +212,14 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Check for bound actions with full key string
 	if m.Config.Bindings != nil {
 		if action, ok := m.Config.Bindings[key]; ok {
-			log.Trace("TUI KeyPress: %s -> action", key)
-			return m, m.executeAction(&action)
+			// If the action is a quit action, execute it
+			if action.Process == "tui.quit" || action.Process == "tui.exit" {
+				log.Trace("TUI KeyPress: %s -> quit action", key)
+				return m, m.executeAction(&action)
+			} else {
+				log.Trace("TUI KeyPress: %s -> action", key)
+				return m, m.executeAction(&action)
+			}
 		}
 	}
 

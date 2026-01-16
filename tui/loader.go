@@ -171,11 +171,15 @@ func loadFile(file string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// If the config has data property, flatten it using kun/any
+	// If the config has data property, flatten it using kun/any but preserve original structure
 	if cfg.Data != nil {
 		wrappedRes := any.Of(cfg.Data)
 		flattened := wrappedRes.Map().MapStrAny.Dot()
-		cfg.Data = flattened
+		
+		// Merge flattened keys with original data to support both access patterns
+		for k, v := range flattened {
+			cfg.Data[k] = v
+		}
 	}
 
 	// Add default bindings if none exist

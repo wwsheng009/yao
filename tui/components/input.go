@@ -167,6 +167,18 @@ func HandleInputUpdate(msg tea.Msg, inputModel *InputModel) (InputModel, tea.Cmd
 		return InputModel{}, nil
 	}
 
+	// Check for key press events
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEsc:
+			// Blur the input when ESC is pressed
+			inputModel.Blur()
+			// Return the updated model and a command to refresh the view
+			return *inputModel, nil
+		}
+	}
+
 	var cmd tea.Cmd
 	inputModel.Model, cmd = inputModel.Model.Update(msg)
 	return *inputModel, cmd

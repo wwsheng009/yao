@@ -23,6 +23,7 @@ func init() {
 	process.Register("tui.refresh", ProcessRefresh)
 	process.Register("tui.clear", ProcessClear)
 	process.Register("tui.suspend", ProcessSuspend)
+	process.Register("tui.input.escape", ProcessInputEscape)
 }
 
 // ProcessLoad loads all TUI configurations
@@ -333,6 +334,31 @@ func ProcessSuspend(process *process.Process) interface{} {
 
 	action := &Action{Process: "tui.suspend"}
 	result, err := ProcessSuspendAction(model, action)
+	if err != nil {
+		return map[string]interface{}{
+			"error": err.Error(),
+			"modelID": modelID,
+		}
+	}
+	return result
+}
+
+// ProcessInputEscape handles escape from input component
+// Usage: Process("tui.input.escape", modelID, inputID)
+func ProcessInputEscape(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+	modelID := process.ArgsString(0)
+	inputID := process.ArgsString(1)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	action := &Action{Process: "tui.input.escape"}
+	result, err := ProcessInputEscapeAction(model, action, inputID)
 	if err != nil {
 		return map[string]interface{}{
 			"error": err.Error(),

@@ -205,6 +205,27 @@ func ProcessSuspendAction(model *Model, action *Action) (interface{}, error) {
 	return map[string]interface{}{"action": "suspend", "message": "Suspend signal sent"}, nil
 }
 
+// ProcessInputEscapeAction handles escaping from input component
+// Usage: Called internally by executeProcessAction
+func ProcessInputEscapeAction(model *Model, action *Action, inputID string) (interface{}, error) {
+	// Blur the specified input component to exit edit mode
+	if inputModel, exists := model.InputModels[inputID]; exists {
+		inputModel.Blur()
+		// Update the model's focus if this was the focused input
+		if model.CurrentFocus == inputID {
+			model.CurrentFocus = ""
+		}
+		model.InputModels[inputID] = inputModel
+		return map[string]interface{}{
+			"action": "input_escape", 
+			"message": fmt.Sprintf("Input %s escaped edit mode", inputID),
+			"inputID": inputID,
+		}, nil
+	}
+	
+	return nil, fmt.Errorf("input component %s not found", inputID)
+}
+
 // executeScriptAction executes a script method action
 func executeScriptAction(model *Model, action *Action) (interface{}, error) {
 	log.Trace("TUI ExecuteScript: %s.%s", action.Script, action.Method)

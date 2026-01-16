@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/kun/any"
 )
 
 func TestApplyStateExpressions(t *testing.T) {
@@ -161,5 +162,99 @@ func TestApplyStateExpressions(t *testing.T) {
 	t.Run("complex nested expressions", func(t *testing.T) {
 		result := model.applyState("Complex: {{index($, \"username-input\")}} - {{len(items)}} - {{index($, \"special@key\")}}")
 		assert.Equal(t, "Complex: john_doe - 3 - at_value", result)
+	})
+	
+	// Test array indexing after flattening with any.Of().Dot()
+	t.Run("flattened array indexing", func(t *testing.T) {
+		// Simulate what happens when data is flattened with any.Of().Dot()
+		flattenedData := map[string]interface{}{
+			"features.0": "Rich text formatting",
+			"features.1": "Color support",
+			"features.2": "Alignment options",
+			"features.3": "Styling capabilities",
+			"features": []interface{}{"Rich text formatting", "Color support", "Alignment options", "Styling capabilities"},
+		}
+		
+		// Create a new model with flattened data
+		cfg := &Config{
+			Name: "Test",
+			Data: flattenedData,
+		}
+		testModel := NewModel(cfg, nil)
+		
+		// Test accessing array elements using dot notation
+		result := testModel.applyState("Feature 0: {{index($, \"features.0\")}}")
+		assert.Equal(t, "Feature 0: Rich text formatting", result)
+		
+		result = testModel.applyState("Feature 1: {{features.1}}")
+		// Note: direct access like {{features.1}} may not work because features is an array, not a map
+		// The flattened version has "features.1" as a key
+		
+		// More importantly, test that the flattened keys exist
+		result = testModel.applyState("Feature 1: {{index($, \"features.1\")}}")
+		assert.Equal(t, "Feature 1: Color support", result)
+		
+		result = testModel.applyState("Feature 2: {{index($, \"features.2\")}}")
+		assert.Equal(t, "Feature 2: Alignment options", result)
+		
+		result = testModel.applyState("Feature 3: {{index($, \"features.3\")}}")
+		assert.Equal(t, "Feature 3: Styling capabilities", result)
+	})
+
+	// Test actual text.tui.yao data structure flattening
+	t.Run("text tui yao data structure", func(t *testing.T) {
+		// Simulate the original data structure from text.tui.yao
+		originalData := map[string]interface{}{
+			"welcome_message": "Welcome to the TUI Application!",
+			"description":     "This is a sample application demonstrating the text component.",
+			"features": []interface{}{
+				"Rich text formatting",
+				"Color support",
+				"Alignment options",
+				"Styling capabilities",
+			},
+			"stats": map[string]interface{}{
+				"users":     1250,
+				"messages":  3420,
+				"documents": 89,
+			},
+		}
+
+		// Apply the same flattening logic as in loader.go
+		wrappedRes := any.Of(originalData)
+		flattened := wrappedRes.Map().MapStrAny.Dot()
+
+		// Create a new model with the flattened data
+		cfg := &Config{
+			Name: "Test",
+			Data: flattened,
+		}
+		testModel := NewModel(cfg, nil)
+
+		// Test that the flattened keys exist and can be accessed
+		assert.Equal(t, "Rich text formatting", flattened["features.0"])
+		assert.Equal(t, "Color support", flattened["features.1"])
+		assert.Equal(t, "Alignment options", flattened["features.2"])
+		assert.Equal(t, "Styling capabilities", flattened["features.3"])
+
+		// Test that expressions in the format used by text.tui.yao work correctly
+		result := testModel.applyState("Feature: {{features.0}}")
+		assert.Equal(t, "Feature: Rich text formatting", result)
+
+		result = testModel.applyState("Feature: {{features.1}}")
+		assert.Equal(t, "Feature: Color support", result)
+
+		result = testModel.applyState("Feature: {{features.2}}")
+		assert.Equal(t, "Feature: Alignment options", result)
+
+		result = testModel.applyState("Feature: {{features.3}}")
+		assert.Equal(t, "Feature: Styling capabilities", result)
+
+		// Test other expressions from text.tui.yao
+		result = testModel.applyState("Welcome: {{welcome_message}}")
+		assert.Equal(t, "Welcome: Welcome to the TUI Application!", result)
+
+		result = testModel.applyState("Stats: Users: {{stats.users}}, Messages: {{stats.messages}}")
+		assert.Equal(t, "Stats: Users: 1250, Messages: 3420", result)
 	})
 }

@@ -202,6 +202,12 @@ func (m *Model) applyState(text string) string {
 			continue
 		}
 
+		// Preprocess the expression to handle cases like features.0
+		// When expr tries to access features.0, it looks for features[0] or features.0
+		// But in our flattened data, the key is "features.0"
+		// So we transform expressions like "features.0" to "index($, \"features.0\")" when needed
+		processedExpression := preprocessExpression(expression, m.State)
+
 		// Evaluate the expression with current state
 		m.StateMu.RLock()
 		env := make(map[string]interface{})
@@ -213,17 +219,17 @@ func (m *Model) applyState(text string) string {
 		m.StateMu.RUnlock()
 
 		// Compile expression with custom functions
-		program, err := expr.Compile(expression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+		program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
 
 		if err != nil {
-			log.Warn("Expression compilation failed: %v, expression: %s", err, expression)
+			log.Warn("Expression compilation failed: %v, expression: %s", err, processedExpression)
 			continue
 		}
 
 		// Run expression
 		res, err := vm.Run(program, env)
 		if err != nil {
-			log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
+			log.Warn("Expression evaluation failed: %v, expression: %s", err, processedExpression)
 			continue
 		}
 
@@ -247,6 +253,25 @@ func (m *Model) applyState(text string) string {
 	}
 
 	return result
+}
+
+// preprocessExpression handles special cases for expressions like features.0
+// that need to be converted to index($, "features.0") when the direct access fails
+func preprocessExpression(expr string, state map[string]interface{}) string {
+	// This is a simple preprocessing to detect patterns like "identifier.number" or "identifier.identifier"
+	// where the identifier might not exist as an object but the combined key exists in the flattened state
+	
+	// First, let's check if the expression is a simple identifier like "features.0"
+	// that could potentially be a flattened key
+	if strings.Contains(expr, ".") {
+		// Check if the whole expression as a key exists in the state
+		if _, exists := state[expr]; exists {
+			// If the key exists, wrap it in index function for safe access
+			return fmt.Sprintf(`index($, "%s")`, expr)
+		}
+	}
+	
+	return expr
 }
 
 // RenderLayout renders the entire layout tree recursively.
@@ -305,19 +330,6 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	// Route to component renderer
 	switch comp.Type {
-	case "header":
-		return m.renderHeaderComponent(props)
-
-	case "text":
-		return m.renderTextComponent(props)
-
-	case "layout":
-		// Nested layout
-		if nestedLayout, ok := props["layout"].(*Layout); ok {
-			return m.renderLayoutNode(nestedLayout, m.Width, m.Height)
-		}
-		return ""
-
 	case "input":
 		// Special handling for input components
 		if comp.ID != "" {
@@ -346,9 +358,17 @@ func (m *Model) RenderComponent(comp *Component) string {
 		return ""
 
 	default:
-		// Unknown component type
-		log.Warn("Unknown component type: %s", comp.Type)
-		return m.renderUnknownComponent(comp.Type, props)
+		// Use component registry for other component types
+		registry := GetGlobalRegistry()
+		renderer, err := registry.GetComponent(ComponentType(comp.Type))
+		if err != nil {
+			log.Warn("Unknown component type: %s", comp.Type)
+			return m.renderUnknownComponent(comp.Type, props)
+		}
+		
+		// Apply state binding and render using the registered renderer
+		boundProps := m.applyStateToProps(comp)
+		return renderer(boundProps, m.Width)
 	}
 }
 
