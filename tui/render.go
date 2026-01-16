@@ -2,8 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"math/rand"
+	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -15,6 +18,22 @@ import (
 
 // Regex for matching template expressions {{ }}
 var stmtRe = regexp.MustCompile(`\{\{([\s\S]*?)\}\}`)
+
+// init initializes the random seed
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+// generateUniqueID generates a unique identifier for components
+func generateUniqueID(prefix string) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const length = 8
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return prefix + "_" + string(b)
+}
 
 // Options for expr engine
 var exprOptions = []expr.Option{
@@ -164,7 +183,159 @@ func (m *Model) applyStateToProps(comp *Component) map[string]interface{} {
 		if str, ok := value.(string); ok {
 			result[key] = m.applyState(str)
 		} else {
-			result[key] = value
+			// For non-string values, try to evaluate them as expressions if they contain {{}}
+			result[key] = m.evaluateValue(value)
+		}
+	}
+
+	// Handle bind attribute - bind entire state object
+	if comp.Bind != "" {
+		m.StateMu.RLock()
+		if bindValue, ok := m.State[comp.Bind]; ok {
+			result["__bind_data"] = bindValue
+		}
+		m.StateMu.RUnlock()
+	}
+
+	return result
+}
+
+// evaluateValue evaluates a value that might contain expressions
+func (m *Model) evaluateValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case string:
+		// Check if the string contains {{}} expressions
+		if containsExpression(v) {
+			// Extract the expression from {{ expression }}
+			trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(v, "{{"), "}}"))
+			res, err := m.evaluateExpression(trimmed)
+			if err != nil {
+				log.Warn("Expression evaluation failed: %v, expression: %s", err, trimmed)
+				return v // Return original string if evaluation fails
+			}
+			// Return the evaluated result directly without converting to string
+			return res
+		}
+		return v
+	case map[string]interface{}:
+		// Recursively evaluate map values
+		result := make(map[string]interface{})
+		for k, val := range v {
+			result[k] = m.evaluateValue(val)
+		}
+		return result
+	case []interface{}:
+		// Recursively evaluate array values
+		result := make([]interface{}, len(v))
+		for i, val := range v {
+			result[i] = m.evaluateValue(val)
+		}
+		return result
+	default:
+		// For other types, return as-is
+		return v
+	}
+}
+
+// resolveExpressionValue resolves an expression to its actual value without converting to string
+func (m *Model) resolveExpressionValue(expression string) (interface{}, bool) {
+	// Preprocess the expression to handle cases like features.0
+	processedExpression := preprocessExpression(expression, m.State)
+
+	// Evaluate the expression with current state
+	m.StateMu.RLock()
+	env := make(map[string]interface{})
+	for k, v := range m.State {
+		env[k] = v
+	}
+	// Add special $ variable to reference the entire state object
+	env["$"] = m.State
+	m.StateMu.RUnlock()
+
+	// Compile expression with custom functions
+	program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+	if err != nil {
+		log.Warn("Expression compilation failed: %v, expression: %s", err, processedExpression)
+		return nil, false
+	}
+
+	// Run expression
+	res, err := vm.Run(program, env)
+	if err != nil {
+		log.Warn("Expression evaluation failed: %v, expression: %s", err, processedExpression)
+		return nil, false
+	}
+
+	return res, true
+}
+
+// containsExpression checks if a string contains {{}} expressions
+func containsExpression(s string) bool {
+	return strings.Contains(s, "{{") && strings.Contains(s, "}}")
+}
+
+// evaluateExpression evaluates an expression and returns the result as interface{}
+func (m *Model) evaluateExpression(expression string) (interface{}, error) {
+	// Preprocess the expression to handle cases like features.0
+	// When expr tries to access features.0, it looks for features[0] or features.0
+	// But in our flattened data, the key is "features.0"
+	// So we transform expressions like "features.0" to "index($, \"features.0\")" when needed
+	processedExpression := preprocessExpression(expression, m.State)
+
+	// Evaluate the expression with current state
+	m.StateMu.RLock()
+	env := make(map[string]interface{})
+	for k, v := range m.State {
+		env[k] = v
+	}
+	// Add special $ variable to reference the entire state object
+	env["$"] = m.State
+	m.StateMu.RUnlock()
+
+	// Compile expression with custom functions
+	program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Run expression
+	res, err := vm.Run(program, env)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// resolveProps processes component props and resolves {{}} expressions to their actual types,
+// without converting complex data types to strings.
+func (m *Model) resolveProps(comp *Component) map[string]interface{} {
+	if comp.Props == nil {
+		return make(map[string]interface{})
+	}
+
+	result := make(map[string]interface{})
+
+	// Process each prop
+	for key, value := range comp.Props {
+		// Check if value is a string containing an expression like {{expression}}
+		if str, ok := value.(string); ok {
+			if containsExpression(str) {
+				// Extract the expression from {{ expression }}
+				trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(str, "{{"), "}}"))
+				resolvedValue, success := m.resolveExpressionValue(trimmed)
+				if success {
+					result[key] = resolvedValue
+				} else {
+					result[key] = value // Keep original value if resolution fails
+				}
+			} else {
+				result[key] = value // Keep original value if no expression
+			}
+		} else {
+			// For non-string values, recursively evaluate nested expressions
+			result[key] = m.evaluateValue(value)
 		}
 	}
 
@@ -202,34 +373,10 @@ func (m *Model) applyState(text string) string {
 			continue
 		}
 
-		// Preprocess the expression to handle cases like features.0
-		// When expr tries to access features.0, it looks for features[0] or features.0
-		// But in our flattened data, the key is "features.0"
-		// So we transform expressions like "features.0" to "index($, \"features.0\")" when needed
-		processedExpression := preprocessExpression(expression, m.State)
-
-		// Evaluate the expression with current state
-		m.StateMu.RLock()
-		env := make(map[string]interface{})
-		for k, v := range m.State {
-			env[k] = v
-		}
-		// Add special $ variable to reference the entire state object
-		env["$"] = m.State
-		m.StateMu.RUnlock()
-
-		// Compile expression with custom functions
-		program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
-
+		// Evaluate the expression
+		res, err := m.evaluateExpression(expression)
 		if err != nil {
-			log.Warn("Expression compilation failed: %v, expression: %s", err, processedExpression)
-			continue
-		}
-
-		// Run expression
-		res, err := vm.Run(program, env)
-		if err != nil {
-			log.Warn("Expression evaluation failed: %v, expression: %s", err, processedExpression)
+			log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
 			continue
 		}
 
@@ -238,13 +385,15 @@ func (m *Model) applyState(text string) string {
 		if res == nil {
 			replacement = ""
 		} else {
-			switch v := res.(type) {
+			switch val := res.(type) {
 			case string:
-				replacement = v
+				replacement = val
 			case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
-				replacement = fmt.Sprintf("%v", v)
+				replacement = fmt.Sprintf("%v", val)
 			default:
-				replacement = fmt.Sprintf("%v", v)
+				// For complex data types like arrays and maps, convert to string representation
+				replacement = fmt.Sprintf("%v", val)
+				log.Trace("applyState: Converting complex data type to string: %T", val)
 			}
 		}
 
@@ -253,6 +402,105 @@ func (m *Model) applyState(text string) string {
 	}
 
 	return result
+}
+
+// bindData recursively processes data and replaces {{}} expressions with actual values from the State.
+// This is similar to the gou/helper/bind.go implementation but adapted for TUI usage.
+func (m *Model) bindData(v interface{}) interface{} {
+	value := reflect.ValueOf(v)
+	if value.IsValid() && value.Kind() == reflect.Interface {
+		value = value.Elem()
+	}
+	if !value.IsValid() {
+		return v
+	}
+
+	valueKind := value.Kind()
+	switch valueKind {
+	case reflect.Slice, reflect.Array: // Slice || Array
+		val := make([]interface{}, value.Len())
+		for i := 0; i < value.Len(); i++ {
+			val[i] = m.bindData(value.Index(i).Interface())
+		}
+		return val
+	case reflect.Map: // Map
+		// Create a new map to hold the processed values
+		val := make(map[string]interface{})
+		for _, key := range value.MapKeys() {
+			k := fmt.Sprintf("%v", key.Interface())
+			val[k] = m.bindData(value.MapIndex(key).Interface())
+		}
+		return val
+	case reflect.String: // String with {{}} expressions
+		input := value.String()
+		// Find all {{ expression }} patterns
+		matches := stmtRe.FindAllStringSubmatchIndex(input, -1)
+		if len(matches) == 0 {
+			return input
+		}
+		// Process expressions in the string
+		// If there's only one match and it's the entire string (like "{{variable}}"), return the evaluated value directly
+		if len(matches) == 1 && matches[0][0] == 0 && matches[0][1] == len(input) {
+			// This is a single expression like {{variable}}, return the evaluated value directly
+			expression := strings.TrimSpace(input[matches[0][2]:matches[0][3]])
+			// Skip empty expressions to avoid compilation errors
+			if expression == "" {
+				log.Warn("Skipping empty expression in: %s", input)
+				return input
+			}
+			// Evaluate the expression
+			res, err := m.evaluateExpression(expression)
+			if err != nil {
+				log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
+				return input
+			}
+			// Return the evaluated value directly, preserving its type
+			return res
+		} else {
+			// Multiple expressions or partial match, do string replacement
+			result := input
+			for _, match := range matches {
+				fullMatchStart, fullMatchEnd := match[0], match[1]
+				exprStart, exprEnd := match[2], match[3]
+				expression := strings.TrimSpace(input[exprStart:exprEnd])
+
+				// Skip empty expressions to avoid compilation errors
+				if expression == "" {
+					log.Warn("Skipping empty expression in: %s", input)
+					continue
+			}
+
+				// Evaluate the expression
+				res, err := m.evaluateExpression(expression)
+				if err != nil {
+					log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
+					continue
+			}
+
+				// Convert evaluated result to string for replacement
+				var replacement string
+				if res == nil {
+					replacement = ""
+				} else {
+					switch val := res.(type) {
+					case string:
+						replacement = val
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
+						replacement = fmt.Sprintf("%v", val)
+					default:
+						replacement = fmt.Sprintf("%v", val)
+					}
+				}
+
+				// Replace in result
+				original := input[fullMatchStart:fullMatchEnd]
+				result = strings.Replace(result, original, replacement, 1)
+			}
+			return result
+		}
+	default:
+		return v
+	}
 }
 
 // preprocessExpression handles special cases for expressions like features.0
@@ -330,33 +578,61 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	// Route to component renderer
 	switch comp.Type {
-	case "input":
-		// Special handling for input components
-		if comp.ID != "" {
-			// Create or update input model if it doesn't exist
-			if _, exists := m.InputModels[comp.ID]; !exists {
-				inputProps := components.ParseInputProps(props)
-				inputModel := components.NewInputModel(inputProps)
-				m.InputModels[comp.ID] = &inputModel
-				
-				// Set this input as focused if it's the first one or no other input is focused
-				if m.CurrentFocus == "" {
-					m.CurrentFocus = comp.ID
-					inputModel.Model.Focus()
-				} else if m.CurrentFocus == comp.ID {
-					inputModel.Model.Focus()
-				} else {
-					inputModel.Model.Blur()
+		case "input":
+			// Special handling for input components
+			if comp.ID != "" {
+				// Create or update input model if it doesn't exist
+				if _, exists := m.InputModels[comp.ID]; !exists {
+					inputProps := components.ParseInputProps(props)
+					inputModel := components.NewInputModel(inputProps)
+					m.InputModels[comp.ID] = &inputModel
+					
+					// Set this input as focused if it's the first one or no other input is focused
+					if m.CurrentFocus == "" {
+						m.CurrentFocus = comp.ID
+						inputModel.Model.Focus()
+					} else if m.CurrentFocus == comp.ID {
+						inputModel.Model.Focus()
+					} else {
+						inputModel.Model.Blur()
+					}
+					m.InputModels[comp.ID] = &inputModel
 				}
-				m.InputModels[comp.ID] = &inputModel
+			
+				// Return the input view
+				inputModel := m.InputModels[comp.ID]
+				return inputModel.View()
+			}
+			return ""
+
+	case "menu":
+		log.Trace("TUI RenderComponent: Processing menu component with ID: %s", comp.ID)
+		// Special handling for menu components
+		if comp.ID != "" {
+			// Use resolveProps to preserve complex data types like arrays
+			resolvedProps := m.resolveProps(comp)
+			// Create or update menu model if it doesn't exist
+			if _, exists := m.MenuModels[comp.ID]; !exists {
+				log.Trace("TUI RenderComponent: Creating new menu model for ID: %s", comp.ID)
+				menuProps := components.ParseMenuProps(resolvedProps)
+				menuModel := components.NewMenuInteractiveModel(menuProps)
+				m.MenuModels[comp.ID] = &menuModel
+				
+				// Set this menu as focused if it's the first one or no other component is focused
+				if m.CurrentFocus == "" {
+					m.CurrentFocus = "menu:" + comp.ID
+					log.Trace("TUI RenderComponent: Set focus to menu: %s", comp.ID)
+				}
+			} else {
+				log.Trace("TUI RenderComponent: Using existing menu model for ID: %s", comp.ID)
 			}
 			
-			// Return the input view
-			inputModel := m.InputModels[comp.ID]
-			return inputModel.View()
+			// Return the menu view
+			menuModel := m.MenuModels[comp.ID]
+			log.Trace("TUI RenderComponent: Rendering menu view for ID: %s", comp.ID)
+			return menuModel.View()
 		}
 		return ""
-
 	default:
 		// Use component registry for other component types
 		registry := GetGlobalRegistry()

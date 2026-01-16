@@ -20,6 +20,7 @@ const (
 	ViewportComponent  ComponentType = "viewport"
 	FooterComponent    ComponentType = "footer"
 	ChatComponent      ComponentType = "chat"
+	MenuComponent      ComponentType = "menu"
 )
 
 // ComponentRenderer is a function that renders a component
@@ -43,6 +44,57 @@ func GetGlobalRegistry() *ComponentRegistry {
 		globalRegistry.RegisterBuiltInComponents()
 	})
 	return globalRegistry
+}
+
+// RegisterBuiltInComponents registers all built-in components
+func (r *ComponentRegistry) RegisterBuiltInComponents() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.components[HeaderComponent] = func(props map[string]interface{}, width int) string {
+		headerProps := components.ParseHeaderProps(props)
+		return components.RenderHeader(headerProps, width)
+	}
+
+	r.components[TextComponent] = func(props map[string]interface{}, width int) string {
+		textProps := components.ParseTextProps(props)
+		return components.RenderText(textProps, width)
+	}
+
+	r.components[TableComponent] = func(props map[string]interface{}, width int) string {
+		tableProps := components.ParseTableProps(props)
+		return components.RenderTable(tableProps, width)
+	}
+
+	r.components[FormComponent] = func(props map[string]interface{}, width int) string {
+		formProps := components.ParseFormProps(props)
+		return components.RenderForm(formProps, width)
+	}
+
+	r.components[InputComponent] = func(props map[string]interface{}, width int) string {
+		inputProps := components.ParseInputProps(props)
+		return components.RenderInput(inputProps, width)
+	}
+
+	r.components[ViewportComponent] = func(props map[string]interface{}, width int) string {
+		viewportProps := components.ParseViewportProps(props)
+		return components.RenderViewport(viewportProps, width)
+	}
+
+	r.components[FooterComponent] = func(props map[string]interface{}, width int) string {
+		footerProps := components.ParseFooterProps(props)
+		return components.RenderFooter(footerProps, width)
+	}
+
+	r.components[ChatComponent] = func(props map[string]interface{}, width int) string {
+		chatProps := components.ParseChatProps(props)
+		return components.RenderChat(chatProps, width)
+	}
+
+	r.components[MenuComponent] = func(props map[string]interface{}, width int) string {
+		menuProps := components.ParseMenuProps(props)
+		return components.RenderMenu(menuProps, width)
+	}
 }
 
 // NewComponentRegistry creates a new component registry
@@ -99,55 +151,12 @@ func (r *ComponentRegistry) ListComponents() []ComponentType {
 	return types
 }
 
-// RegisterBuiltInComponents registers all built-in components
-func (r *ComponentRegistry) RegisterBuiltInComponents() {
-	// Register header component (assuming it exists in components package)
-	r.RegisterComponent(HeaderComponent, func(props map[string]interface{}, width int) string {
-		// Implementation would depend on actual header component
-		title, _ := props["title"].(string)
-		return title
-	})
+// GetComponentRenderer returns the renderer function for a component type
+func (r *ComponentRegistry) GetComponentRenderer(componentType ComponentType) (ComponentRenderer, bool) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
 
-	// Register text component (assuming it exists in components package)
-	r.RegisterComponent(TextComponent, func(props map[string]interface{}, width int) string {
-		// Implementation would depend on actual text component
-		content, _ := props["content"].(string)
-		return content
-	})
-
-	// Register table component
-	r.RegisterComponent(TableComponent, func(props map[string]interface{}, width int) string {
-		tableProps := components.ParseTableProps(props)
-		return components.RenderTable(tableProps, width)
-	})
-
-	// Register form component
-	r.RegisterComponent(FormComponent, func(props map[string]interface{}, width int) string {
-		formProps := components.ParseFormProps(props)
-		return components.RenderForm(formProps, width)
-	})
-
-	// Register input component
-	r.RegisterComponent(InputComponent, func(props map[string]interface{}, width int) string {
-		inputProps := components.ParseInputProps(props)
-		return components.RenderInput(inputProps, width)
-	})
-
-	// Register viewport component
-	r.RegisterComponent(ViewportComponent, func(props map[string]interface{}, width int) string {
-		viewportProps := components.ParseViewportProps(props)
-		return components.RenderViewport(viewportProps, width)
-	})
-
-	// Register footer component
-	r.RegisterComponent(FooterComponent, func(props map[string]interface{}, width int) string {
-		footerProps := components.ParseFooterProps(props)
-		return components.RenderFooter(footerProps, width)
-	})
-
-	// Register chat component
-	r.RegisterComponent(ChatComponent, func(props map[string]interface{}, width int) string {
-		chatProps := components.ParseChatProps(props)
-		return components.RenderChat(chatProps, width)
-	})
+	renderer, exists := r.components[componentType]
+	return renderer, exists
 }
+

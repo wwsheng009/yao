@@ -24,6 +24,8 @@ func init() {
 	process.Register("tui.clear", ProcessClear)
 	process.Register("tui.suspend", ProcessSuspend)
 	process.Register("tui.input.escape", ProcessInputEscape)
+	process.Register("tui.menu.select", ProcessMenuSelect)
+	process.Register("tui.menu.navigate", ProcessMenuNavigate)
 }
 
 // ProcessLoad loads all TUI configurations
@@ -366,4 +368,57 @@ func ProcessInputEscape(process *process.Process) interface{} {
 		}
 	}
 	return result
+}
+
+// ProcessMenuSelect handles menu selection action
+// Usage: Process("tui.menu.select", modelID, itemIndex)
+func ProcessMenuSelect(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+	modelID := process.ArgsString(0)
+	itemIndex := process.ArgsInt(1)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	// Get the menu component state and execute the selected item's action
+	_, exists := model.GetState("menuItems")
+	if !exists {
+		return map[string]interface{}{
+			"error": "No menu items found",
+			"modelID": modelID,
+		}
+	}
+
+	// Execute the action associated with the selected menu item
+	// This would typically involve executing a process or updating state
+	return map[string]interface{}{
+		"action": "menu_select",
+		"itemIndex": itemIndex,
+		"message": fmt.Sprintf("Menu item %d selected", itemIndex),
+	}
+}
+
+// ProcessMenuNavigate handles menu navigation
+// Usage: Process("tui.menu.navigate", modelID, direction)
+func ProcessMenuNavigate(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+	modelID := process.ArgsString(0)
+	direction := process.ArgsString(1) // "up" or "down"
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error": "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	return map[string]interface{}{
+		"action": "menu_navigate",
+		"direction": direction,
+		"message": fmt.Sprintf("Navigated %s in menu", direction),
+	}
 }

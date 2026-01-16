@@ -1,0 +1,614 @@
+package components
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/kun/log"
+)
+
+// MenuActionTriggered is sent when a menu item's action is triggered
+type MenuActionTriggered struct {
+	Item   MenuItem                 `json:"item"`
+	Action map[string]interface{} `json:"action"`
+}
+
+// MenuItem represents a single menu item
+type MenuItem struct {
+	// Title is the display text for the menu item
+	Title string `json:"title"`
+
+	// Description is the optional description for the menu item
+	Description string `json:"description"`
+
+	// Value is the value associated with the menu item (for selection)
+	Value interface{} `json:"value"`
+
+	// Disabled indicates if the menu item is disabled
+	Disabled bool `json:"disabled"`
+
+	// Action is the action to execute when the item is selected
+	Action map[string]interface{} `json:"action,omitempty"`
+
+	// Children contains submenu items (optional)
+	Children []MenuItem `json:"children,omitempty"`
+
+	// Selected indicates if the menu item is selected
+	Selected bool `json:"selected"`
+
+	// HasChildren indicates if the menu item has submenu items
+	HasChildren bool `json:"hasChildren"`
+}
+
+// Item implements the list.Item interface
+func (i MenuItem) FilterValue() string {
+	return i.Title
+}
+
+// HasSubmenu checks if the menu item has children/submenu
+func (i MenuItem) HasSubmenu() bool {
+	return len(i.Children) > 0 || i.HasChildren
+}
+
+// MenuProps defines the properties for the Menu component
+type MenuProps struct {
+	// Items contains the menu items
+	Items []MenuItem `json:"items"`
+
+	// Title is the optional title for the menu
+	Title string `json:"title"`
+
+	// Height specifies the menu height (0 for auto)
+	Height int `json:"height"`
+
+	// Width specifies the menu width (0 for auto)
+	Width int `json:"width"`
+
+	// Focused determines if the menu is focused (for selection)
+	Focused bool `json:"focused"`
+
+	// ShowStatusBar shows/hides the status bar
+	ShowStatusBar bool `json:"showStatusBar"`
+
+	// ShowFilter shows/hides the filter input
+	ShowFilter bool `json:"showFilter"`
+
+	// ActiveItemStyle is the style for active/selected items
+	ActiveItemStyle lipglossStyleWrapper `json:"activeItemStyle"`
+
+	// InactiveItemStyle is the style for inactive items
+	InactiveItemStyle lipglossStyleWrapper `json:"inactiveItemStyle"`
+
+	// SelectedItemStyle is the style for the currently selected item
+	SelectedItemStyle lipglossStyleWrapper `json:"selectedItemStyle"`
+
+	// DisabledItemStyle is the style for disabled items
+	DisabledItemStyle lipglossStyleWrapper `json:"disabledItemStyle"`
+
+	// TitleStyle is the style for the title
+	TitleStyle lipglossStyleWrapper `json:"titleStyle"`
+}
+
+// MenuModel wraps the list.Model to handle TUI integration
+type MenuModel struct {
+	list.Model
+	props MenuProps
+}
+
+// itemDelegate implements the list.ItemDelegate interface
+type itemDelegate struct {
+	props MenuProps
+}
+
+// Render renders a single item in the list
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	i, ok := item.(MenuItem)
+	if !ok {
+		return
+	}
+
+	var style lipgloss.Style
+	if i.Disabled {
+		style = d.props.DisabledItemStyle.GetStyle()
+	} else if index == m.Index() {
+		style = d.props.SelectedItemStyle.GetStyle()
+	} else {
+		style = d.props.InactiveItemStyle.GetStyle()
+	}
+
+	title := i.Title
+	// Add submenu indicator if item has children
+	if i.HasSubmenu() {
+		title += " ▶"  // Add submenu indicator
+	}
+	// Note: Description is intentionally not displayed to keep the menu compact
+
+	fmt.Fprint(w, style.Render(title))
+}
+
+// Height returns the height of the item
+func (d itemDelegate) Height() int {
+	return 1 // Only account for title, no description displayed
+}
+
+// Spacing returns the spacing between items
+func (d itemDelegate) Spacing() int {
+	return 1
+}
+
+// Update handles update messages for the item
+func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEnter:
+			// When Enter is pressed, we could trigger an action
+			log.Trace("Menu Delegate Update: Enter key pressed on item")
+			// Get the selected item
+			selectedItem := m.SelectedItem()
+			if menuItem, ok := selectedItem.(MenuItem); ok && menuItem.Action != nil {
+				log.Trace("Menu Delegate Update: Item has action, triggering action for: %s", menuItem.Title)
+				// Here we could return a command to execute the action
+				// For now, just return nil
+			}
+			return nil
+		default:
+			log.Trace("Menu Delegate Update: Other key pressed (%s), passing to list", msg.Type.String())
+		}
+	default:
+		log.Trace("Menu Delegate Update: Non-key message received, passing to list")
+	}
+	// Let the list handle other messages like navigation
+	return nil
+}
+
+// Width returns the width of the item
+func (d itemDelegate) Width() int {
+	return 0
+}
+
+// RenderMenu renders a menu component
+func RenderMenu(props MenuProps, width int) string {
+	log.Trace("Menu Render: Rendering menu with %d items, title: %s", len(props.Items), props.Title)
+	
+	// Convert MenuItem slice to list.Item slice
+	items := make([]list.Item, len(props.Items))
+	for i, item := range props.Items {
+		items[i] = item
+	}
+
+	// Since list.New requires a delegate but we're just rendering,
+	// we'll create a simple static representation of the menu
+	var result strings.Builder
+	
+	// Add title if provided
+	if props.Title != "" {
+		titleStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("212")).
+			Background(lipgloss.Color("57")).
+			Padding(0, 1).
+			MarginBottom(1).
+			Align(lipgloss.Center)
+		result.WriteString(titleStyle.Render(props.Title))
+		result.WriteString("\n")
+	}
+	
+	// Render each menu item
+	for _, item := range props.Items {
+		// log.Trace("Menu Render: Processing item: %s (disabled: %t, hasChildren: %t)", item.Title, item.Disabled, item.HasSubmenu())
+		
+		var style lipgloss.Style
+		if item.Disabled {
+			style = props.DisabledItemStyle.GetStyle()
+		} else {
+			style = props.InactiveItemStyle.GetStyle()
+		}
+		
+		title := item.Title
+		// Add submenu indicator if item has children
+		if item.HasSubmenu() {
+			title += " ▶"  // Add submenu indicator
+		}
+		// Note: Description is intentionally not displayed to keep the menu compact
+		
+		result.WriteString(style.Render(title))
+		result.WriteString("\n")
+	}
+	
+	log.Trace("Menu Render: Completed rendering menu, total length: %d", result.Len())
+	return result.String()
+}
+
+// ParseMenuProps converts a generic props map to MenuProps using JSON unmarshaling
+func ParseMenuProps(props map[string]interface{}) MenuProps {
+	log.Trace("Menu ParseProps: Starting to parse menu props with %d keys", len(props))
+	
+	// Set defaults
+	mp := MenuProps{
+		ShowStatusBar: true,
+		ShowFilter:    false,
+		Focused:       true,
+	}
+
+	// Unmarshal properties first to get Items
+	if dataBytes, err := json.Marshal(props); err == nil {
+		_ = json.Unmarshal(dataBytes, &mp)
+	}
+
+	// Handle Items separately as it needs special processing
+	itemsValue := props["items"]
+
+	// Helper function to process items array
+	processItemsArray := func(itemsArray []interface{}) {
+		log.Trace("Menu ParseProps: Processing items array with %d items", len(itemsArray))
+		mp.Items = make([]MenuItem, 0, len(itemsArray))
+		for _, itemIntf := range itemsArray {
+			// Convert map to MenuItem
+			if itemMap, ok := itemIntf.(map[string]interface{}); ok {
+				itemBytes, _ := json.Marshal(itemMap)
+				var menuItem MenuItem
+				if err := json.Unmarshal(itemBytes, &menuItem); err == nil {
+					// log.Trace("Menu ParseProps: Added item: %s (disabled: %t, hasChildren: %t)", menuItem.Title, menuItem.Disabled, menuItem.HasSubmenu())
+					mp.Items = append(mp.Items, menuItem)
+				}
+			}
+		}
+	}
+
+	// Check if items is empty or nil
+	if itemsValue == nil {
+		log.Trace("Menu ParseProps: Items value is nil")
+		return mp
+	}
+
+	// Case 1: items is already an array ([]interface{})
+	if itemsArray, ok := itemsValue.([]interface{}); ok {
+		log.Trace("Menu ParseProps: Items is array with %d items", len(itemsArray))
+		processItemsArray(itemsArray)
+		return mp
+	}
+
+	// Case 2: items is a map ({"menu": [...]} type)
+	// Extract the first array value from the map
+	if itemsMap, ok := itemsValue.(map[string]interface{}); ok {
+		log.Trace("Menu ParseProps: Items is map, extracting arrays")
+		for _, v := range itemsMap {
+			if itemsArray, ok := v.([]interface{}); ok {
+				processItemsArray(itemsArray)
+				return mp
+			}
+		}
+	}
+
+	// Case 3: items is a string (template variable like "{{items}}" that was converted to string)
+	if itemsStr, ok := itemsValue.(string); ok {
+		log.Trace("Menu ParseProps: Items is string, attempting to parse as JSON")
+		// Try to unmarshal as JSON array first
+		var itemsArray []interface{}
+		if err := json.Unmarshal([]byte(itemsStr), &itemsArray); err == nil {
+			processItemsArray(itemsArray)
+			return mp
+		}
+	}
+
+	log.Trace("Menu ParseProps: Completed parsing, total items: %d", len(mp.Items))
+	return mp
+}
+
+// MenuInteractiveModel wraps the list.Model to handle interactive menus
+type MenuInteractiveModel struct {
+	list.Model
+	props MenuProps
+	// CurrentLevel tracks the current menu level for nested menus
+	CurrentLevel int
+	// Path keeps track of the navigation path
+	Path []string
+	// ID is the unique identifier for this menu instance
+	ID string
+}
+
+// NewMenuInteractiveModel creates a new interactive menu model
+func NewMenuInteractiveModel(props MenuProps) MenuInteractiveModel {
+	log.Trace("Menu InteractiveModel: Creating new interactive menu model with %d items, title: %s", len(props.Items), props.Title)
+	
+	// Set default styles if not provided
+	if props.SelectedItemStyle.Style == nil {
+		defaultSelectedStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("255")).
+			Background(lipgloss.Color("62")).
+			Bold(true).
+			Padding(0, 1)
+		props.SelectedItemStyle = lipglossStyleWrapper{Style: &defaultSelectedStyle}
+	}
+	if props.InactiveItemStyle.Style == nil {
+		defaultInactiveStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Padding(0, 1)
+		props.InactiveItemStyle = lipglossStyleWrapper{Style: &defaultInactiveStyle}
+	}
+	if props.ActiveItemStyle.Style == nil {
+		defaultActiveStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("212")).
+			Padding(0, 1)
+		props.ActiveItemStyle = lipglossStyleWrapper{Style: &defaultActiveStyle}
+	}
+	if props.DisabledItemStyle.Style == nil {
+		defaultDisabledStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true)
+		props.DisabledItemStyle = lipglossStyleWrapper{Style: &defaultDisabledStyle}
+	}
+	if props.TitleStyle.Style == nil {
+		defaultTitleStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("212")).
+			Background(lipgloss.Color("57")).
+			Padding(0, 1).
+			MarginBottom(1).
+			Align(lipgloss.Center)
+		props.TitleStyle = lipglossStyleWrapper{Style: &defaultTitleStyle}
+	}
+	
+	// Convert MenuItem slice to list.Item slice
+	items := make([]list.Item, len(props.Items))
+	for i, item := range props.Items {
+		items[i] = item
+	}
+
+	// Create the list model with custom delegate
+	delegate := itemDelegate{props: props}
+	l := list.New(items, delegate, 0, 0)
+
+	// Set title if provided
+	if props.Title != "" {
+		l.Title = props.Title
+	} else {
+		l.Title = ""
+		l.DisableQuitKeybindings()
+	}
+
+	// Disable status bar to prevent showing item count
+	l.SetShowStatusBar(false)
+	// Disable filtering to keep the UI clean
+	l.SetShowFilter(false)
+	
+	// Set custom delegate
+	l.SetDelegate(delegate)
+
+	// Set size if specified
+	if props.Width > 0 {
+		l.SetWidth(props.Width)
+		log.Trace("Menu InteractiveModel: Set width to %d", props.Width)
+	}
+
+	if props.Height > 0 {
+		l.SetHeight(props.Height)
+		log.Trace("Menu InteractiveModel: Set height to %d", props.Height)
+	}
+
+	log.Trace("Menu InteractiveModel: Created model with %d items, current level: %d", len(items), 0)
+	
+	return MenuInteractiveModel{
+		Model: l,
+		props: props,
+		CurrentLevel: 0, // Start at top level
+		Path: []string{}, // Empty path initially
+		ID: "",          // Will be set by the parent
+	}
+}
+
+// HandleMenuUpdate handles updates for menu components
+// This is used when the menu is interactive (selection, scrolling, etc.)
+func HandleMenuUpdate(msg tea.Msg, menuModel *MenuInteractiveModel) (MenuInteractiveModel, tea.Cmd) {
+	if menuModel == nil {
+		log.Trace("Menu Update: Received update with nil menu model")
+		return MenuInteractiveModel{}, nil
+	}
+	
+	log.Trace("Menu Update: Handling message type: %T, current level: %d, path: %v", msg, menuModel.CurrentLevel, menuModel.Path)
+
+	var cmd tea.Cmd
+	// Handle special menu-specific messages
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		log.Trace("Menu Update: Key pressed: %s (type: %s)", msg.String(), msg.Type.String())
+		switch msg.Type {
+		case tea.KeyUp:
+			log.Trace("Menu Update: Up arrow pressed, cursor before: %d", menuModel.Index())
+			// Let the underlying list model handle the navigation
+			updatedListModel, listCmd := menuModel.Model.Update(msg)
+			menuModel.Model = updatedListModel
+			log.Trace("Menu Update: Up arrow pressed, cursor after: %d", menuModel.Index())
+			// Always return a refresh command to ensure UI updates after navigation
+			refreshCmd := func() tea.Msg { return struct{}{} }
+			if listCmd != nil {
+				return *menuModel, tea.Batch(listCmd, refreshCmd)
+			}
+			return *menuModel, refreshCmd
+		case tea.KeyDown:
+			log.Trace("Menu Update: Down arrow pressed, cursor before: %d", menuModel.Index())
+			// Let the underlying list model handle the navigation
+			updatedListModel, listCmd := menuModel.Model.Update(msg)
+			menuModel.Model = updatedListModel
+			log.Trace("Menu Update: Down arrow pressed, cursor after: %d", menuModel.Index())
+			// Always return a refresh command to ensure UI updates after navigation
+			refreshCmd := func() tea.Msg { return struct{}{} }
+			if listCmd != nil {
+				return *menuModel, tea.Batch(listCmd, refreshCmd)
+			}
+			return *menuModel, refreshCmd
+		default:
+			// Handle string-based keys
+			switch msg.String() {
+			case "enter":
+				log.Trace("Menu Update: Enter key pressed")
+				// When Enter is pressed, check if the selected item has children
+				selectedItem := menuModel.Model.SelectedItem()
+				if menuItem, ok := selectedItem.(MenuItem); ok {
+					log.Trace("Menu Update: Selected item: %s (has submenu: %t, action: %v)", menuItem.Title, menuItem.HasSubmenu(), menuItem.Action)
+					if menuItem.HasSubmenu() {
+						log.Trace("Menu Update: Navigating to submenu for item: %s", menuItem.Title)
+						// Navigate to submenu
+						menuModel.Path = append(menuModel.Path, menuItem.Title)
+						menuModel.CurrentLevel++
+						// Load submenu items
+						submenuItems := make([]list.Item, len(menuItem.Children))
+						for i, child := range menuItem.Children {
+							submenuItems[i] = child
+						}
+						menuModel.SetItems(submenuItems)
+						menuModel.Select(0) // Select first item in submenu
+						log.Trace("Menu Update: Submenu loaded with %d items, now at level %d", len(submenuItems), menuModel.CurrentLevel)
+					} else if menuItem.Action != nil {
+						log.Trace("Menu Update: Executing action for item: %s", menuItem.Title)
+						// Execute the action for the item
+						cmd = func() tea.Msg {
+							return MenuActionTriggered{Item: menuItem, Action: menuItem.Action}
+						}
+					}
+				} else {
+					log.Trace("Menu Update: Selected item is not a MenuItem, skipping action")
+				}
+			case "right", "l":
+				log.Trace("Menu Update: Right/l key pressed, attempting to enter submenu")
+				// Navigate to submenu if available (alternative to Enter)
+				selectedItem := menuModel.Model.SelectedItem()
+				if menuItem, ok := selectedItem.(MenuItem); ok && menuItem.HasSubmenu() {
+					log.Trace("Menu Update: Navigating to submenu for item: %s", menuItem.Title)
+					// Navigate to submenu
+					menuModel.Path = append(menuModel.Path, menuItem.Title)
+					menuModel.CurrentLevel++
+					// Load submenu items
+					submenuItems := make([]list.Item, len(menuItem.Children))
+					for i, child := range menuItem.Children {
+						submenuItems[i] = child
+					}
+					menuModel.SetItems(submenuItems)
+					menuModel.Select(0) // Select first item in submenu
+					log.Trace("Menu Update: Submenu loaded with %d items, now at level %d", len(submenuItems), menuModel.CurrentLevel)
+				}
+			case "left", "h":
+				log.Trace("Menu Update: Left/h key pressed, attempting to navigate back")
+				// Navigate back to parent menu if at submenu level
+				if menuModel.CurrentLevel > 0 && len(menuModel.Path) > 0 {
+					log.Trace("Menu Update: Navigating back from level %d", menuModel.CurrentLevel)
+					// Go back to parent menu
+					menuModel.CurrentLevel--
+					menuModel.Path = menuModel.Path[:len(menuModel.Path)-1]
+					// Reload parent menu (this is simplified - in a real implementation you'd need to store parent menus)
+					// For now, we'll reset to original items
+					originalItems := make([]list.Item, len(menuModel.props.Items))
+					for i, item := range menuModel.props.Items {
+						originalItems[i] = item
+					}
+					menuModel.SetItems(originalItems)
+					menuModel.Select(0)
+					log.Trace("Menu Update: Returned to parent menu at level %d", menuModel.CurrentLevel)
+				} else {
+					log.Trace("Menu Update: Already at top level or no path to go back")
+				}
+			case "q", "ctrl+c", "esc":
+				log.Trace("Menu Update: Exit key pressed (%s), initiating quit", msg.String())
+				// Handle exit/quit
+				cmd = tea.Quit
+				fallthrough  // Also pass to list model to handle quit behavior
+			default:
+				log.Trace("Menu Update: Other key pressed (%s), passing to list model", msg.String())
+				// Pass other keys to the list model for default navigation and other functionality
+				updatedListModel, listCmd := menuModel.Model.Update(msg)
+				menuModel.Model = updatedListModel
+				if cmd == nil {
+					cmd = listCmd
+				}
+				return *menuModel, cmd
+			}
+		}
+		// After handling our custom logic, still pass to the list model to ensure cursor updates
+		updatedListModel, listCmd := menuModel.Model.Update(msg)
+		menuModel.Model = updatedListModel
+		if cmd == nil {
+			cmd = listCmd
+		}
+		return *menuModel, cmd
+	default:
+		log.Trace("Menu Update: Non-key message received, passing to list model")
+		// Pass non-key messages to the list model
+		updatedListModel, listCmd := menuModel.Model.Update(msg)
+		menuModel.Model = updatedListModel
+		if cmd == nil {
+			cmd = listCmd
+		}
+		return *menuModel, cmd
+	}
+
+	log.Trace("Menu Update: Completed update, returning cmd: %v", cmd != nil)
+	return *menuModel, cmd
+}
+
+// View returns the rendered view of the menu
+func (m *MenuInteractiveModel) View() string {
+	log.Trace("Menu View: Rendering menu view, current level: %d, path: %v", m.CurrentLevel, m.Path)
+	
+	// Build the menu view manually to have full control over the appearance
+	var result strings.Builder
+	
+	// Add title if provided
+	if m.props.Title != "" {
+		titleStyle := m.props.TitleStyle.GetStyle()
+		result.WriteString(titleStyle.Render(m.props.Title))
+		result.WriteString("\n")
+	}
+	
+	// Render each item with appropriate styling
+	allItems := m.Items()
+	for i, item := range allItems {
+		if menuItem, ok := item.(MenuItem); ok {
+			var style lipgloss.Style
+			if menuItem.Disabled {
+				style = m.props.DisabledItemStyle.GetStyle()
+			} else if i == m.Index() { // Current selection
+				style = m.props.SelectedItemStyle.GetStyle()
+			} else {
+				style = m.props.InactiveItemStyle.GetStyle()
+			}
+			
+			title := menuItem.Title
+			// Add submenu indicator if item has children
+			if menuItem.HasSubmenu() {
+				title += " ▶"  // Add submenu indicator
+			}
+			if menuItem.Description != "" {
+				title = fmt.Sprintf("%s\n%s", title, lipgloss.NewStyle().Italic(true).Faint(true).Render(menuItem.Description))
+			}
+			
+			result.WriteString(style.Render(title))
+			result.WriteString("\n")
+		}
+	}
+	
+	output := result.String()
+	log.Trace("Menu View: Completed rendering, output length: %d", len(output))
+	return output
+}
+
+// GetSelectedItem returns the currently selected menu item
+func (m *MenuInteractiveModel) GetSelectedItem() (MenuItem, bool) {
+	log.Trace("Menu GetSelectedItem: Attempting to get selected item")
+	item := m.Model.SelectedItem()
+	if item == nil {
+		log.Trace("Menu GetSelectedItem: No selected item (nil)")
+		return MenuItem{}, false
+	}
+	
+	menuItem, ok := item.(MenuItem)
+	if ok {
+		log.Trace("Menu GetSelectedItem: Got selected item: %s (disabled: %t, hasChildren: %t)", menuItem.Title, menuItem.Disabled, menuItem.HasSubmenu())
+	} else {
+		log.Trace("Menu GetSelectedItem: Selected item is not a MenuItem type")
+	}
+	return menuItem, ok
+}

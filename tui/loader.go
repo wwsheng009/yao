@@ -182,6 +182,10 @@ func loadFile(file string) (*Config, error) {
 		}
 	}
 
+	// Assign unique IDs to components that don't have an ID
+	counter := 0
+	assignComponentIDs(&cfg.Layout, "comp", &counter)
+
 	// Add default bindings if none exist
 	if cfg.Bindings == nil {
 		cfg.Bindings = make(map[string]Action)
@@ -250,5 +254,22 @@ func setMissingAction(actions map[string]Action, key string, action Action) {
 func setMissingBinding(bindings map[string]Action, key string, action Action) {
 	if _, exists := bindings[key]; !exists {
 		bindings[key] = action
+	}
+}
+
+// assignComponentIDs assigns unique IDs to components that don't have an ID
+func assignComponentIDs(layout *Layout, prefix string, counter *int) {
+	for i := range layout.Children {
+		comp := &layout.Children[i]
+		if comp.ID == "" {
+			*counter++
+			comp.ID = fmt.Sprintf("%s_%d", prefix, *counter)
+		}
+		// If it's a layout component, assign IDs to its children too
+		if comp.Type == "layout" {
+			if nestedLayout, ok := comp.Props["layout"].(*Layout); ok {
+				assignComponentIDs(nestedLayout, comp.ID, counter)
+			}
+		}
 	}
 }

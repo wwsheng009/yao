@@ -183,6 +183,9 @@ type Model struct {
 	// InputModels holds the input component models
 	InputModels map[string]*components.InputModel
 
+	// MenuModels holds the menu component models
+	MenuModels map[string]*components.MenuInteractiveModel
+
 	// CurrentFocus holds the ID of the currently focused input component
 	CurrentFocus string
 

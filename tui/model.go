@@ -16,6 +16,7 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 		Config:      cfg,
 		State:       make(map[string]interface{}),
 		InputModels: make(map[string]*components.InputModel),
+		MenuModels:  make(map[string]*components.MenuInteractiveModel),
 		Program:     program,
 		Ready:       false,
 	}
@@ -183,10 +184,125 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.InputModels[id] = inputModel
 				}
 			}
-			
 			return m, cmd
 		}
 	}
+	
+	// If no specific component has focus, handle tab navigation between components
+	if msg.Type == tea.KeyTab {
+		log.Trace("Tab pressed, cycling focus between components, current focus: %s", m.CurrentFocus)
+		// Cycle focus between available components
+		// First, cycle through inputs if available
+		if len(m.InputModels) > 0 {
+			if m.CurrentFocus == "" {
+				// If no focus, start with first input
+				for id := range m.InputModels {
+					m.CurrentFocus = id
+					m.InputModels[id].Model.Focus()
+					log.Trace("Focused input: %s", id)
+					break
+				}
+			} else {
+				// Cycle to next input
+				m.focusNextInput()
+				for id, inputModel := range m.InputModels {
+					if id == m.CurrentFocus {
+						inputModel.Model.Focus()
+					} else {
+						inputModel.Model.Blur()
+					}
+					m.InputModels[id] = inputModel
+				}
+			}
+		} else if len(m.MenuModels) > 0 {
+			// If no inputs but there are menus, cycle to menu
+			for id := range m.MenuModels {
+				m.CurrentFocus = "menu:" + id
+				log.Trace("Focused menu: %s", id)
+				break
+			}
+		}
+		return m, nil
+	}
+
+	// Handle menu component if there's a focused menu
+	log.Trace("TUI KeyPress: Checking for menu models, found %d, current focus: %s", len(m.MenuModels), m.CurrentFocus)
+	for menuID, menuModel := range m.MenuModels {
+		log.Trace("TUI KeyPress: Checking menu model with ID: %s, current focus: %s", menuID, m.CurrentFocus)
+		// If we have a focused menu, handle its navigation
+		if m.CurrentFocus == "menu:"+menuID {
+			log.Trace("TUI KeyPress: Handling navigation for menu: %s", menuID)
+			// Handle menu navigation keys - pass all key events to the menu handler
+			updatedMenuModel, cmd := components.HandleMenuUpdate(msg, menuModel)
+			m.MenuModels[menuID] = &updatedMenuModel
+			
+			// Update state with selected item
+			if selectedItem, ok := updatedMenuModel.GetSelectedItem(); ok {
+				m.StateMu.Lock()
+				// Check if the selected item has actually changed
+				oldSelectedItem, existed := m.State[menuID+"_selected"]
+				m.State[menuID+"_selected"] = selectedItem
+				m.StateMu.Unlock()
+				log.Trace("TUI KeyPress: Updated selected item for %s: %s", menuID, selectedItem.Title)
+				
+				// If the selected item has changed, send a refresh command to update UI
+				if !existed {
+					// If there was no previous selection, this is a change
+					log.Trace("TUI KeyPress: First selection for %s, sending refresh command", menuID)
+					// Refresh the UI to show the selected item
+					return m, tea.Batch(cmd, func() tea.Msg { 
+						// Create a custom message to trigger refresh
+						return struct{}{} // Generic struct as refresh signal
+					})
+				} else if oldMenuItem, ok := oldSelectedItem.(components.MenuItem); ok {
+					// Compare the titles to determine if selection changed
+					if oldMenuItem.Title != selectedItem.Title {
+						log.Trace("TUI KeyPress: Selection changed for %s (%s -> %s), sending refresh command", menuID, oldMenuItem.Title, selectedItem.Title)
+						// Refresh the UI to reflect the new selection
+						return m, tea.Batch(cmd, func() tea.Msg { 
+							// Create a custom message to trigger refresh
+							return struct{}{} // Generic struct as refresh signal
+						})
+					}
+				}
+			}
+			
+			// If the command is to trigger a menu action, handle it
+			if cmd != nil {
+				// Create a temporary command to check its type
+				tempCmd := cmd
+				// Execute temp command to get the message
+				testMsg := tempCmd()
+				if menuActionMsg, ok := testMsg.(components.MenuActionTriggered); ok {
+					log.Trace("TUI KeyPress: Menu action triggered for %s: %s", menuActionMsg.Item.Title, menuActionMsg.Action)
+					// Execute the action associated with the selected menu item
+					action := &Action{}
+					// Convert map to Action struct
+					if process, ok := menuActionMsg.Action["process"].(string); ok {
+						action.Process = process
+					}
+					if script, ok := menuActionMsg.Action["script"].(string); ok {
+						action.Script = script
+					}
+					if method, ok := menuActionMsg.Action["method"].(string); ok {
+						action.Method = method
+					}
+					if args, ok := menuActionMsg.Action["args"].([]interface{}); ok {
+						action.Args = args
+					}
+					
+					log.Trace("TUI KeyPress: Executing action for %s: %s", menuActionMsg.Item.Title, action.Process)
+					return m, m.executeAction(action)
+				}
+			}
+			
+			return m, cmd
+		} else {
+			log.Trace("TUI KeyPress: Menu %s is not focused (focus: %s)", menuID, m.CurrentFocus)
+		}
+	}
+	log.Trace("TUI KeyPress: Finished checking menu models, no focused menu processed")
+
 
 	// Build key string for matching
 	key := msg.String()
@@ -224,6 +340,14 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// isMenuFocus checks if the current focus is on a menu component
+func (m *Model) isMenuFocus() bool {
+	if m.CurrentFocus == "" {
+		return false
+	}
+	return strings.HasPrefix(m.CurrentFocus, "menu:")
 }
 
 // handleProcessResult processes the result from a Yao Process execution.
