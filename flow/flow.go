@@ -1,6 +1,9 @@
 package flow
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/gou/flow"
 	"github.com/yaoapp/yao/config"
@@ -19,12 +22,23 @@ func Load(cfg config.Config) error {
 		return nil
 	}
 
+	messages := []string{}
 	exts := []string{"*.flow.yao", "*.flow.json", "*.flow.jsonc"}
-	return application.App.Walk("flows", func(root, file string, isdir bool) error {
+	err = application.App.Walk("flows", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}
 		_, err := flow.Load(file, share.ID(root, file))
-		return err
+		if err != nil {
+			messages = append(messages, err.Error())
+			return nil
+		}
+		return nil
 	}, exts...)
+
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
+	}
+
+	return err
 }

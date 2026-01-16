@@ -47,11 +47,11 @@ func (node *Node) Case(ctx *Context, input Input) (any, error) {
 	}
 
 	if child == nil {
-		log.Error("pipe: switch case not found pipe=%s(%s) ctx=%s node=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name)
+		log.Error("pipe: switch case not found pipe=%s(%s) node=%s", ctx.Name, ctx.Pipe.ID, node.Name)
 		return nil, node.Errorf(ctx, "switch case not found")
 	}
 
-	log.Debug("pipe: switch matched pipe=%s(%s) ctx=%s node=%s case=%s child=%s(%s) hasNodes=%t goto=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, matched, child.Name, child.ID, child.HasNodes(), child.Goto)
+	log.Debug("pipe: switch matched pipe=%s(%s) node=%s case=%s child=%s(%s) hasNodes=%t goto=%s", ctx.Name, ctx.Pipe.ID, node.Name, matched, child.Name, child.ID, child.HasNodes(), child.Goto)
 
 	// Execute the child pipe
 	var res any = nil
@@ -59,7 +59,7 @@ func (node *Node) Case(ctx *Context, input Input) (any, error) {
 
 	// Child pipe may be a "control pipe" (goto/input/output only, no nodes)
 	if subctx.current == nil {
-		log.Debug("pipe: switch control child pipe=%s(%s) ctx=%s parentCtx=%s", child.Name, child.ID, subctx.id, ctx.id)
+		log.Debug("pipe: switch control child pipe=%s(%s)", child.Name, child.ID)
 		defer Close(subctx.id)
 
 		// Apply child pipe input mapping
@@ -75,7 +75,7 @@ func (node *Node) Case(ctx *Context, input Input) (any, error) {
 				return nil, err
 			}
 			ctx.gotoNext = next
-			log.Debug("pipe: switch control goto parent pipe=%s(%s) ctx=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, next)
+			log.Debug("pipe: switch control goto parent pipe=%s(%s) to=%s", ctx.Name, ctx.Pipe.ID, next)
 		}
 
 		// Apply child pipe output mapping (fallback to mapped input)
@@ -89,7 +89,7 @@ func (node *Node) Case(ctx *Context, input Input) (any, error) {
 		}
 
 	} else {
-		log.Debug("pipe: switch exec child pipe=%s(%s) ctx=%s parentCtx=%s", child.Name, child.ID, subctx.id, ctx.id)
+		log.Debug("pipe: switch exec child pipe=%s(%s)", child.Name, child.ID)
 		res, err = subctx.Exec(input...)
 		if err != nil {
 			return nil, err
@@ -102,7 +102,7 @@ func (node *Node) Case(ctx *Context, input Input) (any, error) {
 				return nil, err
 			}
 			ctx.gotoNext = next
-			log.Debug("pipe: switch forward goto parent pipe=%s(%s) ctx=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, next)
+			log.Debug("pipe: switch forward goto parent pipe=%s(%s) to=%s", ctx.Name, ctx.Pipe.ID, next)
 		}
 	}
 
@@ -129,7 +129,7 @@ func (node *Node) YaoProcess(ctx *Context, input Input) (any, error) {
 	data := ctx.data(node)
 	args, err := data.replaceArray(node.Process.Args)
 
-	log.Debug("pipe: process pipe=%s(%s) ctx=%s node=%s name=%s argc=%d", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, node.Process.Name, len(args))
+	log.Debug("pipe: process pipe=%s(%s) node=%s name=%s argc=%d", ctx.Name, ctx.Pipe.ID, node.Name, node.Process.Name, len(args))
 
 	// Execute the process
 	process, err := process.Of(node.Process.Name, args...)
@@ -154,7 +154,7 @@ func (node *Node) YaoProcess(ctx *Context, input Input) (any, error) {
 func (node *Node) AI(ctx *Context, input Input) (any, error) {
 
 	if node.Prompts == nil || len(node.Prompts) == 0 {
-		log.Error("pipe: ai prompts not found pipe=%s(%s) ctx=%s node=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name)
+		log.Error("pipe: ai prompts not found pipe=%s(%s) node=%s", ctx.Name, ctx.Pipe.ID, node.Name)
 		return nil, node.Errorf(ctx, "prompts not found")
 	}
 
@@ -169,7 +169,7 @@ func (node *Node) AI(ctx *Context, input Input) (any, error) {
 		return nil, err
 	}
 	prompts = node.aiMergeHistory(ctx, prompts)
-	log.Debug("pipe: ai call pipe=%s(%s) ctx=%s node=%s model=%s prompts=%d", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, node.Model, len(prompts))
+	log.Debug("pipe: ai call pipe=%s(%s) node=%s model=%s prompts=%d", ctx.Name, ctx.Pipe.ID, node.Name, node.Model, len(prompts))
 
 	res, err := node.chatCompletions(ctx, prompts, node.Options)
 	if err != nil {
@@ -185,8 +185,16 @@ func (node *Node) AI(ctx *Context, input Input) (any, error) {
 }
 
 func (node *Node) chatCompletions(ctx *Context, prompts []Prompt, options map[string]interface{}) (any, error) {
-	// moapi call
-	ai, err := openai.NewMoapi(node.Model)
+	// Use connector if configured, otherwise use moapi
+	var ai *openai.OpenAI
+	var err error
+	
+	if node.Connector != "" {
+		ai, err = openai.New(node.Connector)
+	} else {
+		ai, err = openai.NewMoapi(node.Model)
+	}
+	
 	if err != nil {
 		return nil, err
 	}
@@ -205,11 +213,11 @@ func (node *Node) chatCompletions(ctx *Context, prompts []Prompt, options map[st
 				"data": string(data),
 			})
 			if err != nil {
-				log.Error("pipe: hook progress create error pipe=%s(%s) ctx=%s node=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, err)
+				log.Error("pipe: hook progress create error pipe=%s(%s) node=%s err=%v", ctx.Name, ctx.Pipe.ID, node.Name, err)
 			} else {
 				_, herr := proc.WithGlobal(ctx.global).WithSID(ctx.sid).Exec()
 				if herr != nil {
-					log.Error("pipe: hook progress exec error pipe=%s(%s) ctx=%s node=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, herr)
+					log.Error("pipe: hook progress exec error pipe=%s(%s) node=%s err=%v", ctx.Name, ctx.Pipe.ID, node.Name, herr)
 				}
 			}
 		}
@@ -231,13 +239,13 @@ func (node *Node) chatCompletions(ctx *Context, prompts []Prompt, options map[st
 	})
 
 	if ex != nil {
-		log.Error("pipe: ai error pipe=%s(%s) ctx=%s node=%s msg=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, ex.Message)
+		log.Error("pipe: ai error pipe=%s(%s) node=%s msg=%s", ctx.Name, ctx.Pipe.ID, node.Name, ex.Message)
 		return nil, node.Errorf(ctx, "AI error: %s", ex.Message)
 	}
 
 	if (len(response) == 0) && (len(content) > 0) {
 		msg := strings.Join(content, "")
-		log.Error("pipe: ai empty stream pipe=%s(%s) ctx=%s node=%s msg=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, msg)
+		log.Error("pipe: ai empty stream pipe=%s(%s) node=%s msg=%s", ctx.Name, ctx.Pipe.ID, node.Name, msg)
 		return nil, node.Errorf(ctx, "AI error: %s", msg)
 	}
 
@@ -287,10 +295,10 @@ func (node *Node) Render(ctx *Context, input Input) (any, bool, error) {
 	switch node.UI {
 
 	case "cli":
-		log.Debug("pipe: ui cli pipe=%s(%s) ctx=%s node=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name)
+		log.Debug("pipe: ui cli pipe=%s(%s) node=%s", ctx.Name, ctx.Pipe.ID, node.Name)
 		output, err := node.renderCli(ctx, input)
 		if err != nil {
-			log.Error("pipe: ui cli error pipe=%s(%s) ctx=%s node=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, err)
+			log.Error("pipe: ui cli error pipe=%s(%s) node=%s err=%v", ctx.Name, ctx.Pipe.ID, node.Name, err)
 			return nil, false, err
 		}
 		return output, false, nil
@@ -298,11 +306,11 @@ func (node *Node) Render(ctx *Context, input Input) (any, bool, error) {
 	default:
 		input, err := ctx.parseNodeInput(node, input)
 		if err != nil {
-			log.Error("pipe: ui parse input error pipe=%s(%s) ctx=%s node=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, err)
+			log.Error("pipe: ui parse input error pipe=%s(%s) node=%s err=%v", ctx.Name, ctx.Pipe.ID, node.Name, err)
 			return nil, true, err
 		}
 
-		log.Debug("pipe: ui pause pipe=%s(%s) ctx=%s node=%s ui=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.Name, node.UI)
+		log.Debug("pipe: ui pause pipe=%s(%s) node=%s ui=%s", ctx.Name, ctx.Pipe.ID, node.Name, node.UI)
 		return ResumeContext{
 			ID:    ctx.id,
 			Input: input,
@@ -361,5 +369,5 @@ func (node *Node) renderCli(ctx *Context, input Input) (any, error) {
 func (node *Node) Errorf(ctx *Context, format string, a ...any) error {
 	message := fmt.Sprintf(format, a...)
 	pid := ctx.Pipe.ID
-	return fmt.Errorf("pipe: %s nodes[%d](%s) %s (%s)", pid, node.index, node.Name, message, ctx.id)
+	return fmt.Errorf("pipe: %s nodes[%d](%s) %s", pid, node.index, node.Name, message)
 }

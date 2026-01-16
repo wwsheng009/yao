@@ -54,6 +54,7 @@ type Node struct {
 	Process  *Process         `json:"process,omitempty"`  // Yao Process
 	Prompts  []Prompt         `json:"prompts,omitempty"`  // AI prompts
 	Model    string           `json:"model,omitempty"`    // AI model name (optional)
+	Connector string          `json:"connector,omitempty"` // AI connector id (optional)
 	Options  map[string]any   `json:"options,omitempty"`  // AI or Request options (optional)
 	Request  *Request         `json:"request,omitempty"`  // Http Request
 	UI       string           `json:"ui,omitempty"`       // The User Interface cli, web, app, wxapp ...

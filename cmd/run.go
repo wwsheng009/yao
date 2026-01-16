@@ -81,9 +81,19 @@ var runCmd = &cobra.Command{
 			fmt.Printf("%s\n", err.Error())
 			return
 		}
+		
 
 		name := args[0]
 		if !runSilent {
+			if len(loadWarnings) > 0 {
+				fmt.Println(color.YellowString("---------------------------------"))
+				fmt.Println(color.YellowString(L("Warnings")))
+				fmt.Println(color.YellowString("---------------------------------"))
+				for _, warning := range loadWarnings {
+					fmt.Println(color.YellowString("[%s] %s", warning.Widget, warning.Error))
+				}
+				fmt.Printf("\n")
+			}
 			color.Green(L("Run: %s\n"), name)
 		}
 
@@ -154,16 +164,6 @@ var runCmd = &cobra.Command{
 		}
 		res := process.Value()
 		if !runSilent {
-
-			if len(loadWarnings) > 0 {
-				fmt.Println(color.YellowString("---------------------------------"))
-				fmt.Println(color.YellowString(L("Warnings")))
-				fmt.Println(color.YellowString("---------------------------------"))
-				for _, warning := range loadWarnings {
-					fmt.Println(color.YellowString("[%s] %s", warning.Widget, warning.Error))
-				}
-				fmt.Printf("\n")
-			}
 
 			color.White("--------------------------------------\n")
 			color.White(L("%s Response\n"), name)

@@ -2,6 +2,7 @@ package login
 
 import (
 	"fmt"
+	"strings"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/yaoapp/gou/api"
@@ -40,13 +41,23 @@ func Load(cfg config.Config) error {
 		return nil
 	}
 
+	messages := []string{}
 	exts := []string{"*.login.yao", "*.login.json", "*.login.jsonc"}
-	return application.App.Walk("logins", func(root, file string, isdir bool) error {
+	err = application.App.Walk("logins", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}
-		return LoadFile(root, file)
+		if err := LoadFile(root, file); err != nil {
+			messages = append(messages, err.Error())
+		}
+		return nil
 	}, exts...)
+
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
+	}
+
+	return err
 }
 
 // LoadFile by dsl file

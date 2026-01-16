@@ -1,8 +1,8 @@
 package pipe
 
 import (
-	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/yaoapp/gou/application"
@@ -12,8 +12,50 @@ import (
 
 var pipes = map[string]*Pipe{}
 
+func whitelistAllowsProcess(whitelist Whitelist, process string) bool {
+	// Nil or empty whitelist means "no restriction".
+	if len(whitelist) == 0 {
+		return true
+	}
+
+	// Fast path: exact match.
+	if _, ok := whitelist[process]; ok {
+		return true
+	}
+
+	// Wildcards: support common prefix form "utils.*" and standard glob patterns.
+	for pattern := range whitelist {
+		if pattern == process {
+			continue
+		}
+
+		// "utils.*" should match "utils.validate_age".
+		// Only apply this fast-path when the prefix itself contains no other glob symbols.
+		if strings.HasSuffix(pattern, ".*") && !strings.ContainsAny(strings.TrimSuffix(pattern, ".*"), "*?[]") {
+			prefix := strings.TrimSuffix(pattern, "*")
+			if strings.HasPrefix(process, prefix) {
+				return true
+			}
+			continue
+		}
+
+		// Glob patterns (* ? []): e.g. "utils.*" "*.fmt.*".
+		if !strings.ContainsAny(pattern, "*?[]") {
+			continue
+		}
+
+		matched, err := path.Match(pattern, process)
+		if err == nil && matched {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Load the pipe
 func Load(cfg config.Config) error {
+	messages := []string{}
 
 	// Ignore if the pipes directory does not exist
 	exists, err := application.App.Exists("pipes")
@@ -25,7 +67,6 @@ func Load(cfg config.Config) error {
 	}
 
 	exts := []string{"*.pip.yao", "*.pipe.yao"}
-	errs := []error{}
 	err = application.App.Walk("pipes", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
@@ -34,16 +75,16 @@ func Load(cfg config.Config) error {
 		id := share.ID(root, file)
 		pipe, err := NewFile(file, root)
 		if err != nil {
-			errs = append(errs, err)
-			return err
+			messages = append(messages, err.Error())
+			return nil
 		}
 
 		Set(id, pipe)
-		return err
+		return nil
 	}, exts...)
 
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
 
 	return err
@@ -59,7 +100,7 @@ func New(source []byte) (*Pipe, error) {
 
 	err = (&pipe).build()
 	if err != nil {
-		return nil, fmt.Errorf("build pipe: %s", err)
+		return nil, fmt.Errorf("build pipe: %s: %w", pipe.Name, err)
 	}
 
 	return &pipe, nil
@@ -69,19 +110,19 @@ func New(source []byte) (*Pipe, error) {
 func NewFile(file string, root string) (*Pipe, error) {
 	source, err := application.App.Read(file)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file %s: %w", file, err)
 	}
 
 	id := share.ID(root, file)
 	pipe := Pipe{ID: id}
 	err = application.Parse(file, source, &pipe)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse pipe file %s: %w", file, err)
 	}
 
 	err = (&pipe).build()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build pipe from file %s: %w", file, err)
 	}
 
 	return &pipe, nil
@@ -94,9 +135,7 @@ func Set(id string, pipe *Pipe) {
 
 // Remove the pipe
 func Remove(id string) {
-	if _, has := pipes[id]; has {
-		delete(pipes, id)
-	}
+	delete(pipes, id)
 }
 
 // Get the pipe
@@ -110,8 +149,8 @@ func Get(id string) (*Pipe, error) {
 // Build the pipe
 func (pipe *Pipe) build() error {
 
-	if pipe.Nodes == nil || len(pipe.Nodes) == 0 {
-		return fmt.Errorf("pipe: %s nodes is required", pipe.Name)
+	if len(pipe.Nodes) == 0 {
+		return fmt.Errorf("pipe: %s (ID: %s) nodes is required", pipe.Name, pipe.ID)
 	}
 
 	return pipe._build()
@@ -119,7 +158,7 @@ func (pipe *Pipe) build() error {
 
 // HasNodes check if the pipe has nodes
 func (pipe *Pipe) HasNodes() bool {
-	return pipe.Nodes != nil && len(pipe.Nodes) > 0
+	return len(pipe.Nodes) > 0
 }
 
 func (pipe *Pipe) _build() error {
@@ -131,7 +170,7 @@ func (pipe *Pipe) _build() error {
 
 	for i, node := range pipe.Nodes {
 		if node.Name == "" {
-			return fmt.Errorf("pipe: %s nodes[%d] name is required", pipe.Name, i)
+			return fmt.Errorf("pipe: %s (ID: %s) nodes[%d] name is required", pipe.Name, pipe.ID, i)
 		}
 
 		pipe.Nodes[i].index = i
@@ -148,13 +187,14 @@ func (pipe *Pipe) _build() error {
 
 			// Validate the process
 			if node.Process.Name == "" {
-				return fmt.Errorf("pipe: %s nodes[%d] process name is required", pipe.Name, i)
+				return fmt.Errorf("pipe: %s (ID: %s) nodes[%d] (name: %s) process name is required", pipe.Name, pipe.ID, i, node.Name)
 			}
 
 			// Security check
+			// NOTE: An empty whitelist (e.g. "whitelist": []) is treated as "no restriction".
 			if pipe.Whitelist != nil {
-				if _, has := pipe.Whitelist[node.Process.Name]; !has {
-					return fmt.Errorf("pipe: %s nodes[%d] process %s is not in the whitelist", pipe.Name, i, node.Process.Name)
+				if !whitelistAllowsProcess(pipe.Whitelist, node.Process.Name) {
+					return fmt.Errorf("pipe: %s (ID: %s) nodes[%d] (name: %s) process %s is not in the whitelist", pipe.Name, pipe.ID, i, node.Name, node.Process.Name)
 				}
 			}
 			continue
@@ -170,7 +210,7 @@ func (pipe *Pipe) _build() error {
 		} else if node.UI != "" {
 			pipe.Nodes[i].Type = "user-input"
 			if node.UI != "cli" && node.UI != "web" && node.UI != "app" && node.UI != "wxapp" { // Vaildate the UI type
-				return fmt.Errorf("pipe: %s nodes[%d] the type of the UI must be cli, web, app, wxapp", pipe.Name, i)
+				return fmt.Errorf("pipe: %s (ID: %s) nodes[%d] (name: %s) the type of the UI must be cli, web, app, wxapp", pipe.Name, pipe.ID, i, node.Name)
 			}
 			continue
 
@@ -192,7 +232,7 @@ func (pipe *Pipe) _build() error {
 			continue
 		}
 
-		return fmt.Errorf("pipe: %s nodes[%d] process, request, case, prompts or ui is required at least one", pipe.Name, i)
+		return fmt.Errorf("pipe: %s (ID: %s) nodes[%d] (name: %s) process, request, case, prompts or ui is required at least one", pipe.Name, pipe.ID, i, node.Name)
 	}
 
 	return nil

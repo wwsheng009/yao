@@ -126,6 +126,30 @@ func TestProcessCreateWith(t *testing.T) {
 
 }
 
+func TestWhitelistAllowsProcess_NoRestriction(t *testing.T) {
+	assert.True(t, whitelistAllowsProcess(nil, "utils.validate_age"))
+	assert.True(t, whitelistAllowsProcess(Whitelist{}, "utils.validate_age"))
+}
+
+func TestWhitelistAllowsProcess_Exact(t *testing.T) {
+	w := Whitelist{"utils.validate_age": true}
+	assert.True(t, whitelistAllowsProcess(w, "utils.validate_age"))
+	assert.False(t, whitelistAllowsProcess(w, "utils.generate_message"))
+}
+
+func TestWhitelistAllowsProcess_WildcardPrefix(t *testing.T) {
+	w := Whitelist{"utils.*": true}
+	assert.True(t, whitelistAllowsProcess(w, "utils.validate_age"))
+	assert.True(t, whitelistAllowsProcess(w, "utils.fmt.Print"))
+	assert.False(t, whitelistAllowsProcess(w, "user.get"))
+}
+
+func TestWhitelistAllowsProcess_Glob(t *testing.T) {
+	w := Whitelist{"*.fmt.*": true}
+	assert.True(t, whitelistAllowsProcess(w, "utils.fmt.Print"))
+	assert.False(t, whitelistAllowsProcess(w, "utils.validate_age"))
+}
+
 func TestProcessResume(t *testing.T) {
 	prepare(t)
 	defer test.Clean()

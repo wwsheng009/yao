@@ -2,6 +2,7 @@ package script
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/yaoapp/gou/application"
 	v8 "github.com/yaoapp/gou/runtime/v8"
@@ -19,17 +20,22 @@ func Load(cfg config.Config) error {
 		return nil
 	}
 	v8.CLearModules()
+	messages := []string{}
 	exts := []string{"*.js", "*.ts"}
 	err = application.App.Walk("scripts", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}
 		_, err := v8.Load(file, share.ID(root, file))
-		return err
+		if err != nil {
+			messages = append(messages, err.Error())
+			return nil
+		}
+		return nil
 	}, exts...)
 
-	if err != nil {
-		return err
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
 
 	// Load assistants - Move to the neo assistant package
@@ -53,12 +59,23 @@ func Load(cfg config.Config) error {
 	// 	return err
 	// }
 
-	return application.App.Walk("services", func(root, file string, isdir bool) error {
+	messages = []string{}
+	err = application.App.Walk("services", func(root, file string, isdir bool) error {
 		if isdir {
 			return nil
 		}
 		id := fmt.Sprintf("__yao_service.%s", share.ID(root, file))
 		_, err := v8.Load(file, id)
-		return err
+		if err != nil {
+			messages = append(messages, err.Error())
+			return nil
+		}
+		return nil
 	}, exts...)
+
+	if len(messages) > 0 {
+		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
+	}
+
+	return nil
 }

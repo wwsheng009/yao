@@ -35,9 +35,9 @@ func (pipe *Pipe) Create() *Context {
 
 	contexts.Store(id, ctx)
 	if ctx.current != nil {
-		log.Debug("pipe: create ctx=%s pipe=%s(%s) node=%s", ctx.id, pipe.Name, pipe.ID, ctx.current.Name)
+		log.Debug("pipe: create pipe=%s(%s) node=%s", pipe.Name, pipe.ID, ctx.current.Name)
 	} else {
-		log.Debug("pipe: create ctx=%s pipe=%s(%s) node=<nil>", ctx.id, pipe.Name, pipe.ID)
+		log.Debug("pipe: create pipe=%s(%s) node=<nil>", pipe.Name, pipe.ID)
 	}
 	return ctx
 }
@@ -54,7 +54,6 @@ func Open(id string) (*Context, error) {
 // Close the context
 func Close(id string) {
 	contexts.Delete(id)
-	log.Debug("pipe: close ctx=%s", id)
 }
 
 // Resume the context by id
@@ -114,24 +113,24 @@ func (ctx *Context) Exec(args ...any) (any, error) {
 
 	input, err := ctx.parseInput(args)
 	if err != nil {
-		log.Error("pipe: exec parse input error pipe=%s(%s) ctx=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, err)
+		log.Error("pipe: exec parse input error pipe=%s(%s) err=%v", ctx.Name, ctx.Pipe.ID, err)
 		return nil, err
 	}
 
-	log.Debug("pipe: exec start pipe=%s(%s) ctx=%s node=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name)
+	log.Debug("pipe: exec start pipe=%s(%s) node=%s", ctx.Name, ctx.Pipe.ID, ctx.current.Name)
 	out, err := ctx.exec(ctx.current, input)
 	if err != nil {
-		log.Error("pipe: exec error pipe=%s(%s) ctx=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.id, err)
+		log.Error("pipe: exec error pipe=%s(%s) node=%s err=%v", ctx.Name, ctx.Pipe.ID, ctx.current.Name, err)
 		return nil, err
 	}
-	log.Debug("pipe: exec finish pipe=%s(%s) ctx=%s", ctx.Name, ctx.Pipe.ID, ctx.id)
+	log.Debug("pipe: exec finish pipe=%s(%s)", ctx.Name, ctx.Pipe.ID)
 	return out, nil
 }
 
 // Exec and return error
 func (ctx *Context) exec(node *Node, input Input) (output any, err error) {
 
-	log.Debug("pipe: step pipe=%s(%s) ctx=%s node[%d]=%s type=%s", ctx.Name, ctx.Pipe.ID, ctx.id, node.index, node.Name, node.Type)
+	log.Debug("pipe: step pipe=%s(%s) node[%d]=%s type=%s", ctx.Name, ctx.Pipe.ID, node.index, node.Name, node.Type)
 
 	var out any
 	switch node.Type {
@@ -208,7 +207,7 @@ func (ctx *Context) next() (*Node, bool, error) {
 	if ctx.gotoNext != "" {
 		next := ctx.gotoNext
 		ctx.gotoNext = ""
-		log.Debug("pipe: gotoNext pipe=%s(%s) ctx=%s from=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name, next)
+		log.Debug("pipe: gotoNext pipe=%s(%s) from=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.current.Name, next)
 
 		if next == "EOF" {
 			return nil, true, nil
@@ -227,7 +226,7 @@ func (ctx *Context) next() (*Node, bool, error) {
 		data := ctx.data(ctx.current)
 		next, err := data.replaceString(ctx.current.Goto)
 		if err == nil {
-			log.Debug("pipe: goto pipe=%s(%s) ctx=%s from=%s expr=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.id, ctx.current.Name, ctx.current.Goto, next)
+			log.Debug("pipe: goto pipe=%s(%s) from=%s expr=%s to=%s", ctx.Name, ctx.Pipe.ID, ctx.current.Name, ctx.current.Goto, next)
 		}
 		if err != nil {
 			return nil, false, err
@@ -410,5 +409,5 @@ func (ctx *Context) inheritance(parent *Context) *Context {
 // Errorf format the error message
 func (ctx *Context) Errorf(format string, a ...any) error {
 	message := fmt.Sprintf(format, a...)
-	return fmt.Errorf("pipe: %s(%s) %s %s", ctx.Name, ctx.Pipe.ID, ctx.id, message)
+	return fmt.Errorf("pipe: %s(%s) %s", ctx.Name, ctx.Pipe.ID, message)
 }

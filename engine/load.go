@@ -386,13 +386,18 @@ func Load(cfg config.Config, options LoadOption, progressCallback ...func(string
 		if err != nil {
 			printErr(cfg.Mode, "AfterLoad", err)
 			warnings = append(warnings, Warning{Widget: "AfterLoad", Error: err})
+			logWarnings(warnings)
 			return warnings, err
 		}
 	}
-
+	logWarnings(warnings)
 	return warnings, nil
 }
-
+func logWarnings(warnings []Warning) {
+	for _, warning := range warnings {
+		log.Warn("[%s] %s", warning.Widget, warning.Error)
+	}
+}
 // Unload application engine
 func Unload() (err error) {
 	defer func() { err = exception.Catch(recover()) }()
