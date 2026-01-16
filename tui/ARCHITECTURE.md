@@ -569,11 +569,21 @@ go-bindata -fs -pkg data -o data/bindata.go tuis/...
 
 ```typescript
 declare namespace Yao {
+  interface Context {
+    tui: TUI;
+  }
+  
   interface TUI {
-    GetState(key: string): any;
+    id: string;
+    width: number;
+    height: number;
+    GetState(key?: string): any;
     SetState(key: string, value: any): void;
     UpdateState(updates: Record<string, any>): void;
     ExecuteAction(action: Action): void;
+    Refresh(): void;
+    Release(): void;
+    __release(): void;
   }
   
   interface Action {

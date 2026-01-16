@@ -31,7 +31,6 @@ func Load(cfg config.Config) error {
 		_, err := flow.Load(file, share.ID(root, file))
 		if err != nil {
 			messages = append(messages, err.Error())
-			return nil
 		}
 		return nil
 	}, exts...)

@@ -5,10 +5,210 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/components"
 )
+
+// Regex for matching template expressions {{ }}
+var stmtRe = regexp.MustCompile(`\{\{([\s\S]*?)\}\}`)
+
+// Options for expr engine
+var exprOptions = []expr.Option{
+	expr.Function("len", func(params ...interface{}) (interface{}, error) {
+		if len(params) == 0 {
+			return 0, nil
+		}
+		v := params[0]
+		switch val := v.(type) {
+		case []interface{}:
+			return len(val), nil
+		case []map[string]interface{}:
+			return len(val), nil
+		case string:
+			return len(val), nil
+		case map[string]interface{}:
+			return len(val), nil
+		default:
+			return 0, nil
+		}
+	}),
+	expr.Function("index", func(params ...interface{}) (interface{}, error) {
+		if len(params) < 2 {
+			return nil, fmt.Errorf("index function requires 2 arguments")
+		}
+		container := params[0]
+		key, ok := params[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("index key must be a string")
+		}
+		if m, ok := container.(map[string]interface{}); ok {
+			if val, exists := m[key]; exists {
+				return val, nil
+			}
+		}
+		return nil, nil
+	}),
+	expr.Function("P_", func(params ...interface{}) (interface{}, error) {
+		// Placeholder for process calls
+		return nil, nil
+	}),
+	expr.Function("True", func(params ...interface{}) (interface{}, error) {
+		if len(params) < 1 {
+			return false, nil
+		}
+		if v, ok := params[0].(bool); ok {
+			return v, nil
+		}
+		if v, ok := params[0].(string); ok {
+			v = strings.ToLower(v)
+			return v != "false" && v != "0", nil
+		}
+		if v, ok := params[0].(int); ok {
+			return v != 0, nil
+		}
+		return false, nil
+	}),
+	expr.Function("False", func(params ...interface{}) (interface{}, error) {
+		if len(params) < 1 {
+			return true, nil
+		}
+		// Evaluate the truthiness of the first parameter using the same logic as True function
+		v, ok := params[0].(bool)
+		if ok {
+			return !v, nil
+		}
+		str, ok := params[0].(string)
+		if ok {
+			str = strings.ToLower(str)
+			return !(str != "false" && str != "0"), nil
+		}
+		if num, ok := params[0].(int); ok {
+			return num == 0, nil
+		}
+		return true, nil
+	}),
+	expr.Function("Empty", func(params ...interface{}) (interface{}, error) {
+		if len(params) < 1 {
+			return true, nil
+		}
+		if params[0] == nil {
+			return true, nil
+		}
+		if v, ok := params[0].(string); ok {
+			return v == "", nil
+		}
+		if v, ok := params[0].(int); ok {
+			return v == 0, nil
+		}
+		if v, ok := params[0].(bool); ok {
+			return !v, nil
+		}
+		if v, ok := params[0].(map[string]interface{}); ok {
+			return len(v) == 0, nil
+		}
+		if v, ok := params[0].([]interface{}); ok {
+			return len(v) == 0, nil
+		}
+		return false, nil
+	}),
+	expr.AllowUndefinedVariables(),
+}
+
+// applyStateToProps processes component props and replaces {{}} expressions
+// with actual values from the State.
+func (m *Model) applyStateToProps(comp *Component) map[string]interface{} {
+	if comp.Props == nil {
+		return make(map[string]interface{})
+	}
+
+	result := make(map[string]interface{})
+
+	// Process each prop
+	for key, value := range comp.Props {
+		// Check if value is a string with {{}} expression
+		if str, ok := value.(string); ok {
+			result[key] = m.applyState(str)
+		} else {
+			result[key] = value
+		}
+	}
+
+	// Handle bind attribute - bind entire state object
+	if comp.Bind != "" {
+		m.StateMu.RLock()
+		if bindValue, ok := m.State[comp.Bind]; ok {
+			result["__bind_data"] = bindValue
+		}
+		m.StateMu.RUnlock()
+	}
+
+	return result
+}
+
+// applyState replaces {{key}} expressions in a string with State values.
+// Uses expr-lang for powerful expression evaluation.
+func (m *Model) applyState(text string) string {
+	// Find all {{ expression }} patterns
+	matches := stmtRe.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return text
+	}
+
+	result := text
+
+	// Process each match
+	for _, match := range matches {
+		fullMatch := match[0]   // {{ expression }}
+		expression := strings.TrimSpace(match[1])  // expression without {{ }}
+
+		// Evaluate the expression with current state
+		m.StateMu.RLock()
+		env := make(map[string]interface{})
+		for k, v := range m.State {
+			env[k] = v
+		}
+		m.StateMu.RUnlock()
+
+		// Compile expression with custom functions
+		program, err := expr.Compile(expression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+
+		if err != nil {
+			log.Warn("Expression compilation failed: %v, expression: %s", err, expression)
+			continue
+		}
+
+		// Run expression
+		res, err := vm.Run(program, env)
+		if err != nil {
+			log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
+			continue
+		}
+
+		// Convert evaluated result to string
+		var replacement string
+		if res == nil {
+			replacement = ""
+		} else {
+			switch v := res.(type) {
+			case string:
+				replacement = v
+			case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, bool:
+				replacement = fmt.Sprintf("%v", v)
+			default:
+				replacement = fmt.Sprintf("%v", v)
+			}
+		}
+
+		// Replace in result
+		result = strings.Replace(result, fullMatch, replacement, 1)
+	}
+
+	return result
+}
 
 // RenderLayout renders the entire layout tree recursively.
 // It traverses the layout structure and renders each component,
@@ -84,83 +284,6 @@ func (m *Model) RenderComponent(comp *Component) string {
 		log.Warn("Unknown component type: %s", comp.Type)
 		return m.renderUnknownComponent(comp.Type, props)
 	}
-}
-
-// applyStateToProps processes component props and replaces {{}} expressions
-// with actual values from the State.
-func (m *Model) applyStateToProps(comp *Component) map[string]interface{} {
-	if comp.Props == nil {
-		return make(map[string]interface{})
-	}
-
-	result := make(map[string]interface{})
-
-	m.StateMu.RLock()
-	defer m.StateMu.RUnlock()
-
-	// Process each prop
-	for key, value := range comp.Props {
-		// Check if value is a string with {{}} expression
-		if str, ok := value.(string); ok {
-			result[key] = m.applyState(str)
-		} else {
-			result[key] = value
-		}
-	}
-
-	// Handle bind attribute - bind entire state object
-	if comp.Bind != "" {
-		if bindValue, ok := m.State[comp.Bind]; ok {
-			result["__bind_data"] = bindValue
-		}
-	}
-
-	return result
-}
-
-// applyState replaces {{key}} expressions in a string with State values.
-// Supports nested keys like {{user.name}}.
-func (m *Model) applyState(text string) string {
-	// Pattern to match {{key}} or {{key.nested}}
-	re := regexp.MustCompile(`\{\{([a-zA-Z0-9_.]+)\}\}`)
-
-	return re.ReplaceAllStringFunc(text, func(match string) string {
-		// Extract key from {{key}}
-		key := strings.Trim(match, "{}")
-		key = strings.TrimSpace(key)
-
-		// Look up value in State
-		value := m.getStateValue(key)
-		if value == nil {
-			return "" // Return empty string if not found
-		}
-
-		// Convert value to string
-		return fmt.Sprintf("%v", value)
-	})
-}
-
-// getStateValue retrieves a value from State, supporting nested keys.
-// Example: "user.name" looks up State["user"]["name"]
-func (m *Model) getStateValue(key string) interface{} {
-	if key == "" {
-		return nil
-	}
-
-	// Split by dots for nested access
-	parts := strings.Split(key, ".")
-	
-	var current interface{} = m.State
-
-	for _, part := range parts {
-		if currentMap, ok := current.(map[string]interface{}); ok {
-			current = currentMap[part]
-		} else {
-			return nil
-		}
-	}
-
-	return current
 }
 
 // renderHeaderComponent renders a header component.

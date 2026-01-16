@@ -58,7 +58,13 @@ func Load(cfg config.Config) error {
 	// if err != nil {
 	// 	return err
 	// }
-
+	exists, err = application.App.Exists("services")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
 	messages = []string{}
 	err = application.App.Walk("services", func(root, file string, isdir bool) error {
 		if isdir {
@@ -77,5 +83,5 @@ func Load(cfg config.Config) error {
 		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
 
-	return nil
+	return err
 }

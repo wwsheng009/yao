@@ -73,7 +73,7 @@ func Load(cfg config.Config) error {
 		if err != nil {
 			messages = append(messages, err.Error())
 		}
-		return err
+		return nil
 	}, exts...)
 
 	if len(messages) > 0 {

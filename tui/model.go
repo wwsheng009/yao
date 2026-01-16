@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 )
@@ -107,14 +109,27 @@ func (m *Model) View() string {
 
 // handleKeyPress processes keyboard input and executes bound actions.
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-
 	// Default quit key
-	if key == "ctrl+c" {
+	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
 	}
 
-	// Check for bound actions
+	// Build key string for matching
+	key := msg.String()
+	
+	// Also try single rune if available (for single character keys like 'a', '+', etc.)
+	if len(msg.Runes) == 1 {
+		char := string(msg.Runes[0])
+		// Check for bound actions with the character
+		if m.Config.Bindings != nil {
+			if action, ok := m.Config.Bindings[char]; ok {
+				log.Trace("TUI KeyPress: %s -> action", char)
+				return m, m.executeAction(&action)
+			}
+		}
+	}
+	
+	// Check for bound actions with full key string
 	if m.Config.Bindings != nil {
 		if action, ok := m.Config.Bindings[key]; ok {
 			log.Trace("TUI KeyPress: %s -> action", key)
@@ -224,12 +239,17 @@ func (m *Model) executeProcessAction(action *Action) tea.Cmd {
 		// For now, return a placeholder
 		log.Trace("TUI ExecuteProcess: %s", action.Process)
 
-		// TODO: Integrate with gou.Process
-		// result, err := process.New(action.Process, action.Args...).Exec()
-
-		return ErrorMsg{
-			Err:     nil,
-			Context: "process execution not yet implemented",
+		result, err := executeProcessAction(m, action)
+		if err != nil {
+			return ErrorMsg{
+				Err:     err,
+				Context: "process execution failed",
+			}
+		}
+		
+		return ProcessResultMsg{
+			Data:    result,
+			Target:  action.OnSuccess,
 		}
 	}
 }
@@ -240,13 +260,18 @@ func (m *Model) executeScriptAction(action *Action) tea.Cmd {
 		// This will be implemented when we add script support
 		log.Trace("TUI ExecuteScript: %s.%s", action.Script, action.Method)
 
-		// TODO: Integrate with V8 runtime
-		// script := LoadScript(action.Script)
-		// result, err := script.Execute(action.Method, m, action.Args...)
-
-		return ErrorMsg{
-			Err:     nil,
-			Context: "script execution not yet implemented",
+		result, err := executeScriptAction(m, action)
+		if err != nil {
+			log.Error("TUI ExecuteScript error: %v", err)
+			return ErrorMsg{
+				Err:     err,
+				Context: "script execution failed",
+			}
+		}
+		
+		return ProcessResultMsg{
+			Data:    result,
+			Target:  action.OnSuccess,
 		}
 	}
 }
@@ -286,3 +311,41 @@ func (m *Model) UpdateState(updates map[string]interface{}) {
 		})
 	}
 }
+
+// getStateValue safely gets a state value.
+// This is used internally by the JavaScript API.
+func (m *Model) getStateValue(key string) (interface{}, bool) {
+	m.StateMu.RLock()
+	defer m.StateMu.RUnlock()
+	
+	// Handle nested keys separated by dots (e.g., "user.name")
+	keys := strings.Split(key, ".")
+	currentValue, exists := m.State[keys[0]]
+	if !exists {
+		return nil, false
+	}
+	
+	// Navigate through nested maps
+	for i := 1; i < len(keys); i++ {
+		if currentMap, ok := currentValue.(map[string]interface{}); ok {
+			currentValue, exists = currentMap[keys[i]]
+			if !exists {
+				return nil, false
+			}
+		} else {
+			// If intermediate value is not a map, return not found
+			return nil, false
+		}
+	}
+	
+	return currentValue, true
+}
+
+// setStateValue safely sets a state value.
+// This is used internally by the JavaScript API.
+func (m *Model) setStateValue(key string, value interface{}) {
+	m.StateMu.Lock()
+	defer m.StateMu.Unlock()
+	m.State[key] = value
+}
+

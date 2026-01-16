@@ -34,14 +34,10 @@ func Load(cfg config.Config) error {
 		return nil
 	}, exts...)
 
-	if err != nil {
-		return err
-	}
-
 	if len(messages) > 0 {
 		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
-	return nil
+	return err
 }
 
 // Unload Connector
