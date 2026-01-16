@@ -133,12 +133,12 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 
 // Height returns the height of the item
 func (d itemDelegate) Height() int {
-	return 1 // Only account for title, no description displayed
+	return 1 // Minimum height for compact menu
 }
 
 // Spacing returns the spacing between items
 func (d itemDelegate) Spacing() int {
-	return 1
+	return 0 // Reduce spacing to minimize distance between menu items
 }
 
 // Update handles update messages for the item
@@ -191,8 +191,8 @@ func RenderMenu(props MenuProps, width int) string {
 		titleStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
 			Background(lipgloss.Color("57")).
-			Padding(0, 1).
-			MarginBottom(1).
+			Padding(0, 0).
+			MarginBottom(0).
 			Align(lipgloss.Center)
 		result.WriteString(titleStyle.Render(props.Title))
 		result.WriteString("\n")
@@ -322,19 +322,19 @@ func NewMenuInteractiveModel(props MenuProps) MenuInteractiveModel {
 			Foreground(lipgloss.Color("255")).
 			Background(lipgloss.Color("62")).
 			Bold(true).
-			Padding(0, 1)
+			Padding(0, 0) // Reduced padding to minimize space
 		props.SelectedItemStyle = lipglossStyleWrapper{Style: &defaultSelectedStyle}
 	}
 	if props.InactiveItemStyle.Style == nil {
 		defaultInactiveStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
-			Padding(0, 1)
+			Padding(0, 0) // Reduced padding to minimize space
 		props.InactiveItemStyle = lipglossStyleWrapper{Style: &defaultInactiveStyle}
 	}
 	if props.ActiveItemStyle.Style == nil {
 		defaultActiveStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
-			Padding(0, 1)
+			Padding(0, 0) // Reduced padding to minimize space
 		props.ActiveItemStyle = lipglossStyleWrapper{Style: &defaultActiveStyle}
 	}
 	if props.DisabledItemStyle.Style == nil {
@@ -347,8 +347,8 @@ func NewMenuInteractiveModel(props MenuProps) MenuInteractiveModel {
 		defaultTitleStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
 			Background(lipgloss.Color("57")).
-			Padding(0, 1).
-			MarginBottom(1).
+			Padding(0, 0). // Reduced padding to minimize space
+			MarginBottom(0). // Reduced margin to minimize space
 			Align(lipgloss.Center)
 		props.TitleStyle = lipglossStyleWrapper{Style: &defaultTitleStyle}
 	}
@@ -383,6 +383,26 @@ func NewMenuInteractiveModel(props MenuProps) MenuInteractiveModel {
 	if props.Width > 0 {
 		l.SetWidth(props.Width)
 		log.Trace("Menu InteractiveModel: Set width to %d", props.Width)
+	} else {
+		// Calculate width based on the longest item if not explicitly set
+		maxWidth := 0
+		for _, item := range items {
+			if menuItem, ok := item.(MenuItem); ok {
+				itemWidth := lipgloss.Width(menuItem.Title)
+				if itemWidth > maxWidth {
+					maxWidth = itemWidth
+				}
+				// Account for submenu indicator if present
+				if menuItem.HasSubmenu() {
+					maxWidth += 2 // Account for " ▶" indicator
+				}
+			}
+		}
+		if maxWidth > 0 {
+			// Add some padding to the calculated width
+			l.SetWidth(maxWidth + 4)
+			log.Trace("Menu InteractiveModel: Set calculated width to %d", maxWidth+4)
+		}
 	}
 
 	if props.Height > 0 {
@@ -461,6 +481,10 @@ func HandleMenuUpdate(msg tea.Msg, menuModel *MenuInteractiveModel) (MenuInterac
 							submenuItems[i] = child
 						}
 						menuModel.SetItems(submenuItems)
+						// Maintain the same width as the original menu
+						if menuModel.props.Width > 0 {
+							menuModel.SetWidth(menuModel.props.Width)
+						}
 						menuModel.Select(0) // Select first item in submenu
 						log.Trace("Menu Update: Submenu loaded with %d items, now at level %d", len(submenuItems), menuModel.CurrentLevel)
 					} else if menuItem.Action != nil {
@@ -488,6 +512,10 @@ func HandleMenuUpdate(msg tea.Msg, menuModel *MenuInteractiveModel) (MenuInterac
 						submenuItems[i] = child
 					}
 					menuModel.SetItems(submenuItems)
+					// Maintain the same width as the original menu
+					if menuModel.props.Width > 0 {
+						menuModel.SetWidth(menuModel.props.Width)
+					}
 					menuModel.Select(0) // Select first item in submenu
 					log.Trace("Menu Update: Submenu loaded with %d items, now at level %d", len(submenuItems), menuModel.CurrentLevel)
 				}
@@ -506,8 +534,32 @@ func HandleMenuUpdate(msg tea.Msg, menuModel *MenuInteractiveModel) (MenuInterac
 						originalItems[i] = item
 					}
 					menuModel.SetItems(originalItems)
-					menuModel.Select(0)
-					log.Trace("Menu Update: Returned to parent menu at level %d", menuModel.CurrentLevel)
+					// Maintain the same width as the original menu
+					if menuModel.props.Width > 0 {
+						menuModel.SetWidth(menuModel.props.Width)
+				} else {
+					// Calculate width based on the longest item if not explicitly set
+					maxWidth := 0
+					for _, item := range originalItems {
+						if menuItem, ok := item.(MenuItem); ok {
+							itemWidth := lipgloss.Width(menuItem.Title)
+							if itemWidth > maxWidth {
+								maxWidth = itemWidth
+							}
+							// Account for submenu indicator if present
+							if menuItem.HasSubmenu() {
+								maxWidth += 2 // Account for " ▶" indicator
+							}
+						}
+					}
+					if maxWidth > 0 {
+						// Add some padding to the calculated width
+						menuModel.SetWidth(maxWidth + 4)
+						log.Trace("Menu Update: Set calculated width to %d when returning to parent", maxWidth+4)
+					}
+				}
+				menuModel.Select(0)
+				log.Trace("Menu Update: Returned to parent menu at level %d", menuModel.CurrentLevel)
 				} else {
 					log.Trace("Menu Update: Already at top level or no path to go back")
 				}
@@ -581,9 +633,14 @@ func (m *MenuInteractiveModel) View() string {
 			if menuItem.HasSubmenu() {
 				title += " ▶"  // Add submenu indicator
 			}
-			if menuItem.Description != "" {
-				title = fmt.Sprintf("%s\n%s", title, lipgloss.NewStyle().Italic(true).Faint(true).Render(menuItem.Description))
+			// Note: Description is intentionally not displayed to keep the menu compact
+			
+			// Add indentation based on current level to show hierarchy
+			indent := ""
+			for level := 0; level < m.CurrentLevel; level++ {
+				indent += "  " // Two spaces per level
 			}
+			title = indent + title
 			
 			result.WriteString(style.Render(title))
 			result.WriteString("\n")
