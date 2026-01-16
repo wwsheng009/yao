@@ -57,13 +57,17 @@ var langs = map[string]string{
 	"Migrate is not allowed on production mode.": "Migrate 不能再生产环境下使用",
 	"Upgrade yao to latest version":              "升级 yao 到最新版本",
 	"🎉Current version is the latest🎉":            "🎉当前版本是最新的🎉",
-	"Do you want to update to %s ? (y/n): ":      "是否更新到 %s ? (y/n): ",
+	"Do you want to update to %s ? (y/n):":      "是否更新到 %s ? (y/n): ",
 	"Invalid input":                              "输入错误",
 	"Canceled upgrade":                           "已取消更新",
 	"Error occurred while updating binary: %s":   "更新二进制文件时出错: %s",
 	"🎉Successfully updated to version: %s🎉":      "🎉成功更新到版本: %s🎉",
 	"Print all version information":              "显示详细版本信息",
 	"SUI Template Engine":                        "SUI 模板引擎命令",
+	"Run a terminal user interface":             "运行终端用户界面",
+	"Run a terminal user interface defined in .tui.yao files": "运行在 .tui.yao 文件中定义的终端用户界面",
+	"Enable debug mode":                          "启用调试模式",
+	"Enable verbose output":                      "启用详细输出",
 }
 
 // L Language switch
@@ -159,6 +163,7 @@ func init() {
 		inspectCmd,
 		startCmd,
 		runCmd,
+		tuiCmd,
 		// getCmd,
 		// dumpCmd,
 		// restoreCmd,
