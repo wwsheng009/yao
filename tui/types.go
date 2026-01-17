@@ -10,8 +10,12 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/yaoapp/yao/tui/components"
+	"github.com/yaoapp/yao/tui/core"
 )
+
+// MessageHandler defines a function that handles a specific message type
+// and returns an updated model and command
+type MessageHandler func(*Model, tea.Msg) (tea.Model, tea.Cmd)
 
 // Config represents the parsed .tui.yao configuration file.
 // It defines the TUI's name, initial data state, layout structure,
@@ -27,13 +31,13 @@ type Config struct {
 	Data map[string]interface{} `json:"data,omitempty"`
 
 	// OnLoad is the action to execute when TUI loads
-	OnLoad *Action `json:"onLoad,omitempty"`
+	OnLoad *core.Action `json:"onLoad,omitempty"`
 
 	// Layout defines the UI structure
 	Layout Layout `json:"layout,omitempty"`
 
 	// Bindings maps keyboard shortcuts to actions
-	Bindings map[string]Action `json:"bindings,omitempty"`
+	Bindings map[string]core.Action `json:"bindings,omitempty"`
 }
 
 // Layout describes the UI layout structure.
@@ -67,7 +71,7 @@ type Component struct {
 	Props map[string]interface{} `json:"props,omitempty"`
 
 	// Actions maps event names to actions for this component
-	Actions map[string]Action `json:"actions,omitempty"`
+	Actions map[string]core.Action `json:"actions,omitempty"`
 
 	// Height specifies the component height ("flex" for flexible, or number)
 	Height interface{} `json:"height,omitempty"`
@@ -76,97 +80,91 @@ type Component struct {
 	Width interface{} `json:"width,omitempty"`
 }
 
-// Action defines an action to be executed in response to events.
-// An action can either call a Yao Process or execute a script method.
-type Action struct {
-	// Process is the name of the Yao Process to execute
-	Process string `json:"process,omitempty"`
-
-	// Script is the path to the script file (e.g., "scripts/tui/handler")
-	Script string `json:"script,omitempty"`
-
-	// Method is the method name to call in the script
-	Method string `json:"method,omitempty"`
-
-	// Args contains the arguments to pass (supports {{}} expressions)
-	Args []interface{} `json:"args,omitempty"`
-
-	// OnSuccess specifies the state key to store the result
-	OnSuccess string `json:"onSuccess,omitempty"`
-
-	// OnError specifies the state key to store error information
-	OnError string `json:"onError,omitempty"`
-
-	// Payload contains data for direct state updates
-	Payload map[string]interface{} `json:"payload,omitempty"`
+// Bridge provides external message bridge for async operations
+type Bridge struct {
+	MessageChan chan tea.Msg
+	EventBus    *core.EventBus
 }
 
-// ProcessResultMsg is sent when a Yao Process execution completes.
-type ProcessResultMsg struct {
-	// Target is the state key where the result should be stored
-	Target string
-
-	// Data is the result data from the Process
-	Data interface{}
-}
-
-// StateUpdateMsg is sent when a single state key needs to be updated.
-type StateUpdateMsg struct {
-	// Key is the state key to update
-	Key string
-
-	// Value is the new value
-	Value interface{}
-}
-
-// StateBatchUpdateMsg is sent when multiple state keys need to be updated.
-type StateBatchUpdateMsg struct {
-	// Updates contains the key-value pairs to update
-	Updates map[string]interface{}
-}
-
-// InputUpdateMsg is sent to update an input component.
-type InputUpdateMsg struct {
-	// ID is the input component ID
-	ID string
-	// Value is the new value for the input
-	Value string
-}
-
-// StreamChunkMsg is sent when a chunk of streaming data is received (e.g., from AI).
-type StreamChunkMsg struct {
-	// ID identifies the stream
-	ID string
-
-	// Content is the chunk content
-	Content string
-}
-
-// StreamDoneMsg is sent when a stream completes.
-type StreamDoneMsg struct {
-	// ID identifies the completed stream
-	ID string
-}
-
-// ErrorMsg represents an error message with context.
-type ErrorMsg struct {
-	// Err is the underlying error
-	Err error
-
-	// Context describes where the error occurred
-	Context string
-}
-
-// Error implements the error interface.
-func (e ErrorMsg) Error() string {
-	if e.Context != "" {
-		return fmt.Sprintf("[TUI Error in %s] %v", e.Context, e.Err)
+// NewBridge creates a new Bridge instance
+func NewBridge(eventBus *core.EventBus) *Bridge {
+	bridge := &Bridge{
+		MessageChan: make(chan tea.Msg, 100), // Buffered channel to prevent blocking
+		EventBus:    eventBus,
 	}
-	return fmt.Sprintf("[TUI Error] %v", e.Err)
+
+	// Start a goroutine to process messages from the channel
+	go func() {
+		for msg := range bridge.MessageChan {
+			// Handle different message types
+			switch v := msg.(type) {
+			case core.ActionMsg:
+				// Forward ActionMsg to EventBus for component communication
+				bridge.EventBus.Publish(v)
+
+			case core.TargetedMsg:
+				// TargetedMsg should be routed through message loop
+				// It will be handled by the TargetedMsg handler in Model.Update
+				// We can't directly forward it here without access to the Model
+				// So we'll publish it as a special action
+				bridge.EventBus.Publish(core.ActionMsg{
+					ID:     "bridge",
+					Action: "TARGETED_MESSAGE",
+					Data:   v,
+				})
+
+			case core.StateUpdateMsg:
+				// Handle state updates directly
+				bridge.EventBus.Publish(core.ActionMsg{
+					ID:     "bridge",
+					Action: "STATE_UPDATE",
+					Data:   v,
+				})
+
+			case core.StateBatchUpdateMsg:
+				// Handle batch state updates
+				bridge.EventBus.Publish(core.ActionMsg{
+					ID:     "bridge",
+					Action: "STATE_BATCH_UPDATE",
+					Data:   v,
+				})
+
+			case core.ProcessResultMsg:
+				// Handle process results
+				bridge.EventBus.Publish(core.ActionMsg{
+					ID:     "bridge",
+					Action: "PROCESS_RESULT",
+					Data:   v,
+				})
+
+			case core.ErrorMessage:
+				// Handle errors
+				bridge.EventBus.Publish(core.ActionMsg{
+					ID:     "bridge",
+					Action: "ERROR",
+					Data:   v,
+				})
+
+			default:
+				// Log that message type is not supported for forwarding
+				// In production, you might want to log this or handle it differently
+				// For now, we'll just ignore it
+			}
+		}
+	}()
+
+	return bridge
 }
 
-// QuitMsg is sent to request the TUI to quit.
-type QuitMsg struct {}
+// Send sends a message through the bridge
+func (b *Bridge) Send(msg tea.Msg) {
+	select {
+	case b.MessageChan <- msg:
+	default:
+		// Channel is full, drop the message to prevent blocking
+		// In production, you might want to log this
+	}
+}
 
 // Model implements the Bubble Tea tea.Model interface.
 // It manages the reactive state and handles the message loop.
@@ -180,11 +178,14 @@ type Model struct {
 	// StateMu protects State for concurrent access
 	StateMu sync.RWMutex
 
-	// InputModels holds the input component models
-	InputModels map[string]*components.InputModel
+	// Components holds the runtime instances of components
+	Components map[string]*core.ComponentInstance
 
-	// MenuModels holds the menu component models
-	MenuModels map[string]*components.MenuInteractiveModel
+	// EventBus provides cross-component communication
+	EventBus *core.EventBus
+
+	// Bridge provides external message bridge for async operations
+	Bridge *Bridge
 
 	// CurrentFocus holds the ID of the currently focused input component
 	CurrentFocus string
@@ -201,6 +202,9 @@ type Model struct {
 	// Program is a reference to the Bubble Tea program instance
 	// Used for sending messages from external goroutines
 	Program *tea.Program
+
+	// MessageHandlers maps message types to their handlers
+	MessageHandlers map[string]core.MessageHandler
 }
 
 // Validate validates the Config structure.
@@ -223,21 +227,6 @@ func (c *Config) Validate() error {
 		if comp.Type == "" {
 			return fmt.Errorf("component at index %d missing 'type' field", i)
 		}
-	}
-
-	return nil
-}
-
-// Validate validates the Action structure.
-func (a *Action) Validate() error {
-	// Must have either Process or Script
-	if a.Process == "" && a.Script == "" {
-		return fmt.Errorf("action must specify either 'process' or 'script'")
-	}
-
-	// If Script is specified, Method must also be specified
-	if a.Script != "" && a.Method == "" {
-		return fmt.Errorf("action with 'script' must also specify 'method'")
 	}
 
 	return nil

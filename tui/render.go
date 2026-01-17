@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/components"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // Regex for matching template expressions {{ }}
@@ -64,7 +65,7 @@ var exprOptions = []expr.Option{
 		if !ok {
 			return nil, fmt.Errorf("index key must be a string")
 		}
-		
+
 		// Helper function to get value from various map types
 		getValue := func(container interface{}, key string) (interface{}, bool) {
 			switch v := container.(type) {
@@ -95,11 +96,11 @@ var exprOptions = []expr.Option{
 			}
 			return nil, false
 		}
-		
+
 		if val, exists := getValue(container, key); exists {
 			return val, nil
 		}
-		
+
 		return nil, nil
 	}),
 	expr.Function("P_", func(params ...interface{}) (interface{}, error) {
@@ -364,8 +365,8 @@ func (m *Model) applyState(text string) string {
 
 	// Process each match
 	for _, match := range matches {
-		fullMatch := match[0]   // {{ expression }}
-		expression := strings.TrimSpace(match[1])  // expression without {{ }}
+		fullMatch := match[0]                     // {{ expression }}
+		expression := strings.TrimSpace(match[1]) // expression without {{ }}
 
 		// Skip empty expressions to avoid compilation errors
 		if expression == "" {
@@ -468,14 +469,14 @@ func (m *Model) bindData(v interface{}) interface{} {
 				if expression == "" {
 					log.Warn("Skipping empty expression in: %s", input)
 					continue
-			}
+				}
 
 				// Evaluate the expression
 				res, err := m.evaluateExpression(expression)
 				if err != nil {
 					log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
 					continue
-			}
+				}
 
 				// Convert evaluated result to string for replacement
 				var replacement string
@@ -508,7 +509,7 @@ func (m *Model) bindData(v interface{}) interface{} {
 func preprocessExpression(expr string, state map[string]interface{}) string {
 	// This is a simple preprocessing to detect patterns like "identifier.number" or "identifier.identifier"
 	// where the identifier might not exist as an object but the combined key exists in the flattened state
-	
+
 	// First, let's check if the expression is a simple identifier like "features.0"
 	// that could potentially be a flattened key
 	if strings.Contains(expr, ".") {
@@ -518,7 +519,7 @@ func preprocessExpression(expr string, state map[string]interface{}) string {
 			return fmt.Sprintf(`index($, "%s")`, expr)
 		}
 	}
-	
+
 	return expr
 }
 
@@ -578,32 +579,41 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	// Route to component renderer
 	switch comp.Type {
-		case "input":
-			// Special handling for input components
-			if comp.ID != "" {
-				// Create or update input model if it doesn't exist
-				if _, exists := m.InputModels[comp.ID]; !exists {
-					inputProps := components.ParseInputProps(props)
-					inputModel := components.NewInputModel(inputProps)
-					m.InputModels[comp.ID] = &inputModel
-					
-					// Set this input as focused if it's the first one or no other input is focused
-					if m.CurrentFocus == "" {
-						m.CurrentFocus = comp.ID
-						inputModel.Model.Focus()
-					} else if m.CurrentFocus == comp.ID {
-						inputModel.Model.Focus()
-					} else {
-						inputModel.Model.Blur()
-					}
-					m.InputModels[comp.ID] = &inputModel
+	case "input":
+		// Special handling for input components
+		if comp.ID != "" {
+			// Create or update component if it doesn't exist
+			if _, exists := m.Components[comp.ID]; !exists {
+				inputProps := components.ParseInputProps(props)
+				inputModel := components.NewInputModel(inputProps, comp.ID)
+
+				// Register as ComponentInstance for message handling
+				if m.Components == nil {
+					m.Components = make(map[string]*core.ComponentInstance)
 				}
-			
-				// Return the input view
-				inputModel := m.InputModels[comp.ID]
-				return inputModel.View()
+				m.Components[comp.ID] = &core.ComponentInstance{
+					ID:       comp.ID,
+					Type:     "input",
+					Instance: components.NewInputComponentWrapper(&inputModel),
+				}
+
+				// Set this input as focused if it's the first one or no other input is focused
+				if m.CurrentFocus == "" {
+					m.CurrentFocus = comp.ID
+					inputModel.Model.Focus()
+				} else if m.CurrentFocus == comp.ID {
+					inputModel.Model.Focus()
+				} else {
+					inputModel.Model.Blur()
+				}
 			}
-			return ""
+
+			// Return the input view from component instance
+			if compInstance, exists := m.Components[comp.ID]; exists {
+				return compInstance.Instance.View()
+			}
+		}
+		return ""
 
 	case "menu":
 		log.Trace("TUI RenderComponent: Processing menu component with ID: %s", comp.ID)
@@ -611,28 +621,91 @@ func (m *Model) RenderComponent(comp *Component) string {
 		if comp.ID != "" {
 			// Use resolveProps to preserve complex data types like arrays
 			resolvedProps := m.resolveProps(comp)
-			// Create or update menu model if it doesn't exist
-			if _, exists := m.MenuModels[comp.ID]; !exists {
+			// Create or update component if it doesn't exist
+			if _, exists := m.Components[comp.ID]; !exists {
 				log.Trace("TUI RenderComponent: Creating new menu model for ID: %s", comp.ID)
 				menuProps := components.ParseMenuProps(resolvedProps)
 				menuModel := components.NewMenuInteractiveModel(menuProps)
-				m.MenuModels[comp.ID] = &menuModel
-				
+				menuModel.ID = comp.ID
+
+				// Register as ComponentInstance for message handling
+				if m.Components == nil {
+					m.Components = make(map[string]*core.ComponentInstance)
+				}
+				m.Components[comp.ID] = &core.ComponentInstance{
+					ID:       comp.ID,
+					Type:     "menu",
+					Instance: components.NewMenuComponentWrapper(&menuModel),
+				}
+
 				// Set this menu as focused if it's the first one or no other component is focused
 				if m.CurrentFocus == "" {
-					m.CurrentFocus = "menu:" + comp.ID
+					m.CurrentFocus = comp.ID
 					log.Trace("TUI RenderComponent: Set focus to menu: %s", comp.ID)
 				}
 			} else {
 				log.Trace("TUI RenderComponent: Using existing menu model for ID: %s", comp.ID)
 			}
-			
-			// Return the menu view
-			menuModel := m.MenuModels[comp.ID]
-			log.Trace("TUI RenderComponent: Rendering menu view for ID: %s", comp.ID)
-			return menuModel.View()
+
+			// Return the menu view from component instance
+			if compInstance, exists := m.Components[comp.ID]; exists {
+				log.Trace("TUI RenderComponent: Rendering menu view for ID: %s", comp.ID)
+				return compInstance.Instance.View()
+			}
 		}
 		return ""
+	case "table":
+		log.Trace("TUI RenderComponent: Processing table component with ID: %s", comp.ID)
+		// Special handling for table components
+		if comp.ID != "" {
+			// Create or update component if it doesn't exist
+			if _, exists := m.Components[comp.ID]; !exists {
+				tableProps := components.ParseTableProps(props)
+				tableModel := components.NewTableModel(tableProps, comp.ID)
+
+				// Register as ComponentInstance for message handling
+				if m.Components == nil {
+					m.Components = make(map[string]*core.ComponentInstance)
+				}
+				m.Components[comp.ID] = &core.ComponentInstance{
+					ID:       comp.ID,
+					Type:     "table",
+					Instance: components.NewTableComponentWrapper(&tableModel),
+				}
+			}
+
+			// Return table view from component instance
+			if compInstance, exists := m.Components[comp.ID]; exists {
+				return compInstance.Instance.View()
+			}
+		}
+		return components.RenderTable(components.ParseTableProps(props), m.Width)
+	case "form":
+		log.Trace("TUI RenderComponent: Processing form component with ID: %s", comp.ID)
+		// Special handling for form components
+		if comp.ID != "" {
+			// Create or update component if it doesn't exist
+			if _, exists := m.Components[comp.ID]; !exists {
+				formProps := components.ParseFormProps(props)
+				formModel := components.NewFormModel(formProps, comp.ID)
+
+				// Register as ComponentInstance for message handling
+				if m.Components == nil {
+					m.Components = make(map[string]*core.ComponentInstance)
+				}
+				m.Components[comp.ID] = &core.ComponentInstance{
+					ID:       comp.ID,
+					Type:     "form",
+					Instance: components.NewFormComponentWrapper(&formModel),
+				}
+			}
+
+			// Return form view from component instance
+			if compInstance, exists := m.Components[comp.ID]; exists {
+				return compInstance.Instance.View()
+			}
+		}
+		return components.RenderForm(components.ParseFormProps(props), m.Width)
 	default:
 		// Use component registry for other component types
 		registry := GetGlobalRegistry()
@@ -641,7 +714,7 @@ func (m *Model) RenderComponent(comp *Component) string {
 			log.Warn("Unknown component type: %s", comp.Type)
 			return m.renderUnknownComponent(comp.Type, props)
 		}
-		
+
 		// Apply state binding and render using the registered renderer
 		boundProps := m.applyStateToProps(comp)
 		return renderer(boundProps, m.Width)

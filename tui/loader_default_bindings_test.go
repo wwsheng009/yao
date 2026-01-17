@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 func TestDefaultBindings(t *testing.T) {
@@ -22,18 +23,18 @@ func TestDefaultBindings(t *testing.T) {
 
 	// Simulate what happens in loadFile
 	if cfg.Bindings == nil {
-		cfg.Bindings = make(map[string]Action)
+		cfg.Bindings = make(map[string]core.Action)
 	}
 
 	// Apply default bindings logic
-	setMissingBinding(cfg.Bindings, "q", Action{Process: "tui.quit"})
-	setMissingBinding(cfg.Bindings, "ctrl+c", Action{Process: "tui.quit"})
-	setMissingBinding(cfg.Bindings, "tab", Action{Process: "tui.focus.next"})
-	setMissingBinding(cfg.Bindings, "shift+tab", Action{Process: "tui.focus.prev"})
-	setMissingBinding(cfg.Bindings, "enter", Action{Process: "tui.form.submit"})
-	setMissingBinding(cfg.Bindings, "ctrl+r", Action{Process: "tui.refresh"})
-	setMissingBinding(cfg.Bindings, "ctrl+l", Action{Process: "tui.refresh"})
-	setMissingBinding(cfg.Bindings, "ctrl+z", Action{Process: "tui.suspend"})
+	setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "ctrl+c", core.Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "tab", core.Action{Process: "tui.focus.next"})
+	setMissingBinding(cfg.Bindings, "shift+tab", core.Action{Process: "tui.focus.prev"})
+	setMissingBinding(cfg.Bindings, "enter", core.Action{Process: "tui.form.submit"})
+	setMissingBinding(cfg.Bindings, "ctrl+r", core.Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+l", core.Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+z", core.Action{Process: "tui.suspend"})
 
 	// Verify default bindings were added
 	assert.Contains(t, cfg.Bindings, "q")
@@ -56,11 +57,11 @@ func TestDefaultBindings(t *testing.T) {
 	assert.Equal(t, "tui.suspend", cfg.Bindings["ctrl+z"].Process)
 
 	// Test that existing bindings are preserved
-	existingAction := Action{Process: "custom.action"}
+	existingAction := core.Action{Process: "custom.action"}
 	cfg.Bindings["q"] = existingAction  // Override the default
 
 	// Try to set default again - should not override
-	setMissingBinding(cfg.Bindings, "q", Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
 
 	// Should still have the custom action, not the default
 	assert.Equal(t, "custom.action", cfg.Bindings["q"].Process)

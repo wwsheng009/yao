@@ -46,17 +46,21 @@ func TestInputComponent(t *testing.T) {
 	assert.NotEmpty(t, view1)
 	assert.NotEmpty(t, view2)
 
-	// Check that input models were created
-	assert.Contains(t, model.InputModels, "username-input")
-	assert.Contains(t, model.InputModels, "email-input")
+	// Check that input components were created
+	assert.Contains(t, model.Components, "username-input")
+	assert.Contains(t, model.Components, "email-input")
+	assert.Equal(t, "input", model.Components["username-input"].Type)
+	assert.Equal(t, "input", model.Components["email-input"].Type)
 
-	// Test input value update
-	usernameInput := model.InputModels["username-input"]
-	usernameInput.Model.SetValue("testuser")
-	
+	// Test input value update - need to get the wrapper
+	comp := model.Components["username-input"]
+	inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper)
+	assert.True(t, ok, "Expected InputComponentWrapper")
+	inputWrapper.SetValue("testuser")
+
 	// Simulate updating state with input value
 	model.StateMu.Lock()
-	model.State["username-input"] = usernameInput.Value()
+	model.State["username-input"] = inputWrapper.GetValue()
 	model.StateMu.Unlock()
 
 	// Verify state was updated
@@ -115,22 +119,21 @@ func TestHandleInputUpdate(t *testing.T) {
 		Placeholder: "Test input",
 		Prompt:      "> ",
 	}
-	
-	inputModel := components.NewInputModel(props)
-	
+
+	inputModel := components.NewInputModel(props, "test-input")
 	// Test typing 'hello'
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}
 	updatedModel, _ := components.HandleInputUpdate(msg, &inputModel)
-	
+
 	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}
 	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-	
+
 	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}
 	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-	
+
 	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}
 	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-	
+
 	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}}
 	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
 

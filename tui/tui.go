@@ -4,6 +4,7 @@ import (
 	"github.com/yaoapp/gou/application"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // Setup initializes the TUI module
@@ -140,7 +141,7 @@ func GetOrCreate(id string) *Config {
 			Direction: "vertical",
 			Children:  []Component{},
 		},
-		Bindings: make(map[string]Action),
+		Bindings: make(map[string]core.Action),
 	}
 
 	Set(id, defaultCfg)

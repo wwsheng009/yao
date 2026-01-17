@@ -12,6 +12,7 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/share"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // cache stores loaded TUI configurations
@@ -188,18 +189,18 @@ func loadFile(file string) (*Config, error) {
 
 	// Add default bindings if none exist
 	if cfg.Bindings == nil {
-		cfg.Bindings = make(map[string]Action)
+		cfg.Bindings = make(map[string]core.Action)
 	}
 	
 	// Set default bindings if they don't exist
-	setMissingBinding(cfg.Bindings, "q", Action{Process: "tui.quit"})
-	setMissingBinding(cfg.Bindings, "ctrl+c", Action{Process: "tui.quit"})
-	setMissingBinding(cfg.Bindings, "tab", Action{Process: "tui.focus.next"})
-	setMissingBinding(cfg.Bindings, "shift+tab", Action{Process: "tui.focus.prev"})
-	setMissingBinding(cfg.Bindings, "enter", Action{Process: "tui.form.submit"})
-	setMissingBinding(cfg.Bindings, "ctrl+r", Action{Process: "tui.refresh"})
-	setMissingBinding(cfg.Bindings, "ctrl+l", Action{Process: "tui.refresh"})
-	setMissingBinding(cfg.Bindings, "ctrl+z", Action{Process: "tui.suspend"})
+	setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "ctrl+c", core.Action{Process: "tui.quit"})
+	setMissingBinding(cfg.Bindings, "tab", core.Action{Process: "tui.focus.next"})
+	setMissingBinding(cfg.Bindings, "shift+tab", core.Action{Process: "tui.focus.prev"})
+	setMissingBinding(cfg.Bindings, "enter", core.Action{Process: "tui.form.submit"})
+	setMissingBinding(cfg.Bindings, "ctrl+r", core.Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+l", core.Action{Process: "tui.refresh"})
+	setMissingBinding(cfg.Bindings, "ctrl+z", core.Action{Process: "tui.suspend"})
 	
 	// Add default submit bindings for input components
 	setDefaultInputSubmitBindings(&cfg)
@@ -220,11 +221,11 @@ func setDefaultInputSubmitBindings(cfg *Config) {
 		if comp.Type == "input" {
 			// Ensure submit action is available for input components
 			if comp.Actions == nil {
-				comp.Actions = make(map[string]Action)
+				comp.Actions = make(map[string]core.Action)
 			}
 			// Add default submit action if not already defined
-			setMissingAction(comp.Actions, "submit", Action{Process: "tui.form.submit"})
-			setMissingAction(comp.Actions, "general_submit", Action{Process: "tui.submit"})
+			setMissingAction(comp.Actions, "submit", core.Action{Process: "tui.form.submit"})
+			setMissingAction(comp.Actions, "general_submit", core.Action{Process: "tui.submit"})
 		}
 	})
 }
@@ -244,14 +245,14 @@ func walkComponents(layout *Layout, fn func(*Component)) {
 }
 
 // setMissingAction adds an action only if the key doesn't already exist
-func setMissingAction(actions map[string]Action, key string, action Action) {
+func setMissingAction(actions map[string]core.Action, key string, action core.Action) {
 	if _, exists := actions[key]; !exists {
 		actions[key] = action
 	}
 }
 
 // setMissingBinding adds a binding only if the key doesn't already exist
-func setMissingBinding(bindings map[string]Action, key string, action Action) {
+func setMissingBinding(bindings map[string]core.Action, key string, action core.Action) {
 	if _, exists := bindings[key]; !exists {
 		bindings[key] = action
 	}

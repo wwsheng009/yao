@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // InputProps defines the properties for the Input component
@@ -39,6 +40,7 @@ type InputProps struct {
 type InputModel struct {
 	textinput.Model
 	props InputProps
+	id    string // Unique identifier for this instance
 }
 
 // RenderInput renders an input component
@@ -111,7 +113,7 @@ func ParseInputProps(props map[string]interface{}) InputProps {
 }
 
 // NewInputModel creates a new InputModel from InputProps
-func NewInputModel(props InputProps) InputModel {
+func NewInputModel(props InputProps, id string) InputModel {
 	input := textinput.New()
 
 	// Set placeholder
@@ -157,6 +159,7 @@ func NewInputModel(props InputProps) InputModel {
 	return InputModel{
 		Model: input,
 		props: props,
+		id:    id,
 	}
 }
 
@@ -182,4 +185,147 @@ func HandleInputUpdate(msg tea.Msg, inputModel *InputModel) (InputModel, tea.Cmd
 	var cmd tea.Cmd
 	inputModel.Model, cmd = inputModel.Model.Update(msg)
 	return *inputModel, cmd
+}
+
+// Init initializes the input model
+func (m *InputModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the input
+func (m *InputModel) View() string {
+	return m.Model.View()
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *InputModel) GetID() string {
+	return m.id
+}
+
+// InputComponentWrapper wraps InputModel to implement ComponentInterface properly
+type InputComponentWrapper struct {
+	model *InputModel
+}
+
+// NewInputComponentWrapper creates a wrapper that implements ComponentInterface
+func NewInputComponentWrapper(inputModel *InputModel) *InputComponentWrapper {
+	return &InputComponentWrapper{
+		model: inputModel,
+	}
+}
+
+func (w *InputComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
+	switch msg := msg.(type) {
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.model.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+
+	case tea.KeyMsg:
+		oldValue := w.model.Value()
+		var cmds []tea.Cmd
+
+		switch msg.Type {
+		case tea.KeyEsc:
+			w.model.Blur()
+			// Publish focus changed event
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+				"focused": false,
+			}))
+			if len(cmds) > 0 {
+				return w, tea.Batch(cmds...), core.Ignored
+			}
+			return w, nil, core.Ignored
+		case tea.KeyEnter:
+			// Publish enter pressed event
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
+				"value": w.model.Value(),
+			}))
+			// Let bubble to handleKeyPress for form submission
+			if len(cmds) > 0 {
+				return w, tea.Batch(cmds...), core.Ignored
+			}
+			return w, nil, core.Ignored
+		case tea.KeyTab:
+			// Let bubble to handleKeyPress for navigation
+			return w, nil, core.Ignored
+		}
+
+		// For other key messages, update the model
+		var cmd tea.Cmd
+		w.model.Model, cmd = w.model.Model.Update(msg)
+
+		// Check if value changed
+		newValue := w.model.Value()
+		if oldValue != newValue {
+			cmds = append(cmds, cmd)
+			// Publish value changed event
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+				"oldValue": oldValue,
+				"newValue": newValue,
+			}))
+			return w, tea.Batch(cmds...), core.Handled
+		}
+		return w, cmd, core.Handled
+	}
+
+	// For other messages, update using the underlying model
+	oldValue := w.model.Value()
+	var cmd tea.Cmd
+	w.model.Model, cmd = w.model.Model.Update(msg)
+
+	// Check if value changed
+	newValue := w.model.Value()
+	if oldValue != newValue {
+		// Publish value changed event
+		eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+			"oldValue": oldValue,
+			"newValue": newValue,
+		})
+		if cmd != nil {
+			return w, tea.Batch(cmd, eventCmd), core.Handled
+		}
+		return w, eventCmd, core.Handled
+	}
+	return w, cmd, core.Handled
+}
+
+func (w *InputComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *InputComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// GetValue returns the current value of the input component
+func (w *InputComponentWrapper) GetValue() string {
+	return w.model.Value()
+}
+
+// SetValue sets the value of the input component
+func (w *InputComponentWrapper) SetValue(value string) {
+	w.model.SetValue(value)
+}
+
+// SetFocus sets or removes focus from input component
+func (m *InputModel) SetFocus(focus bool) {
+	if focus {
+		m.Model.Focus()
+	} else {
+		m.Model.Blur()
+	}
+}
+
+func (w *InputComponentWrapper) SetFocus(focus bool) {
+	w.model.SetFocus(focus)
+	// Note: We don't publish event here since it would require changing the interface.
+	// Events for focus changes are published in the UpdateMsg method for ESC key.
 }

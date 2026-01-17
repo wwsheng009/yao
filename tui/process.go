@@ -3,8 +3,10 @@ package tui
 import (
 	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/exception"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 func init() {
@@ -14,10 +16,13 @@ func init() {
 	process.Register("tui.list", ProcessList)
 	process.Register("tui.count", ProcessCount)
 	process.Register("tui.reload", ProcessReload)
+	process.Register("tui.message.send", ProcessMessageSend)
+	process.Register("tui.message.targeted", ProcessMessageTargeted)
 	process.Register("tui.quit", ProcessQuit)
 	process.Register("tui.exit", ProcessExit)
 	process.Register("tui.focus.next", ProcessFocusNext)
 	process.Register("tui.focus.prev", ProcessFocusPrev)
+	process.Register("tui.focus.set", ProcessFocusSet)
 	process.Register("tui.form.submit", ProcessFormSubmit)
 	process.Register("tui.submit", ProcessSubmit)
 	process.Register("tui.refresh", ProcessRefresh)
@@ -26,6 +31,9 @@ func init() {
 	process.Register("tui.input.escape", ProcessInputEscape)
 	process.Register("tui.menu.select", ProcessMenuSelect)
 	process.Register("tui.menu.navigate", ProcessMenuNavigate)
+	process.Register("tui.state.update", ProcessStateUpdate)
+	process.Register("tui.state.batch", ProcessStateBatch)
+	process.Register("tui.event.publish", ProcessEventPublish)
 }
 
 // ProcessLoad loads all TUI configurations
@@ -89,20 +97,29 @@ func ProcessQuit(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.quit"}
+	if model.Program != nil {
+		model.Program.Send(tea.QuitMsg{})
+	}
+
+	return map[string]interface{}{
+		"action":  "quit_sent",
+		"modelID": modelID,
+	}
+}
+	}
+
+	action := &core.Action{Process: "tui.quit"}
 	result, err := ProcessQuitAction(model, action)
 	if err != nil {
-		return map[string]interface{}{
-			"error": err.Error(),
-			"modelID": modelID,
-		}
+	return map[string]interface{}{
+		"action":  "quit_sent",
+		"modelID": modelID,
 	}
-	return result
 }
 
 // ProcessExecute executes a TUI action
@@ -161,16 +178,16 @@ func ProcessExit(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.exit"}
+	action := &core.Action{Process: "tui.exit"}
 	result, err := ProcessQuitAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -185,16 +202,16 @@ func ProcessFocusNext(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.focus.next"}
+	action := &core.Action{Process: "tui.focus.next"}
 	result, err := ProcessFocusNextAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -209,16 +226,16 @@ func ProcessFocusPrev(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.focus.prev"}
+	action := &core.Action{Process: "tui.focus.prev"}
 	result, err := ProcessFocusPrevAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -233,16 +250,16 @@ func ProcessFormSubmit(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.form.submit"}
+	action := &core.Action{Process: "tui.form.submit"}
 	result, err := ProcessFormSubmitAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -257,16 +274,16 @@ func ProcessSubmit(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.submit"}
+	action := &core.Action{Process: "tui.submit"}
 	result, err := ProcessSubmitAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -281,16 +298,16 @@ func ProcessRefresh(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.refresh"}
+	action := &core.Action{Process: "tui.refresh"}
 	result, err := ProcessRefreshAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -305,16 +322,16 @@ func ProcessClear(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.clear"}
+	action := &core.Action{Process: "tui.clear"}
 	result, err := ProcessClearAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -329,16 +346,16 @@ func ProcessSuspend(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.suspend"}
+	action := &core.Action{Process: "tui.suspend"}
 	result, err := ProcessSuspendAction(model, action)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -354,16 +371,16 @@ func ProcessInputEscape(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
-	action := &Action{Process: "tui.input.escape"}
+	action := &core.Action{Process: "tui.input.escape"}
 	result, err := ProcessInputEscapeAction(model, action, inputID)
 	if err != nil {
 		return map[string]interface{}{
-			"error": err.Error(),
+			"error":   err.Error(),
 			"modelID": modelID,
 		}
 	}
@@ -379,7 +396,7 @@ func ProcessMenuSelect(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
@@ -388,7 +405,7 @@ func ProcessMenuSelect(process *process.Process) interface{} {
 	_, exists := model.GetState("menuItems")
 	if !exists {
 		return map[string]interface{}{
-			"error": "No menu items found",
+			"error":   "No menu items found",
 			"modelID": modelID,
 		}
 	}
@@ -396,9 +413,9 @@ func ProcessMenuSelect(process *process.Process) interface{} {
 	// Execute the action associated with the selected menu item
 	// This would typically involve executing a process or updating state
 	return map[string]interface{}{
-		"action": "menu_select",
+		"action":    "menu_select",
 		"itemIndex": itemIndex,
-		"message": fmt.Sprintf("Menu item %d selected", itemIndex),
+		"message":   fmt.Sprintf("Menu item %d selected", itemIndex),
 	}
 }
 
@@ -411,14 +428,220 @@ func ProcessMenuNavigate(process *process.Process) interface{} {
 	model := GetModel(modelID)
 	if model == nil {
 		return map[string]interface{}{
-			"error": "Model not found",
+			"error":   "Model not found",
 			"modelID": modelID,
 		}
 	}
 
 	return map[string]interface{}{
-		"action": "menu_navigate",
+		"action":    "menu_navigate",
 		"direction": direction,
-		"message": fmt.Sprintf("Navigated %s in menu", direction),
+		"message":   fmt.Sprintf("Navigated %s in menu", direction),
+	}
+}
+
+// ProcessMessageSend sends a custom action message through the message system
+// Usage: Process("tui.message.send", modelID, actionName, data)
+func ProcessMessageSend(process *process.Process) interface{} {
+	process.ValidateArgNums(3)
+	modelID := process.ArgsString(0)
+	actionName := process.ArgsString(1)
+	data := process.Args[2]
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	actionMsg := core.ActionMsg{
+		ID:     "process",
+		Action: actionName,
+		Data:   data,
+	}
+
+	if model.Bridge != nil {
+		model.Bridge.Send(actionMsg)
+	} else if model.Program != nil {
+		model.Program.Send(actionMsg)
+	}
+
+	return map[string]interface{}{
+		"action":     "message_sent",
+		"actionName": actionName,
+		"modelID":    modelID,
+	}
+}
+
+// ProcessMessageTargeted sends a targeted message to a specific component
+// Usage: Process("tui.message.targeted", modelID, targetID, messageType, messageData)
+func ProcessMessageTargeted(process *process.Process) interface{} {
+	process.ValidateArgNums(4)
+	modelID := process.ArgsString(0)
+	targetID := process.ArgsString(1)
+	messageType := process.ArgsString(2)
+	messageData := process.Args[3]
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	var innerMsg tea.Msg
+	switch messageType {
+	case "state_update":
+		if dataMap, ok := messageData.(map[string]interface{}); ok {
+			for k, v := range dataMap {
+				innerMsg = core.StateUpdateMsg{Key: k, Value: v}
+				break
+			}
+		}
+	case "state_batch":
+		if dataMap, ok := messageData.(map[string]interface{}); ok {
+			innerMsg = core.StateBatchUpdateMsg{Updates: dataMap}
+		}
+	case "action":
+		innerMsg = core.ActionMsg{
+			ID:     targetID,
+			Action: messageData.(string),
+			Data:   nil,
+		}
+	case "refresh":
+		innerMsg = core.RefreshMsg{}
+	case "custom":
+		innerMsg = messageData.(tea.Msg)
+	}
+
+	if innerMsg != nil {
+		targetedMsg := core.TargetedMsg{TargetID: targetID, InnerMsg: innerMsg}
+		if model.Bridge != nil {
+			model.Bridge.Send(targetedMsg)
+		} else if model.Program != nil {
+			model.Program.Send(targetedMsg)
+		}
+	}
+
+	return map[string]interface{}{
+		"action":   "targeted_sent",
+		"targetID": targetID,
+		"modelID":  modelID,
+		"msgType":  messageType,
+	}
+}
+
+// ProcessFocusSet sets focus to a specific component
+// Usage: Process("tui.focus.set", modelID, componentID)
+func ProcessFocusSet(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+	modelID := process.ArgsString(0)
+	componentID := process.ArgsString(1)
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     componentID,
+			Action: core.EventFocusChanged,
+			Data:   map[string]interface{}{"focused": true},
+		})
+	}
+
+	return map[string]interface{}{
+		"action":      "focus_set",
+		"componentID": componentID,
+		"modelID":     modelID,
+	}
+}
+
+// ProcessStateUpdate updates a single state value
+// Usage: Process("tui.state.update", modelID, key, value)
+func ProcessStateUpdate(process *process.Process) interface{} {
+	process.ValidateArgNums(3)
+	modelID := process.ArgsString(0)
+	key := process.ArgsString(1)
+	value := process.Args[2]
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	if model.Program != nil {
+		model.Program.Send(core.StateUpdateMsg{Key: key, Value: value})
+	}
+
+	return map[string]interface{}{
+		"action":  "state_updated",
+		"key":     key,
+		"modelID": modelID,
+	}
+}
+
+// ProcessStateBatch performs a batch state update
+// Usage: Process("tui.state.batch", modelID, updatesObject)
+func ProcessStateBatch(process *process.Process) interface{} {
+	process.ValidateArgNums(2)
+	modelID := process.ArgsString(0)
+	updates := process.Args[1]
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	if updatesMap, ok := updates.(map[string]interface{}); ok {
+		if model.Program != nil {
+			model.Program.Send(core.StateBatchUpdateMsg{Updates: updatesMap})
+		}
+	}
+
+	return map[string]interface{}{
+		"action":  "state_batch_updated",
+		"modelID": modelID,
+	}
+}
+
+// ProcessEventPublish publishes an event through the event bus
+// Usage: Process("tui.event.publish", modelID, eventName, sourceID, data)
+func ProcessEventPublish(process *process.Process) interface{} {
+	process.ValidateArgNums(4)
+	modelID := process.ArgsString(0)
+	eventName := process.ArgsString(1)
+	sourceID := process.ArgsString(2)
+	data := process.Args[3]
+	model := GetModel(modelID)
+	if model == nil {
+		return map[string]interface{}{
+			"error":   "Model not found",
+			"modelID": modelID,
+		}
+	}
+
+	actionMsg := core.ActionMsg{
+		ID:     sourceID,
+		Action: eventName,
+		Data:   data,
+	}
+
+	if model.EventBus != nil {
+		model.EventBus.Publish(actionMsg)
+	}
+
+	return map[string]interface{}{
+		"action":    "event_published",
+		"eventName": eventName,
+		"modelID":   modelID,
 	}
 }

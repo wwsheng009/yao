@@ -7,54 +7,53 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // Column defines a table column
 type Column struct {
 	// Key is the data key for this column
 	Key string `json:"key"`
-	
+
 	// Title is the display title for this column
 	Title string `json:"title"`
-	
+
 	// Width is the column width
 	Width int `json:"width"`
-	
+
 	// Style is the column style
 	Style lipgloss.Style `json:"style"`
 }
-
-
 
 // TableProps defines the properties for the Table component
 type TableProps struct {
 	// Columns defines the table columns
 	Columns []Column `json:"columns"`
-	
+
 	// Data contains the table rows
 	Data [][]interface{} `json:"data"`
-	
+
 	// Focused determines if the table is focused (for selection)
 	Focused bool `json:"focused"`
-	
+
 	// Height specifies the table height (0 for auto)
 	Height int `json:"height"`
-	
+
 	// Width specifies the table width (0 for auto)
 	Width int `json:"width"`
-	
+
 	// ShowBorder determines if borders are shown
 	ShowBorder bool `json:"showBorder"`
-	
+
 	// BorderStyle is the style for table borders
 	BorderStyle lipglossStyleWrapper `json:"borderStyle"`
-	
+
 	// HeaderStyle is the style for header cells
 	HeaderStyle lipglossStyleWrapper `json:"headerStyle"`
-	
+
 	// CellStyle is the style for regular cells
 	CellStyle lipglossStyleWrapper `json:"cellStyle"`
-	
+
 	// SelectedStyle is the style for selected cells
 	SelectedStyle lipglossStyleWrapper `json:"selectedStyle"`
 }
@@ -62,7 +61,9 @@ type TableProps struct {
 // TableModel wraps the table.Model to handle TUI integration
 type TableModel struct {
 	table.Model
-	props TableProps
+	props               TableProps
+	id                  string // Unique identifier for this instance
+	previousSelectedRow int    // Track previous selection for change detection
 }
 
 // RenderTable renders a table component
@@ -117,7 +118,7 @@ func RenderTable(props TableProps, width int) string {
 	headerStyle := props.HeaderStyle.GetStyle()
 	cellStyle := props.CellStyle.GetStyle()
 	selectedStyle := props.SelectedStyle.GetStyle()
-	
+
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
 			Header:   headerStyle,
@@ -255,4 +256,200 @@ func HandleTableUpdate(msg tea.Msg, tableModel *TableModel) (TableModel, tea.Cmd
 	var cmd tea.Cmd
 	tableModel.Model, cmd = tableModel.Model.Update(msg)
 	return *tableModel, cmd
+}
+
+// NewTableModel creates a new TableModel from TableProps
+func NewTableModel(props TableProps, id string) TableModel {
+	// Validate input: ensure we have columns
+	if len(props.Columns) == 0 {
+		return TableModel{props: props, id: id}
+	}
+
+	// Prepare columns
+	columns := make([]table.Column, len(props.Columns))
+	for i, col := range props.Columns {
+		colWidth := col.Width
+		if colWidth <= 0 {
+			// Calculate reasonable default width
+			colWidth = 10
+		}
+		columns[i] = table.Column{
+			Title: col.Title,
+			Width: colWidth,
+		}
+	}
+
+	// Prepare rows with validation and column-specific styling
+	rows := make([]table.Row, 0, len(props.Data))
+	for _, rowData := range props.Data {
+		// Skip rows that don't match column count
+		if len(rowData) != len(props.Columns) {
+			continue
+		}
+		row := make([]string, len(rowData))
+		for j, cell := range rowData {
+			// Apply column-specific style if defined, otherwise use default formatting
+			if j < len(props.Columns) && props.Columns[j].Style.String() != lipgloss.NewStyle().String() {
+				row[j] = props.Columns[j].Style.Render(formatCell(cell))
+			} else {
+				row[j] = formatCell(cell)
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	// Create table model
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(props.Focused),
+	)
+
+	// Apply styles
+	headerStyle := props.HeaderStyle.GetStyle()
+	cellStyle := props.CellStyle.GetStyle()
+	selectedStyle := props.SelectedStyle.GetStyle()
+
+	if props.ShowBorder {
+		t.SetStyles(table.Styles{
+			Header:   headerStyle,
+			Cell:     cellStyle,
+			Selected: selectedStyle,
+		})
+	} else {
+		s := table.DefaultStyles()
+		s.Header = headerStyle
+		s.Cell = cellStyle
+		s.Selected = selectedStyle
+		t.SetStyles(s)
+	}
+
+	// Set size if specified
+	if props.Width > 0 {
+		t.SetWidth(props.Width)
+	}
+	if props.Height > 0 {
+		t.SetHeight(props.Height)
+	}
+
+	return TableModel{
+		Model: t,
+		props: props,
+		id:    id,
+	}
+}
+
+// Init initializes the table model
+func (m *TableModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the table
+func (m *TableModel) View() string {
+	return m.Model.View()
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *TableModel) GetID() string {
+	return m.id
+}
+
+// UpdateMsg implements ComponentInterface for table component
+func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Update using the underlying model
+	var cmd tea.Cmd
+	m.Model, cmd = m.Model.Update(msg)
+	return m, cmd, core.Handled
+}
+
+// TableComponentWrapper wraps TableModel to implement ComponentInterface properly
+type TableComponentWrapper struct {
+	model *TableModel
+}
+
+// NewTableComponentWrapper creates a wrapper that implements ComponentInterface
+func NewTableComponentWrapper(tableModel *TableModel) *TableComponentWrapper {
+	return &TableComponentWrapper{
+		model: tableModel,
+	}
+}
+
+func (w *TableComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
+	switch msg := msg.(type) {
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.model.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+	}
+
+	// Get current selection before update
+	prevSelectedRow := -1
+	if w.model.Model.Focused() {
+		prevSelectedRow = w.model.Model.Cursor()
+	}
+
+	// Update using the underlying model
+	var cmd tea.Cmd
+	w.model.Model, cmd = w.model.Model.Update(msg)
+
+	// Check if selection changed
+	if w.model.Model.Focused() {
+		currentSelectedRow := w.model.Model.Cursor()
+		if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
+			// Selection changed, publish event
+			// Get row data if available
+			var rowData interface{}
+			rows := w.model.Model.Rows()
+			if currentSelectedRow < len(rows) {
+				rowData = rows[currentSelectedRow]
+			}
+
+			eventCmd := core.PublishEvent(
+				w.model.id,
+				core.EventRowSelected,
+				map[string]interface{}{
+					"rowIndex": currentSelectedRow,
+					"rowData":  rowData,
+					"tableID":  w.model.id,
+				},
+			)
+
+			// Combine commands if we have an existing cmd
+			if cmd != nil {
+				cmd = tea.Batch(cmd, eventCmd)
+			} else {
+				cmd = eventCmd
+			}
+		}
+	}
+
+	return w, cmd, core.Handled
+}
+
+func (w *TableComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *TableComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// SetFocus sets or removes focus from table component
+func (m *TableModel) SetFocus(focus bool) {
+	if focus {
+		m.Model.Focus()
+	} else {
+		m.Model.Blur()
+	}
+}
+
+func (w *TableComponentWrapper) SetFocus(focus bool) {
+	w.model.SetFocus(focus)
 }

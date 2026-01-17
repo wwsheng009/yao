@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 func TestConfigJSONSerialization(t *testing.T) {
@@ -157,13 +158,13 @@ func TestConfigValidation(t *testing.T) {
 func TestActionValidation(t *testing.T) {
 	tests := []struct {
 		name    string
-		action  Action
+		action  core.Action
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid process action",
-			action: Action{
+			action: core.Action{
 				Process: "models.user.Get",
 				Args:    []interface{}{1},
 			},
@@ -171,7 +172,7 @@ func TestActionValidation(t *testing.T) {
 		},
 		{
 			name: "valid script action",
-			action: Action{
+			action: core.Action{
 				Script: "scripts/tui/handler",
 				Method: "onClick",
 			},
@@ -179,13 +180,13 @@ func TestActionValidation(t *testing.T) {
 		},
 		{
 			name:    "missing process and script",
-			action:  Action{Args: []interface{}{}},
+			action:  core.Action{Args: []interface{}{}},
 			wantErr: true,
 			errMsg:  "must specify either 'process' or 'script'",
 		},
 		{
 			name: "script without method",
-			action: Action{
+			action: core.Action{
 				Script: "scripts/tui/handler",
 			},
 			wantErr: true,
@@ -208,15 +209,15 @@ func TestActionValidation(t *testing.T) {
 	}
 }
 
-func TestErrorMsg(t *testing.T) {
+func TestErrorMessage(t *testing.T) {
 	tests := []struct {
 		name     string
-		err      ErrorMsg
+		err      core.ErrorMessage
 		expected string
 	}{
 		{
 			name: "error with context",
-			err: ErrorMsg{
+			err: core.ErrorMessage{
 				Err:     assert.AnError,
 				Context: "script execution",
 			},
@@ -224,7 +225,7 @@ func TestErrorMsg(t *testing.T) {
 		},
 		{
 			name: "error without context",
-			err: ErrorMsg{
+			err: core.ErrorMessage{
 				Err: assert.AnError,
 			},
 			expected: "[TUI Error]",
@@ -241,7 +242,7 @@ func TestErrorMsg(t *testing.T) {
 
 func TestMessageTypes(t *testing.T) {
 	// Test ProcessResultMsg
-	prMsg := ProcessResultMsg{
+	prMsg := core.ProcessResultMsg{
 		Target: "users",
 		Data:   []interface{}{"user1", "user2"},
 	}
@@ -249,7 +250,7 @@ func TestMessageTypes(t *testing.T) {
 	assert.Len(t, prMsg.Data, 2)
 
 	// Test StateUpdateMsg
-	suMsg := StateUpdateMsg{
+	suMsg := core.StateUpdateMsg{
 		Key:   "count",
 		Value: 10,
 	}
@@ -257,7 +258,7 @@ func TestMessageTypes(t *testing.T) {
 	assert.Equal(t, 10, suMsg.Value)
 
 	// Test StateBatchUpdateMsg
-	sbMsg := StateBatchUpdateMsg{
+	sbMsg := core.StateBatchUpdateMsg{
 		Updates: map[string]interface{}{
 			"count":   10,
 			"message": "updated",
@@ -266,7 +267,7 @@ func TestMessageTypes(t *testing.T) {
 	assert.Len(t, sbMsg.Updates, 2)
 
 	// Test StreamChunkMsg
-	scMsg := StreamChunkMsg{
+	scMsg := core.StreamChunkMsg{
 		ID:      "stream1",
 		Content: "chunk data",
 	}
@@ -274,7 +275,7 @@ func TestMessageTypes(t *testing.T) {
 	assert.Equal(t, "chunk data", scMsg.Content)
 
 	// Test StreamDoneMsg
-	sdMsg := StreamDoneMsg{
+	sdMsg := core.StreamDoneMsg{
 		ID: "stream1",
 	}
 	assert.Equal(t, "stream1", sdMsg.ID)

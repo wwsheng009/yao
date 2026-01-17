@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // Ensure lipgloss is used (referenced by lipglossStyleWrapper)
@@ -83,11 +84,13 @@ type FormProps struct {
 
 // FormModel represents a form model for interactive forms
 type FormModel struct {
-	props FormProps
+	props      FormProps
 	focusIndex int
-	Values map[string]string
-	Errors map[string]string
-	Validated bool
+	Values     map[string]string
+	Errors     map[string]string
+	Validated  bool
+	focused    bool   // Whether the form has focus
+	id         string // Unique identifier for this instance
 }
 
 // RenderForm renders a form component
@@ -246,4 +249,152 @@ func HandleFormUpdate(msg tea.Msg, formModel *FormModel) (FormModel, tea.Cmd) {
 	// In a real implementation, this would handle form interactions
 	// For now, just return the model unchanged
 	return *formModel, nil
+}
+
+// NewFormModel creates a new FormModel from FormProps
+func NewFormModel(props FormProps, id string) FormModel {
+	return FormModel{
+		props:      props,
+		focusIndex: 0,
+		Values:     make(map[string]string),
+		Errors:     make(map[string]string),
+		Validated:  false,
+		focused:    false,
+		id:         id,
+	}
+}
+
+// Init initializes the form model
+func (m *FormModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the form
+func (m *FormModel) View() string {
+	return RenderForm(m.props, 80)
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *FormModel) GetID() string {
+	return m.id
+}
+
+// UpdateMsg implements ComponentInterface for form component
+func (m *FormModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle key press events for navigation and submission
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEnter:
+			// Form submission - bubble to parent to handle
+			return m, nil, core.Ignored
+		case tea.KeyEsc:
+			// Cancel form - bubble to parent
+			return m, nil, core.Ignored
+		case tea.KeyUp:
+			// Navigate to previous field
+			if m.focusIndex > 0 {
+				m.focusIndex--
+			}
+			return m, nil, core.Handled
+		case tea.KeyDown:
+			// Navigate to next field
+			if m.focusIndex < len(m.props.Fields)-1 {
+				m.focusIndex++
+			}
+			return m, nil, core.Handled
+		}
+	}
+
+	return m, nil, core.Ignored
+}
+
+// FormComponentWrapper wraps FormModel to implement ComponentInterface properly
+type FormComponentWrapper struct {
+	model *FormModel
+}
+
+// NewFormComponentWrapper creates a wrapper that implements ComponentInterface
+func NewFormComponentWrapper(formModel *FormModel) *FormComponentWrapper {
+	return &FormComponentWrapper{
+		model: formModel,
+	}
+}
+
+func (w *FormComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle key press events
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEsc:
+			// Publish FORM_CANCEL event when ESC is pressed
+			cancelCmd := core.PublishEvent(
+				w.model.id,
+				core.EventFormCancel,
+				map[string]interface{}{
+					"formID": w.model.id,
+					"reason": "user_pressed_esc",
+				},
+			)
+			return w, cancelCmd, core.Handled
+		case tea.KeyEnter:
+			// Let Enter bubble to handleKeyPress for form submission
+			return w, nil, core.Ignored
+		case tea.KeyTab:
+			// Navigate to next field
+			if w.model.props.Fields != nil && len(w.model.props.Fields) > 0 {
+				w.model.focusIndex = (w.model.focusIndex + 1) % len(w.model.props.Fields)
+			}
+			return w, nil, core.Handled
+		}
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.model.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+	case core.ActionMsg:
+		// Handle internal action messages
+		if msg.Action == core.EventFormSubmitSuccess {
+			// Reset focus and values after successful submission
+			w.model.Values = make(map[string]string)
+			w.model.focusIndex = 0
+			return w, nil, core.Handled
+		}
+		if msg.Action == core.EventFormCancel {
+			// Clear form on cancel
+			w.model.Values = make(map[string]string)
+			return w, nil, core.Handled
+		}
+	}
+
+	// Default: ignore message
+	return w, nil, core.Ignored
+}
+
+func (w *FormComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *FormComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// SetFocus sets or removes focus from form component
+func (m *FormModel) SetFocus(focus bool) {
+	m.focused = focus
+	// When form gets focus, ensure focusIndex is valid
+	if focus && len(m.props.Fields) > 0 {
+		if m.focusIndex < 0 || m.focusIndex >= len(m.props.Fields) {
+			m.focusIndex = 0
+		}
+	}
+}
+
+func (w *FormComponentWrapper) SetFocus(focus bool) {
+	w.model.SetFocus(focus)
 }

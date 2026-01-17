@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // TestMenuNavigationAndRendering tests menu rendering and user navigation with arrow keys
@@ -297,7 +298,7 @@ func TestMenuSelectionAndResponse(t *testing.T) {
 			Description: "Exit the application",
 			Value:       "exit",
 			Action: map[string]interface{}{
-				"process": "tui.quit",
+				"process": "core.quit",
 				"args":    []interface{}{},
 			},
 		},
@@ -339,7 +340,7 @@ func TestMenuSelectionAndResponse(t *testing.T) {
 	selectedItemLast, okLast := model.GetSelectedItem()
 	assert.True(t, okLast, "Should be able to get last selected item")
 	assert.Equal(t, "Exit", selectedItemLast.Title, "Last selected item should be Exit")
-	assert.Equal(t, "tui.quit", selectedItemLast.Action["process"], "Exit item action should be tui.quit")
+	assert.Equal(t, "core.quit", selectedItemLast.Action["process"], "Exit item action should be core.quit")
 	assert.Equal(t, []interface{}{}, selectedItemLast.Action["args"], "Exit item should have no args")
 
 	// Test that the view reflects the current selection
@@ -441,7 +442,7 @@ func TestMenuActionTriggering(t *testing.T) {
 			Description: "Exit the application",
 			Value:       "exit",
 			Action: map[string]interface{}{
-				"process": "tui.quit",
+				"process": "core.quit",
 				"args":    []interface{}{},
 			},
 		},
@@ -471,11 +472,11 @@ func TestMenuActionTriggering(t *testing.T) {
 	if cmd != nil {
 		// Execute the command to get the resulting message
 		resultMsg := cmd()
-		actionMsg, ok := resultMsg.(MenuActionTriggered)
+		actionMsg, ok := resultMsg.(core.MenuActionTriggered)
 		assert.True(t, ok, "Command should return MenuActionTriggered message when Enter is pressed on item with action")
 		
 		if ok {
-			assert.Equal(t, "Dashboard", actionMsg.Item.Title, "Action should be triggered for Dashboard")
+			assert.Equal(t, "Dashboard", actionMsg.Item.GetTitle(), "Action should be triggered for Dashboard")
 			assert.Equal(t, "yao.demo.dashboard", actionMsg.Action["process"], "Action process should be yao.demo.dashboard")
 			assert.Equal(t, []interface{}{"dashboard_id"}, actionMsg.Action["args"], "Action args should be correct")
 		}
@@ -494,11 +495,11 @@ func TestMenuActionTriggering(t *testing.T) {
 	
 	if cmd2 != nil {
 		resultMsg2 := cmd2()
-		actionMsg2, ok2 := resultMsg2.(MenuActionTriggered)
+		actionMsg2, ok2 := resultMsg2.(core.MenuActionTriggered)
 		assert.True(t, ok2, "Command should return MenuActionTriggered message for second item")
 		
 		if ok2 {
-			assert.Equal(t, "Users Management", actionMsg2.Item.Title, "Action should be triggered for Users Management")
+			assert.Equal(t, "Users Management", actionMsg2.Item.GetTitle(), "Action should be triggered for Users Management")
 			assert.Equal(t, "yao.demo.users", actionMsg2.Action["process"], "Action process should be yao.demo.users")
 			assert.Equal(t, []interface{}{"users_list"}, actionMsg2.Action["args"], "Action args should be correct for second item")
 		}
@@ -520,7 +521,7 @@ func TestMenuActionTriggering(t *testing.T) {
 	// When there's no action, cmd might be nil or might not be a MenuActionTriggered
 	if cmd3 != nil {
 		resultMsg3 := cmd3()
-		_, ok := resultMsg3.(MenuActionTriggered)
+		_, ok := resultMsg3.(core.MenuActionTriggered)
 		_ = ok  // Just to use the variable
 		// If it's not a MenuActionTriggered, that's fine - it means no action was triggered
 		// This is acceptable behavior for items without actions
@@ -721,7 +722,6 @@ func TestNestedMenus(t *testing.T) {
 			Title:       "Settings",
 			Description: "Application settings",
 			Value:       "settings",
-			HasChildren: true, // Indicates this has children even if not populated here
 			Children: []MenuItem{
 				{
 					Title:       "General Settings",
@@ -745,7 +745,6 @@ func TestNestedMenus(t *testing.T) {
 					Title:       "Security",
 					Description: "Security settings",
 					Value:       "security",
-					HasChildren: true,
 					Children: []MenuItem{
 						{
 							Title:       "Passwords",
@@ -773,7 +772,6 @@ func TestNestedMenus(t *testing.T) {
 			Title:       "Tools",
 			Description: "Various tools",
 			Value:       "tools",
-			HasChildren: true,
 			Children: []MenuItem{
 				{
 					Title:       "Import",
@@ -800,7 +798,7 @@ func TestNestedMenus(t *testing.T) {
 			Description: "Exit the application",
 			Value:       "exit",
 			Action: map[string]interface{}{
-				"process": "tui.quit",
+				"process": "core.quit",
 				"args":    []interface{}{},
 			},
 		},
@@ -830,7 +828,7 @@ func TestNestedMenus(t *testing.T) {
 	assert.Equal(t, 3, len(settingsItem.Children), "Settings should have 3 submenu items")
 
 	// Test that items with children have the correct flag
-	assert.True(t, settingsItem.HasChildren, "Settings item should have HasChildren=true")
+	assert.True(t, settingsItem.HasChildren(), "Settings item should have HasChildren=true")
 	assert.True(t, settingsItem.Children[2].HasSubmenu(), "Security item should have submenu")
 }
 
@@ -924,11 +922,11 @@ func TestMenuProcessorCallbacks(t *testing.T) {
 	// Verify command is returned when action exists
 	if cmd != nil {
 		resultMsg := cmd()
-		actionMsg, ok := resultMsg.(MenuActionTriggered)
+		actionMsg, ok := resultMsg.(core.MenuActionTriggered)
 		assert.True(t, ok, "Should return MenuActionTriggered when Enter pressed on item with action")
 		
 		if ok {
-			assert.Equal(t, "Process Item 1", actionMsg.Item.Title, "Action should be triggered for first item")
+			assert.Equal(t, "Process Item 1", actionMsg.Item.GetTitle(), "Action should be triggered for first item")
 			assert.Equal(t, "test.process.1", actionMsg.Action["process"], "Correct process should be in action")
 			assert.Equal(t, []interface{}{"arg1", "arg2"}, actionMsg.Action["args"], "Correct args should be in action")
 		}
@@ -994,7 +992,6 @@ func TestMenuNavigationEnhanced(t *testing.T) {
 			Title:       "Submenu Parent",
 			Description: "Has submenu items",
 			Value:       "parent",
-			HasChildren: true,
 			Children: []MenuItem{
 				{Title: "Child 1", Value: "child1", Description: "First child"},
 				{Title: "Child 2", Value: "child2", Description: "Second child"},

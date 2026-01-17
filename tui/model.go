@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/components"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // NewModel creates a new Bubble Tea Model from a TUI configuration.
@@ -13,13 +14,17 @@ import (
 // the reactive environment.
 func NewModel(cfg *Config, program *tea.Program) *Model {
 	model := &Model{
-		Config:      cfg,
-		State:       make(map[string]interface{}),
-		InputModels: make(map[string]*components.InputModel),
-		MenuModels:  make(map[string]*components.MenuInteractiveModel),
-		Program:     program,
-		Ready:       false,
+		Config:          cfg,
+		State:           make(map[string]interface{}),
+		Components:      make(map[string]*core.ComponentInstance),
+		EventBus:        core.NewEventBus(),
+		Program:         program,
+		Ready:           false,
+		MessageHandlers: GetDefaultMessageHandlersFromCore(),
 	}
+
+	// Initialize the Bridge after EventBus is created
+	model.Bridge = NewBridge(model.EventBus)
 
 	// Copy initial data to State
 	if cfg.Data != nil {
@@ -34,6 +39,177 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 	}
 
 	return model
+}
+
+// GetDefaultMessageHandlersFromCore returns default message handlers for TUI model
+func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
+	handlers := make(map[string]core.MessageHandler)
+
+	// Register handler for tea.KeyMsg
+	handlers["tea.KeyMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model.handleKeyPress(msg.(tea.KeyMsg))
+	}
+
+	// Register handler for tea.WindowSizeMsg
+	handlers["tea.WindowSizeMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		sizeMsg := msg.(tea.WindowSizeMsg)
+		model.Width = sizeMsg.Width
+		model.Height = sizeMsg.Height
+		model.Ready = true // Mark model as ready after receiving window size
+
+		// Broadcast window size to all components
+		var cmds []tea.Cmd
+		for id, comp := range model.Components {
+			newComp, cmd, _ := comp.Instance.UpdateMsg(msg)
+			model.Components[id].Instance = newComp
+			cmds = append(cmds, cmd)
+		}
+		return model, tea.Batch(cmds...)
+	}
+
+	// Register handler for core.TargetedMsg
+	handlers["TargetedMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		targetedMsg := msg.(core.TargetedMsg)
+
+		// Find target component
+		if comp, exists := model.Components[targetedMsg.TargetID]; exists {
+			newComp, cmd, _ := comp.Instance.UpdateMsg(targetedMsg.InnerMsg)
+			model.Components[targetedMsg.TargetID].Instance = newComp
+			return model, cmd
+		}
+
+		// Target not found, ignore message
+		return model, nil
+	}
+
+	// Register handler for core.ActionMsg
+	handlers["ActionMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		actionMsg := msg.(core.ActionMsg)
+		log.Trace("TUI Update: Received ActionMsg: %s from %s", actionMsg.Action, actionMsg.ID)
+
+		// Publish to EventBus for component communication
+		model.EventBus.Publish(actionMsg)
+
+		return model, nil
+	}
+
+	// Register handler for core.ProcessResultMsg
+	handlers["ProcessResultMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model.handleProcessResult(msg.(core.ProcessResultMsg))
+	}
+
+	// Register handler for core.StateUpdateMsg
+	handlers["StateUpdateMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		stateMsg := msg.(core.StateUpdateMsg)
+		model.StateMu.Lock()
+		model.State[stateMsg.Key] = stateMsg.Value
+		model.StateMu.Unlock()
+		return model, nil
+	}
+
+	// Register handler for core.StateBatchUpdateMsg
+	handlers["StateBatchUpdateMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		batchMsg := msg.(core.StateBatchUpdateMsg)
+		model.StateMu.Lock()
+		for key, value := range batchMsg.Updates {
+			model.State[key] = value
+		}
+		model.StateMu.Unlock()
+		return model, nil
+	}
+
+	// Register handler for core.StreamChunkMsg
+	handlers["StreamChunkMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model.handleStreamChunk(msg.(core.StreamChunkMsg))
+	}
+
+	// Register handler for core.StreamDoneMsg
+	handlers["StreamDoneMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model.handleStreamDone(msg.(core.StreamDoneMsg))
+	}
+
+	// Register handler for core.ErrorMessage
+	handlers["ErrorMessage"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model.handleError(msg.(core.ErrorMessage))
+	}
+
+	// Register handler for core.QuitMsg
+	handlers["QuitMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		log.Trace("TUI Update: Received QuitMsg, quitting...")
+		return m.(tea.Model), tea.Quit
+	}
+
+	// Register handler for core.RefreshMsg
+	handlers["RefreshMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		return model, nil
+	}
+
+	// Register handler for core.MenuActionTriggered
+	handlers["MenuActionTriggered"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+		menuMsg := msg.(core.MenuActionTriggered)
+
+		// Execute the action if it's a process
+		if processName, ok := menuMsg.Action["process"].(string); ok {
+			action := &core.Action{
+				Process: processName,
+				Args:    []interface{}{},
+				OnError: "__error",
+			}
+			return model, model.executeAction(action)
+		}
+
+		return model, nil
+	}
+
+	return handlers
 }
 
 // Init initializes the Model and returns an initial command.
@@ -51,68 +227,103 @@ func (m *Model) Init() tea.Cmd {
 
 // Update handles incoming messages and updates the Model accordingly.
 // This is the core of the Bubble Tea message loop.
+// Implements a Windows-style message dispatching mechanism:
+// 1. Capture phase: System-level interception
+// 2. Dispatch phase: Route to focused component
+// 3. Bubble phase: Global handlers
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Capture phase: System-level message interception
+	// Priority 1: Critical system messages
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// Update terminal dimensions
-		m.Width = msg.Width
-		m.Height = msg.Height
-		m.Ready = true
-		log.Trace("TUI WindowSize: %dx%d", m.Width, m.Height)
-		return m, nil
-
 	case tea.KeyMsg:
-		// Handle keyboard input
-		return m.handleKeyPress(msg)
-
-	case ProcessResultMsg:
-		// Handle Process execution result
-		return m.handleProcessResult(msg)
-
-	case StateUpdateMsg:
-		// Handle single state update
-		m.StateMu.Lock()
-		m.State[msg.Key] = msg.Value
-		m.StateMu.Unlock()
-		log.Trace("TUI StateUpdate: %s = %v", msg.Key, msg.Value)
-		return m, nil
-
-	case StateBatchUpdateMsg:
-		// Handle batch state updates
-		m.StateMu.Lock()
-		for key, value := range msg.Updates {
-			m.State[key] = value
+		if msg.Type == tea.KeyCtrlC {
+			// Always intercept Ctrl+C regardless of focus
+			return m, tea.Quit
 		}
-		m.StateMu.Unlock()
-		log.Trace("TUI StateBatchUpdate: %d keys", len(msg.Updates))
-		return m, nil
+		// For other keys, continue to dispatch phase
+	case tea.WindowSizeMsg:
+		// Window size changes are handled globally
+		// but also need to be propagated to all components
+		// Store dimensions and let the handler process it
+	}
 
-	case InputUpdateMsg:
-		// Handle input component updates
-		m.StateMu.Lock()
-		m.State[msg.ID] = msg.Value
-		m.StateMu.Unlock()
-		log.Trace("TUI InputUpdate: %s = %s", msg.ID, msg.Value)
-		return m, nil
+	// Dispatch phase: Route message to focused component
+	// Priority 2: Targeted component handling
+	msgType := getMsgTypeName(msg)
+	log.Trace("TUI Update: Received message of type %s", msgType)
 
-	case StreamChunkMsg:
-		// Handle streaming chunk (e.g., from AI)
-		return m.handleStreamChunk(msg)
+	// Check if we have a targeted message first
+	if msgType == "TargetedMsg" {
+		// This is already handled by the TargetedMsg handler
+		if handler, exists := m.MessageHandlers[msgType]; exists {
+			log.Trace("TUI Update: Using handler for message type %s", msgType)
+			return handler(m, msg)
+		}
+	}
 
-	case StreamDoneMsg:
-		// Handle stream completion
-		return m.handleStreamDone(msg)
+	// For regular messages, try to dispatch to focused component
+	if m.CurrentFocus != "" {
+		// Check if there's a registered component with this focus ID
+		if comp, exists := m.Components[m.CurrentFocus]; exists {
+			updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
+			if response == core.Handled {
+				log.Trace("TUI Update: Message handled by focused component %s", m.CurrentFocus)
+				m.Components[m.CurrentFocus].Instance = updatedComp
+				return m, cmd
+			}
+			// If not handled, continue to global handlers
+		}
+	}
 
-	case ErrorMsg:
-		// Handle error
-		return m.handleError(msg)
+	// Bubble phase: Global message handlers
+	// Priority 3: Global handlers
+	if handler, exists := m.MessageHandlers[msgType]; exists {
+		log.Trace("TUI Update: Using handler for message type %s", msgType)
+		return handler(m, msg)
+	}
 
-	case QuitMsg:
-		// Handle quit request
-		return m, tea.Quit
+	log.Trace("TUI Update: No handler found for message type %s, using default behavior", msgType)
+	// Fallback to default behavior for unhandled message types
+	return m, nil
+}
 
+// getMsgTypeName returns a string representation of the message type for routing
+func getMsgTypeName(msg tea.Msg) string {
+	switch msg.(type) {
+	case tea.WindowSizeMsg:
+		return "tea.WindowSizeMsg"
+	case tea.KeyMsg:
+		return "tea.KeyMsg"
+	case tea.MouseMsg:
+		return "tea.MouseMsg"
+	case core.TargetedMsg:
+		return "TargetedMsg"
+	case core.ActionMsg:
+		return "ActionMsg"
+	case core.ProcessResultMsg:
+		return "ProcessResultMsg"
+	case core.StateUpdateMsg:
+		return "StateUpdateMsg"
+	case core.StateBatchUpdateMsg:
+		return "StateBatchUpdateMsg"
+	case core.InputUpdateMsg:
+		return "InputUpdateMsg"
+	case core.StreamChunkMsg:
+		return "StreamChunkMsg"
+	case core.StreamDoneMsg:
+		return "StreamDoneMsg"
+	case core.ErrorMessage:
+		return "ErrorMessage"
+	case core.QuitMsg:
+		return "QuitMsg"
+	case core.RefreshMsg:
+		return "RefreshMsg"
+	case core.LogMsg:
+		return "LogMsg"
+	case core.MenuActionTriggered:
+		return "MenuActionTriggered"
 	default:
-		return m, nil
+		return "unknown"
 	}
 }
 
@@ -129,240 +340,222 @@ func (m *Model) View() string {
 
 // handleKeyPress processes keyboard input and executes bound actions.
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Default quit key
+	// Capture phase: Global system keys
 	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
 	}
 
-	// Handle input component if there's a focused input
+	// Dispatch phase: Route to focused component
 	if m.CurrentFocus != "" {
-		if inputModel, exists := m.InputModels[m.CurrentFocus]; exists {
-			// Check if the key pressed is Escape to blur the input
-			if msg.Type == tea.KeyEsc {
-				// Blur the input and clear focus
-				inputModel.Blur()
-				m.InputModels[m.CurrentFocus] = inputModel
-				m.CurrentFocus = ""
-				log.Trace("Input blurred via ESC, focus cleared")
-				// Now that focus is cleared, we should continue to check for key bindings
-				// But since we return here, we'll fall through to general key handling
-				return m, nil
-			}
-			
-			updatedInputModel, cmd := components.HandleInputUpdate(msg, inputModel)
-			m.InputModels[m.CurrentFocus] = &updatedInputModel
-			
-			// Update the state with the current input value
-			m.StateMu.Lock()
-			m.State[m.CurrentFocus] = updatedInputModel.Value()
-			m.StateMu.Unlock()
-			
-			// If Enter is pressed, submit the form
-			if msg.Type == tea.KeyEnter {
-				log.Trace("Input submitted: %s = %s", m.CurrentFocus, updatedInputModel.Value())
-				// Submit form action if bound
-				if m.Config.Bindings != nil {
-					if action, ok := m.Config.Bindings["Enter"]; ok {
-						log.Trace("TUI KeyPress: Enter -> action")
-						return m, m.executeAction(&action)
-					}
+		// Check if there's a registered component with this focus ID
+		if comp, exists := m.Components[m.CurrentFocus]; exists {
+			updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
+			if response == core.Handled {
+				// Update the component instance
+				m.Components[m.CurrentFocus].Instance = updatedComp
+				// Sync input state for input components
+				if inputWrapper, ok := updatedComp.(*components.InputComponentWrapper); ok {
+					m.syncInputComponentState(m.CurrentFocus, inputWrapper)
 				}
+				return m, cmd
 			}
-			
-			// If Tab is pressed, move to next input
-			if msg.Type == tea.KeyTab {
-				log.Trace("Tab pressed, moving to next input")
-				// Call focus next input
-				m.focusNextInput()
-				// Update focus states in input models
-				for id, inputModel := range m.InputModels {
-					if id == m.CurrentFocus {
-						inputModel.Model.Focus()
-					} else {
-						inputModel.Model.Blur()
-					}
-					m.InputModels[id] = inputModel
-				}
-			}
-			return m, cmd
 		}
+
+		// All components should be in the new system (Components)
+		// No legacy handling needed
 	}
-	
-	// If no specific component has focus, handle tab navigation between components
-	if msg.Type == tea.KeyTab {
-		log.Trace("Tab pressed, cycling focus between components, current focus: %s", m.CurrentFocus)
-		// Cycle focus between available components
-		// First, cycle through inputs if available
-		if len(m.InputModels) > 0 {
-			if m.CurrentFocus == "" {
-				// If no focus, start with first input
-				for id := range m.InputModels {
-					m.CurrentFocus = id
-					m.InputModels[id].Model.Focus()
-					log.Trace("Focused input: %s", id)
-					break
-				}
-			} else {
-				// Cycle to next input
-				m.focusNextInput()
-				for id, inputModel := range m.InputModels {
-					if id == m.CurrentFocus {
-						inputModel.Model.Focus()
-					} else {
-						inputModel.Model.Blur()
-					}
-					m.InputModels[id] = inputModel
-				}
-			}
-		} else if len(m.MenuModels) > 0 {
-			// If no inputs but there are menus, cycle to menu
-			for id := range m.MenuModels {
-				m.CurrentFocus = "menu:" + id
-				log.Trace("Focused menu: %s", id)
-				break
-			}
+
+	// Bubble phase: Handle general navigation and bound actions
+	// Handle ESC key to clear focus
+	if msg.Type == tea.KeyEsc && m.CurrentFocus != "" {
+		// Clear focus from component if it exists in Components map
+		if comp, exists := m.Components[m.CurrentFocus]; exists {
+			comp.Instance.SetFocus(false)
 		}
+		// Clear focus
+		m.CurrentFocus = ""
 		return m, nil
 	}
 
-	// Handle menu component if there's a focused menu
-	log.Trace("TUI KeyPress: Checking for menu models, found %d, current focus: %s", len(m.MenuModels), m.CurrentFocus)
-	for menuID, menuModel := range m.MenuModels {
-		log.Trace("TUI KeyPress: Checking menu model with ID: %s, current focus: %s", menuID, m.CurrentFocus)
-		// If we have a focused menu, handle its navigation
-		if m.CurrentFocus == "menu:"+menuID {
-			log.Trace("TUI KeyPress: Handling navigation for menu: %s", menuID)
-			// Handle menu navigation keys - pass all key events to the menu handler
-			updatedMenuModel, cmd := components.HandleMenuUpdate(msg, menuModel)
-			m.MenuModels[menuID] = &updatedMenuModel
-			
-			// Update state with selected item
-			if selectedItem, ok := updatedMenuModel.GetSelectedItem(); ok {
-				m.StateMu.Lock()
-				// Check if the selected item has actually changed
-				oldSelectedItem, existed := m.State[menuID+"_selected"]
-				m.State[menuID+"_selected"] = selectedItem
-				m.StateMu.Unlock()
-				log.Trace("TUI KeyPress: Updated selected item for %s: %s", menuID, selectedItem.Title)
-				
-				// If the selected item has changed, send a refresh command to update UI
-				if !existed {
-					// If there was no previous selection, this is a change
-					log.Trace("TUI KeyPress: First selection for %s, sending refresh command", menuID)
-					// Refresh the UI to show the selected item
-					return m, tea.Batch(cmd, func() tea.Msg { 
-						// Create a custom message to trigger refresh
-						return struct{}{} // Generic struct as refresh signal
-					})
-				} else if oldMenuItem, ok := oldSelectedItem.(components.MenuItem); ok {
-					// Compare the titles to determine if selection changed
-					if oldMenuItem.Title != selectedItem.Title {
-						log.Trace("TUI KeyPress: Selection changed for %s (%s -> %s), sending refresh command", menuID, oldMenuItem.Title, selectedItem.Title)
-						// Refresh the UI to reflect the new selection
-						return m, tea.Batch(cmd, func() tea.Msg { 
-							// Create a custom message to trigger refresh
-							return struct{}{} // Generic struct as refresh signal
-						})
-					}
-				}
-			}
-			
-			// If the command is to trigger a menu action, handle it
-			if cmd != nil {
-				// Create a temporary command to check its type
-				tempCmd := cmd
-				// Execute temp command to get the message
-				testMsg := tempCmd()
-				if menuActionMsg, ok := testMsg.(components.MenuActionTriggered); ok {
-					log.Trace("TUI KeyPress: Menu action triggered for %s: %s", menuActionMsg.Item.Title, menuActionMsg.Action)
-					// Execute the action associated with the selected menu item
-					action := &Action{}
-					// Convert map to Action struct
-					if process, ok := menuActionMsg.Action["process"].(string); ok {
-						action.Process = process
-					}
-					if script, ok := menuActionMsg.Action["script"].(string); ok {
-						action.Script = script
-					}
-					if method, ok := menuActionMsg.Action["method"].(string); ok {
-						action.Method = method
-					}
-					if args, ok := menuActionMsg.Action["args"].([]interface{}); ok {
-						action.Args = args
-					}
-					
-					log.Trace("TUI KeyPress: Executing action for %s: %s", menuActionMsg.Item.Title, action.Process)
-					return m, m.executeAction(action)
-				}
-			}
-			
-			return m, cmd
-		} else {
-			log.Trace("TUI KeyPress: Menu %s is not focused (focus: %s)", menuID, m.CurrentFocus)
+	if msg.Type == tea.KeyTab {
+		return m.handleTabNavigation()
+	}
+
+	// Handle bound actions for keys
+	return m.handleBoundActions(msg)
+}
+
+// handleTabNavigation handles tab navigation between components
+func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
+	log.Trace("Tab pressed, cycling focus between components, current focus: %s", m.CurrentFocus)
+
+	// First, cycle through inputs if available
+	hasInputs := false
+	for _, comp := range m.Components {
+		if comp.Type == "input" {
+			hasInputs = true
+			break
 		}
 	}
-	log.Trace("TUI KeyPress: Finished checking menu models, no focused menu processed")
 
+	if hasInputs {
+		if m.CurrentFocus == "" {
+			// If no focus, start with first input
+			for id, comp := range m.Components {
+				if comp.Type == "input" {
+					m.CurrentFocus = id
+					comp.Instance.SetFocus(true)
+					log.Trace("Focused input: %s", id)
+					break
+				}
+			}
+			m.updateInputFocusStates()
+		} else {
+			// Cycle to next input
+			m.focusNextInput()
+			m.updateInputFocusStates()
+		}
+	}
+	// Note: Menu components are handled through their own UpdateMsg method
+	return m, nil
+}
 
+// handleMenuSelectionChange handles changes in menu selection
+func (m *Model) handleMenuSelectionChange(menuID string, selectedItem interface{}) {
+	m.StateMu.Lock()
+	oldSelectedItem, existed := m.State[menuID+"_selected"]
+	m.State[menuID+"_selected"] = selectedItem
+	m.StateMu.Unlock()
+	log.Trace("TUI KeyPress: Updated selected item for %s: %v", menuID, selectedItem)
+
+	// If the selected item has changed, send a refresh command to update UI
+	if !existed {
+		// If there was no previous selection, this is a change
+		log.Trace("TUI KeyPress: First selection for %s, sending refresh command", menuID)
+		// Refresh the UI to show the selected item
+		if m.Program != nil {
+			m.Program.Send(core.RefreshMsg{})
+		}
+	} else {
+		// Compare the items to determine if selection changed
+		if oldSelectedItem != selectedItem {
+			log.Trace("TUI KeyPress: Selection changed for %s (%v -> %v), sending refresh command", menuID, oldSelectedItem, selectedItem)
+			// Refresh the UI to reflect the new selection
+			if m.Program != nil {
+				m.Program.Send(core.RefreshMsg{})
+			}
+		}
+	}
+}
+
+// convertMenuActionToAction converts a menu action map to an Action struct
+func (m *Model) convertMenuActionToAction(menuAction map[string]interface{}) *core.Action {
+	action := &core.Action{}
+	// Convert map to Action struct
+	if process, ok := menuAction["process"].(string); ok {
+		action.Process = process
+	}
+	if script, ok := menuAction["script"].(string); ok {
+		action.Script = script
+	}
+	if method, ok := menuAction["method"].(string); ok {
+		action.Method = method
+	}
+	if args, ok := menuAction["args"].([]interface{}); ok {
+		action.Args = args
+	}
+	return action
+}
+
+// updateInputFocusStates updates the focus states of all components
+func (m *Model) updateInputFocusStates() {
+	for id, compInstance := range m.Components {
+		if id == m.CurrentFocus {
+			compInstance.Instance.SetFocus(true)
+		} else {
+			compInstance.Instance.SetFocus(false)
+		}
+	}
+}
+
+// isMenuFocused checks if the current focus is on a menu component
+func (m *Model) isMenuFocused() bool {
+	if m.CurrentFocus == "" {
+		return false
+	}
+	if comp, exists := m.Components[m.CurrentFocus]; exists {
+		return comp.Type == "menu"
+	}
+	return false
+}
+
+// handleBoundActions handles bound actions for keys
+func (m *Model) handleBoundActions(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Build key string for matching
 	key := msg.String()
-	
+
 	// Also try single rune if available (for single character keys like 'a', '+', etc.)
 	if len(msg.Runes) == 1 {
 		char := string(msg.Runes[0])
 		// Check for bound actions with the character
 		if m.Config.Bindings != nil {
 			if action, ok := m.Config.Bindings[char]; ok {
-				// If the action is a quit action, execute it
-				if action.Process == "tui.quit" || action.Process == "tui.exit" {
-					log.Trace("TUI KeyPress: %s -> quit action", char)
-					return m, m.executeAction(&action)
-				} else {
-					log.Trace("TUI KeyPress: %s -> action", char)
-					return m, m.executeAction(&action)
-				}
+				return m.executeBoundAction(&action, char)
 			}
 		}
 	}
-	
+
 	// Check for bound actions with full key string
 	if m.Config.Bindings != nil {
 		if action, ok := m.Config.Bindings[key]; ok {
-			// If the action is a quit action, execute it
-			if action.Process == "tui.quit" || action.Process == "tui.exit" {
-				log.Trace("TUI KeyPress: %s -> quit action", key)
-				return m, m.executeAction(&action)
-			} else {
-				log.Trace("TUI KeyPress: %s -> action", key)
-				return m, m.executeAction(&action)
-			}
+			return m.executeBoundAction(&action, key)
 		}
 	}
 
 	return m, nil
 }
 
-// isMenuFocus checks if the current focus is on a menu component
-func (m *Model) isMenuFocus() bool {
-	if m.CurrentFocus == "" {
-		return false
+// executeBoundAction executes an action bound to a key
+func (m *Model) executeBoundAction(action *core.Action, key string) (tea.Model, tea.Cmd) {
+	// If the action is a quit action, execute it
+	if action.Process == "tui.quit" || action.Process == "tui.exit" {
+		log.Trace("TUI KeyPress: %s -> quit action", key)
+		return m, m.executeAction(action)
+	} else {
+		log.Trace("TUI KeyPress: %s -> action", key)
+		return m, m.executeAction(action)
 	}
-	return strings.HasPrefix(m.CurrentFocus, "menu:")
 }
 
 // handleProcessResult processes the result from a Yao Process execution.
-func (m *Model) handleProcessResult(msg ProcessResultMsg) (tea.Model, tea.Cmd) {
-	if msg.Target != "" {
-		m.StateMu.Lock()
-		m.State[msg.Target] = msg.Data
-		m.StateMu.Unlock()
-		log.Trace("TUI ProcessResult: %s = %v", msg.Target, msg.Data)
+func (m *Model) handleProcessResult(msg core.ProcessResultMsg) (tea.Model, tea.Cmd) {
+	if msg.Error != nil {
+		// Handle error case
+		log.Error("TUI ProcessResult Error: %v", msg.Error)
+		if msg.Target != "" {
+			m.StateMu.Lock()
+			m.State[msg.Target] = msg.Error.Error()
+			m.StateMu.Unlock()
+		} else {
+			// Store error in default error field
+			m.StateMu.Lock()
+			m.State["__error"] = msg.Error.Error()
+			m.StateMu.Unlock()
+		}
+	} else {
+		// Handle success case
+		if msg.Target != "" {
+			m.StateMu.Lock()
+			m.State[msg.Target] = msg.Data
+			m.StateMu.Unlock()
+			log.Trace("TUI ProcessResult: %s = %v", msg.Target, msg.Data)
+		}
 	}
 	return m, nil
 }
 
 // handleStreamChunk handles a streaming data chunk.
-func (m *Model) handleStreamChunk(msg StreamChunkMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleStreamChunk(msg core.StreamChunkMsg) (tea.Model, tea.Cmd) {
 	m.StateMu.Lock()
 	defer m.StateMu.Unlock()
 
@@ -383,7 +576,7 @@ func (m *Model) handleStreamChunk(msg StreamChunkMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleStreamDone handles stream completion.
-func (m *Model) handleStreamDone(msg StreamDoneMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleStreamDone(msg core.StreamDoneMsg) (tea.Model, tea.Cmd) {
 	log.Trace("TUI StreamDone: %s", msg.ID)
 	// Mark stream as complete in state
 	m.StateMu.Lock()
@@ -393,8 +586,12 @@ func (m *Model) handleStreamDone(msg StreamDoneMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleError handles error messages.
-func (m *Model) handleError(msg ErrorMsg) (tea.Model, tea.Cmd) {
-	log.Error("TUI Error: %v", msg)
+func (m *Model) handleError(msg core.ErrorMessage) (tea.Model, tea.Cmd) {
+	if msg.LogLevel == "warn" {
+		log.Warn("TUI Warning: %v", msg)
+	} else {
+		log.Error("TUI Error: %v", msg)
+	}
 
 	// Store error in state
 	m.StateMu.Lock()
@@ -406,7 +603,7 @@ func (m *Model) handleError(msg ErrorMsg) (tea.Model, tea.Cmd) {
 
 // executeAction creates a command to execute an action.
 // This returns a tea.Cmd that will be executed asynchronously.
-func (m *Model) executeAction(action *Action) tea.Cmd {
+func (m *Model) executeAction(action *core.Action) tea.Cmd {
 	if action == nil {
 		return nil
 	}
@@ -414,9 +611,10 @@ func (m *Model) executeAction(action *Action) tea.Cmd {
 	// Validate action
 	if err := action.Validate(); err != nil {
 		return func() tea.Msg {
-			return ErrorMsg{
-				Err:     err,
-				Context: "action validation",
+			return core.ProcessResultMsg{
+				Data:   nil,
+				Target: action.OnError,
+				Error:  err,
 			}
 		}
 	}
@@ -433,17 +631,24 @@ func (m *Model) executeAction(action *Action) tea.Cmd {
 	// Direct state update (if payload is present)
 	if action.Payload != nil && len(action.Payload) > 0 {
 		return func() tea.Msg {
-			return StateBatchUpdateMsg{
+			return core.StateBatchUpdateMsg{
 				Updates: action.Payload,
 			}
 		}
 	}
 
-	return nil
+	// If no process, script, or payload, return a success message
+	return func() tea.Msg {
+		return core.ProcessResultMsg{
+			Data:   nil,
+			Target: "",
+			Error:  nil,
+		}
+	}
 }
 
 // executeProcessAction creates a command to execute a Yao Process.
-func (m *Model) executeProcessAction(action *Action) tea.Cmd {
+func (m *Model) executeProcessAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		// This will be implemented when we integrate with Yao's Process system
 		// For now, return a placeholder
@@ -451,21 +656,23 @@ func (m *Model) executeProcessAction(action *Action) tea.Cmd {
 
 		result, err := executeProcessAction(m, action)
 		if err != nil {
-			return ErrorMsg{
-				Err:     err,
-				Context: "process execution failed",
+			return core.ProcessResultMsg{
+				Data:   nil,
+				Target: action.OnError,
+				Error:  err,
 			}
 		}
-		
-		return ProcessResultMsg{
-			Data:    result,
-			Target:  action.OnSuccess,
+
+		return core.ProcessResultMsg{
+			Data:   result,
+			Target: action.OnSuccess,
+			Error:  nil,
 		}
 	}
 }
 
 // executeScriptAction creates a command to execute a script method.
-func (m *Model) executeScriptAction(action *Action) tea.Cmd {
+func (m *Model) executeScriptAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		// This will be implemented when we add script support
 		log.Trace("TUI ExecuteScript: %s.%s", action.Script, action.Method)
@@ -473,15 +680,17 @@ func (m *Model) executeScriptAction(action *Action) tea.Cmd {
 		result, err := executeScriptAction(m, action)
 		if err != nil {
 			log.Error("TUI ExecuteScript error: %v", err)
-			return ErrorMsg{
-				Err:     err,
-				Context: "script execution failed",
+			return core.ProcessResultMsg{
+				Data:   nil,
+				Target: action.OnError,
+				Error:  err,
 			}
 		}
-		
-		return ProcessResultMsg{
-			Data:    result,
-			Target:  action.OnSuccess,
+
+		return core.ProcessResultMsg{
+			Data:   result,
+			Target: action.OnSuccess,
+			Error:  nil,
 		}
 	}
 }
@@ -506,7 +715,7 @@ func (m *Model) GetState(key string) (interface{}, bool) {
 // It sends a message to the Model's update loop.
 func (m *Model) SetState(key string, value interface{}) {
 	if m.Program != nil {
-		m.Program.Send(StateUpdateMsg{
+		m.Program.Send(core.StateUpdateMsg{
 			Key:   key,
 			Value: value,
 		})
@@ -516,7 +725,7 @@ func (m *Model) SetState(key string, value interface{}) {
 // UpdateState safely updates multiple state values at once.
 func (m *Model) UpdateState(updates map[string]interface{}) {
 	if m.Program != nil {
-		m.Program.Send(StateBatchUpdateMsg{
+		m.Program.Send(core.StateBatchUpdateMsg{
 			Updates: updates,
 		})
 	}
@@ -527,14 +736,14 @@ func (m *Model) UpdateState(updates map[string]interface{}) {
 func (m *Model) getStateValue(key string) (interface{}, bool) {
 	m.StateMu.RLock()
 	defer m.StateMu.RUnlock()
-	
+
 	// Handle nested keys separated by dots (e.g., "user.name")
 	keys := strings.Split(key, ".")
 	currentValue, exists := m.State[keys[0]]
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Navigate through nested maps
 	for i := 1; i < len(keys); i++ {
 		if currentMap, ok := currentValue.(map[string]interface{}); ok {
@@ -547,7 +756,7 @@ func (m *Model) getStateValue(key string) (interface{}, bool) {
 			return nil, false
 		}
 	}
-	
+
 	return currentValue, true
 }
 
@@ -560,15 +769,28 @@ func (m *Model) setStateValue(key string, value interface{}) {
 }
 
 // focusNextInput finds the next input component and sets it as focused
+// unwrapTargetedMsg checks if the message is a TargetedMsg and returns the inner message if the target matches
+// Returns (inner_message, is_targeted_msg, should_process)
+func (m *Model) unwrapTargetedMsg(msg tea.Msg, targetID string) (tea.Msg, bool, bool) {
+	if targetedMsg, isTargeted := msg.(core.TargetedMsg); isTargeted {
+		// If target ID is specified and doesn't match, don't process
+		if targetID != "" && targetedMsg.TargetID != targetID {
+			return nil, true, false
+		}
+		return targetedMsg.InnerMsg, true, true
+	}
+	return msg, false, true
+}
+
 func (m *Model) focusNextInput() {
-	// Find all input component IDs in the layout
+	// Find all input component IDs from Components map
 	inputIDs := []string{}
-	for _, comp := range m.Config.Layout.Children {
-		if comp.Type == "input" && comp.ID != "" {
-			inputIDs = append(inputIDs, comp.ID)
+	for id, comp := range m.Components {
+		if comp.Type == "input" {
+			inputIDs = append(inputIDs, id)
 		}
 	}
-	
+
 	// Find current position and move to next
 	currentIndex := -1
 	for i, id := range inputIDs {
@@ -577,7 +799,7 @@ func (m *Model) focusNextInput() {
 			break
 		}
 	}
-	
+
 	// Move to next input, wrap around if needed
 	if currentIndex >= 0 && currentIndex < len(inputIDs)-1 {
 		m.CurrentFocus = inputIDs[currentIndex+1]
@@ -586,3 +808,10 @@ func (m *Model) focusNextInput() {
 	}
 }
 
+// syncInputComponentState synchronizes the state of an input component
+func (m *Model) syncInputComponentState(id string, wrapper *components.InputComponentWrapper) {
+	// Update state with current value from component
+	m.StateMu.Lock()
+	m.State[id] = wrapper.GetValue()
+	m.StateMu.Unlock()
+}

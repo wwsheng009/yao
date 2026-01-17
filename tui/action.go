@@ -3,15 +3,18 @@ package tui
 import (
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
+	"github.com/yaoapp/yao/tui/components"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // ExecuteAction executes an action synchronously
 // This is used by the JavaScript API to execute actions from scripts
-func ExecuteAction(model *Model, action *Action) (interface{}, error) {
+func ExecuteAction(model *Model, action *core.Action) (interface{}, error) {
 	if action == nil {
 		return nil, fmt.Errorf("action is nil")
 	}
@@ -40,7 +43,7 @@ func ExecuteAction(model *Model, action *Action) (interface{}, error) {
 }
 
 // executeProcessAction executes a Yao Process action
-func executeProcessAction(model *Model, action *Action) (interface{}, error) {
+func executeProcessAction(model *Model, action *core.Action) (interface{}, error) {
 	log.Trace("TUI ExecuteProcess: %s", action.Process)
 
 	// Handle TUI-specific built-in processes
@@ -113,14 +116,14 @@ func executeProcessAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessQuitAction handles the quit action with model
 // Usage: Called internally by executeProcessAction
-func ProcessQuitAction(model *Model, action *Action) (interface{}, error) {
+func ProcessQuitAction(model *Model, action *core.Action) (interface{}, error) {
 	// In the Bubble Tea framework, we typically send a tea.QuitMsg
 	// rather than directly calling Quit() to allow graceful shutdown
 	if model.Program != nil {
 		// Check if we're in a test environment
 		if _, isTest := os.LookupEnv("TESTING_TUI"); !isTest {
 			// Send quit message to the program only in non-test environments
-			model.Program.Send(QuitMsg{})
+			model.Program.Send(core.QuitMsg{})
 		}
 	}
 	return map[string]interface{}{"action": "quit"}, nil
@@ -128,47 +131,57 @@ func ProcessQuitAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessFocusNextAction handles focusing the next input
 // Usage: Called internally by executeProcessAction
-func ProcessFocusNextAction(model *Model, action *Action) (interface{}, error) {
+func ProcessFocusNextAction(model *Model, action *core.Action) (interface{}, error) {
 	model.focusNextInput()
-	// Update focus states in input models
-	for id, inputModel := range model.InputModels {
-		if id == model.CurrentFocus {
-			inputModel.Model.Focus()
-		} else {
-			inputModel.Model.Blur()
-		}
-		model.InputModels[id] = inputModel
-	}
+	model.updateInputFocusStates()
 	return map[string]interface{}{"action": "focus_next", "message": "Focus next input"}, nil
 }
 
 // ProcessFocusPrevAction handles focusing the previous input
 // Usage: Called internally by executeProcessAction
-func ProcessFocusPrevAction(model *Model, action *Action) (interface{}, error) {
+func ProcessFocusPrevAction(model *Model, action *core.Action) (interface{}, error) {
 	// For now, just return as not implemented; prev focus would need more complex logic
 	return map[string]interface{}{"action": "focus_prev", "message": "Focus previous input"}, nil
 }
 
 // ProcessFormSubmitAction handles form submission
 // Usage: Called internally by executeProcessAction
-func ProcessFormSubmitAction(model *Model, action *Action) (interface{}, error) {
+func ProcessFormSubmitAction(model *Model, action *core.Action) (interface{}, error) {
 	// Collect all input values and update state
 	model.StateMu.Lock()
-	for id, inputModel := range model.InputModels {
-		model.State[id] = inputModel.Value()
+	for id, comp := range model.Components {
+		if comp.Type == "input" {
+			if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
+				model.State[id] = inputWrapper.GetValue()
+			}
+		}
 	}
 	model.StateMu.Unlock()
+
+	// Publish FORM_SUBMIT_SUCCESS event for component communication
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "form_submit",
+			Action: "FORM_SUBMIT_SUCCESS",
+			Data:   map[string]interface{}{"timestamp": time.Now()},
+		})
+	}
+
 	return map[string]interface{}{"action": "submit_form", "message": "Form submitted"}, nil
 }
 
 // ProcessSubmitAction handles general data submission
 // Usage: Called internally by executeProcessAction
-func ProcessSubmitAction(model *Model, action *Action) (interface{}, error) {
+func ProcessSubmitAction(model *Model, action *core.Action) (interface{}, error) {
 	// For general submission, we can collect input values similar to form submission
 	// but may also include additional processing based on action parameters
 	model.StateMu.Lock()
-	for id, inputModel := range model.InputModels {
-		model.State[id] = inputModel.Value()
+	for id, comp := range model.Components {
+		if comp.Type == "input" {
+			if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
+				model.State[id] = inputWrapper.GetValue()
+			}
+		}
 	}
 	model.StateMu.Unlock()
 
@@ -179,7 +192,7 @@ func ProcessSubmitAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessRefreshAction handles refreshing the UI
 // Usage: Called internally by executeProcessAction
-func ProcessRefreshAction(model *Model, action *Action) (interface{}, error) {
+func ProcessRefreshAction(model *Model, action *core.Action) (interface{}, error) {
 	// Send refresh command
 	if model.Program != nil {
 		model.Program.Send(tea.WindowSizeMsg{Width: model.Width, Height: model.Height})
@@ -189,7 +202,7 @@ func ProcessRefreshAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessClearAction handles clearing the screen
 // Usage: Called internally by executeProcessAction
-func ProcessClearAction(model *Model, action *Action) (interface{}, error) {
+func ProcessClearAction(model *Model, action *core.Action) (interface{}, error) {
 	if model.Program != nil {
 		model.Program.Send(tea.ClearScreen())
 	}
@@ -198,7 +211,7 @@ func ProcessClearAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessSuspendAction handles suspending the application
 // Usage: Called internally by executeProcessAction
-func ProcessSuspendAction(model *Model, action *Action) (interface{}, error) {
+func ProcessSuspendAction(model *Model, action *core.Action) (interface{}, error) {
 	if model.Program != nil {
 		model.Program.Send(tea.SuspendMsg{})
 	}
@@ -207,27 +220,26 @@ func ProcessSuspendAction(model *Model, action *Action) (interface{}, error) {
 
 // ProcessInputEscapeAction handles escaping from input component
 // Usage: Called internally by executeProcessAction
-func ProcessInputEscapeAction(model *Model, action *Action, inputID string) (interface{}, error) {
+func ProcessInputEscapeAction(model *Model, action *core.Action, inputID string) (interface{}, error) {
 	// Blur the specified input component to exit edit mode
-	if inputModel, exists := model.InputModels[inputID]; exists {
-		inputModel.Blur()
+	if comp, exists := model.Components[inputID]; exists && comp.Type == "input" {
+		comp.Instance.SetFocus(false)
 		// Update the model's focus if this was the focused input
 		if model.CurrentFocus == inputID {
 			model.CurrentFocus = ""
 		}
-		model.InputModels[inputID] = inputModel
 		return map[string]interface{}{
-			"action": "input_escape", 
+			"action":  "input_scape",
 			"message": fmt.Sprintf("Input %s escaped edit mode", inputID),
 			"inputID": inputID,
 		}, nil
 	}
-	
+
 	return nil, fmt.Errorf("input component %s not found", inputID)
 }
 
 // executeScriptAction executes a script method action
-func executeScriptAction(model *Model, action *Action) (interface{}, error) {
+func executeScriptAction(model *Model, action *core.Action) (interface{}, error) {
 	log.Trace("TUI ExecuteScript: %s.%s", action.Script, action.Method)
 
 	// Load the script
@@ -278,6 +290,14 @@ func prepareActionArguments(rawArgs []interface{}, model *Model) ([]interface{},
 // evaluateExpressions recursively evaluates {{}} expressions in the given value
 // against the model's state and returns the resolved value
 func evaluateExpressions(value interface{}, model *Model) (interface{}, error) {
+	// Use the core.EvaluateExpressions function with a closure to access model state
+	getStateFunc := func(key string) (interface{}, bool) {
+		model.StateMu.RLock()
+		defer model.StateMu.RUnlock()
+		value, exists := model.State[key]
+		return value, exists
+	}
+	return core.EvaluateExpressions(value, getStateFunc)
 	switch v := value.(type) {
 	case string:
 		// Check if it's an expression like {{key}}
@@ -331,6 +351,7 @@ func evaluateExpressions(value interface{}, model *Model) (interface{}, error) {
 
 // trimWhitespace removes leading and trailing whitespace
 func trimWhitespace(s string) string {
+	return core.TrimWhitespace(s)
 	// Simple whitespace trimming - in a real implementation you might want to use strings.TrimSpace
 	// but we'll implement a basic version to avoid import issues
 	start := 0
