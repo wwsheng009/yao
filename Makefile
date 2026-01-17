@@ -596,6 +596,47 @@ debug1: clean
 	cp -f share/const.goe share/const.go
 	rm -f share/const.goe
 
+
+.PHONY: no-ui
+no-ui: clean
+	rm -rf dist/release
+	mkdir -p dist/release
+# rm -rf .tmp/data
+
+	mkdir -p .tmp/data/cui
+	
+	
+#	Building CUI v0.9
+	mkdir -p .tmp/data/cui/v0.9/dist
+	echo "CUI v0.9" > .tmp/data/cui/v0.9/dist/index.html
+	
+# 	dummy cui 1.0
+	echo "<html><body>CUI v1.0</body></html" > .tmp/data/cui/v1.0/index.html
+	echo "console.log('cui is not available');" > .tmp/data/cui/v1.0/umi.js
+	echo "console.log('cui is not available');" > .tmp/data/cui/v1.0/layouts__index.async.js
+
+# 	packing
+	cp -r ./ui .tmp/data/ui
+	cp -r ./yao .tmp/data/yao
+	cp -r sui/libsui .tmp/data/
+	find .tmp/data -name ".DS_Store" -type f -delete
+	go-bindata -fs -pkg data -o data/bindata.go -prefix ".tmp/data/" .tmp/data/...
+	rm -rf .tmp/data
+
+#	Replace PRVERSION
+	sed -ie "s/const PRVERSION = \"DEV\"/const PRVERSION = \"${COMMIT}-${NOW}-debug\"/g" share/const.go
+
+#   Making artifacts
+	mkdir -p dist
+	rm -f dist/release/yao-debug
+	CGO_ENABLED=1 GOARCH=amd64 GOOS=linux go build -v -o dist/release/yao-debug
+	chmod +x  dist/release/yao-debug
+	mv dist/release/yao-debug "${GOPATH}/bin/yao"
+	
+# 	Reset const 
+	cp -f share/const.goe share/const.go
+	rm -f share/const.goe
+
 # make clean
 .PHONY: clean
 clean: 
