@@ -87,7 +87,7 @@ func RenderTable(props TableProps, width int) string {
 		}
 	}
 
-	// Prepare rows with validation and column-specific styling
+	// Prepare rows with validation (no column-specific styling to avoid ANSI conflicts)
 	rows := make([]table.Row, 0, len(props.Data))
 	for _, rowData := range props.Data {
 		// Skip rows that don't match column count
@@ -100,7 +100,7 @@ func RenderTable(props TableProps, width int) string {
 			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
 				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
 			} else {
-				row[j] = formatCell(cell)
+			row[j] = formatCell(cell)
 			}
 		}
 		rows = append(rows, row)
@@ -140,7 +140,7 @@ func RenderTable(props TableProps, width int) string {
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
 			Header:   headerStyle,
-			Cell:     cellStyle,
+			// Cell:     cellStyle,
 			Selected: selectedStyle,
 		})
 	} else {
@@ -350,7 +350,7 @@ func NewTableModel(props TableProps, id string) TableModel {
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
 			Header:   headerStyle,
-			Cell:     cellStyle,
+			// Cell:     cellStyle,
 			Selected: selectedStyle,
 		})
 	} else {
@@ -425,11 +425,11 @@ func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, c
 				m.id,
 				core.EventRowSelected,
 				map[string]interface{}{
-					"rowIndex":        currentSelectedRow,
-					"prevRowIndex":    prevSelectedRow,
-					"rowData":         rowData,
-					"tableID":         m.id,
-					"navigationKey":   msg.String(),
+					"rowIndex":      currentSelectedRow,
+					"prevRowIndex":  prevSelectedRow,
+					"rowData":       rowData,
+					"tableID":       m.id,
+					"navigationKey": msg.String(),
 				},
 			)
 
@@ -508,12 +508,12 @@ func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 					w.model.id,
 					core.EventRowSelected,
 					map[string]interface{}{
-						"rowIndex":       currentSelectedRow,
-						"prevRowIndex":   prevSelectedRow,
-						"rowData":        rowData,
-						"tableID":        w.model.id,
-						"navigationKey":  msg.String(),
-						"isNavigation":   true,
+						"rowIndex":      currentSelectedRow,
+						"prevRowIndex":  prevSelectedRow,
+						"rowData":       rowData,
+						"tableID":       w.model.id,
+						"navigationKey": msg.String(),
+						"isNavigation":  true,
 					},
 				)
 
