@@ -138,6 +138,9 @@ type QuitMsg struct{}
 // RefreshMsg is sent to request a UI refresh
 type RefreshMsg struct{}
 
+// FocusFirstComponentMsg is sent to automatically focus the first focusable component
+type FocusFirstComponentMsg struct{}
+
 // LogMsg is sent to log a message
 type LogMsg struct {
 	Level   string
@@ -331,6 +334,7 @@ type MenuActionTriggered struct {
 const (
 	// Form events
 	EventFormSubmitSuccess   = "FORM_SUBMIT_SUCCESS"
+	EventFormSubmit          = "FORM_SUBMIT"
 	EventFormCancel          = "FORM_CANCEL"
 	EventFormValidationError = "FORM_VALIDATION_ERROR"
 
@@ -346,12 +350,15 @@ const (
 
 	// Navigation events
 	EventFocusChanged  = "FOCUS_CHANGED"
+	EventFocusNext     = "FOCUS_NEXT"
+	EventFocusPrev     = "FOCUS_PREV"
 	EventTabPressed    = "TAB_PRESSED"
 	EventEscapePressed = "ESCAPE_PRESSED"
 
 	// Menu events
 	EventMenuItemSelected    = "MENU_ITEM_SELECTED"
 	EventMenuActionTriggered = "MENU_ACTION_TRIGGERED"
+	EventMenuNavigate        = "MENU_NAVIGATE"
 	EventMenuSubmenuEntered  = "MENU_SUBMENU_ENTERED"
 	EventMenuSubmenuExited   = "MENU_SUBMENU_EXITED"
 

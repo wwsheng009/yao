@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // ViewportProps defines the properties for the Viewport component
@@ -133,4 +134,248 @@ func HandleViewportUpdate(msg tea.Msg, viewportModel *ViewportModel) (ViewportMo
 	var cmd tea.Cmd
 	viewportModel.Model, cmd = viewportModel.Model.Update(msg)
 	return *viewportModel, cmd
+}
+
+// NewViewportModel creates a new ViewportModel from ViewportProps
+func NewViewportModel(props ViewportProps, id string) ViewportModel {
+	vp := viewport.New(0, 0) // width and height will be set later
+
+	// Set content
+	content := props.Content
+
+	// Apply Markdown rendering if enabled
+	if props.EnableGlamour {
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0), // Use viewport width for wrapping
+		)
+		if err == nil {
+			rendered, err := renderer.Render(content)
+			if err == nil {
+				content = rendered
+			}
+		}
+	}
+
+	vp.SetContent(content)
+
+	// Set dimensions
+	viewWidth := props.Width
+	if viewWidth <= 0 {
+		viewWidth = 80 // Default width
+	}
+
+	viewHeight := props.Height
+	if viewHeight <= 0 {
+		// Estimate height based on content if not specified
+		lineCount := strings.Count(content, "\n") + 1
+		if lineCount < 10 {
+			viewHeight = lineCount + 2 // Add some padding
+		} else {
+			viewHeight = 15 // Default height
+		}
+	}
+
+	vp.Width = viewWidth
+	vp.Height = viewHeight
+
+	// Apply styles
+	style := props.Style.GetStyle()
+	if style.String() != lipgloss.NewStyle().String() {
+		vp.Style = style
+	}
+
+	return ViewportModel{
+		Model: vp,
+		props: props,
+	}
+}
+
+// Init initializes the viewport model
+func (m *ViewportModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the viewport
+func (m *ViewportModel) View() string {
+	return m.Model.View()
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *ViewportModel) GetID() string {
+	return "" // ViewportModel doesn't have an id field, return empty
+}
+
+// SetContent updates the viewport content
+func (m *ViewportModel) SetContent(content string) {
+	newContent := content
+
+	// Apply Markdown rendering if enabled
+	if m.props.EnableGlamour {
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0),
+		)
+		if err == nil {
+			rendered, err := renderer.Render(content)
+			if err == nil {
+				newContent = rendered
+			}
+		}
+	}
+
+	m.Model.SetContent(newContent)
+
+	// Auto-scroll to bottom if enabled
+	if m.props.AutoScroll {
+		m.Model.GotoBottom()
+	}
+}
+
+// GotoTop scrolls to the top of the viewport
+func (m *ViewportModel) GotoTop() {
+	m.Model.GotoTop()
+}
+
+// GotoBottom scrolls to the bottom of the viewport
+func (m *ViewportModel) GotoBottom() {
+	m.Model.GotoBottom()
+}
+
+// ViewportComponentWrapper wraps ViewportModel to implement ComponentInterface properly
+type ViewportComponentWrapper struct {
+	model *ViewportModel
+	id    string
+}
+
+// NewViewportComponentWrapper creates a wrapper that implements ComponentInterface
+func NewViewportComponentWrapper(viewportModel *ViewportModel, id string) *ViewportComponentWrapper {
+	return &ViewportComponentWrapper{
+		model: viewportModel,
+		id:    id,
+	}
+}
+
+func (w *ViewportComponentWrapper) Init() tea.Cmd {
+	return w.model.Init()
+}
+
+func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
+	switch msg := msg.(type) {
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+
+	case tea.KeyMsg:
+		// Handle scrolling keys
+		switch msg.Type {
+		case tea.KeyUp, tea.KeyPgUp:
+			// Handle scroll up
+			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
+			w.model = &updatedModel
+			return w, cmd, core.Handled
+
+		case tea.KeyDown, tea.KeyPgDown:
+			// Handle scroll down
+			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
+			w.model = &updatedModel
+			return w, cmd, core.Handled
+
+		case tea.KeyHome:
+			// Scroll to top
+			w.model.GotoTop()
+			return w, nil, core.Handled
+
+		case tea.KeyEnd:
+			// Scroll to bottom
+			w.model.GotoBottom()
+			return w, nil, core.Handled
+
+		case tea.KeyEsc:
+			// Pass ESC to parent for focus management
+			return w, nil, core.Ignored
+
+		default:
+			// For other key messages, update viewport
+			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
+			w.model = &updatedModel
+			return w, cmd, core.Handled
+		}
+
+	case core.ActionMsg:
+		// Handle internal action messages
+		switch msg.Action {
+		case core.EventDataLoaded:
+			// Update content when data is loaded
+			if data, ok := msg.Data.(map[string]interface{}); ok {
+				if content, ok := data["content"].(string); ok {
+					w.model.SetContent(content)
+					return w, nil, core.Handled
+				}
+			}
+		case core.EventDataRefreshed:
+			// Refresh content
+			if data, ok := msg.Data.(map[string]interface{}); ok {
+				if content, ok := data["content"].(string); ok {
+					w.model.SetContent(content)
+					return w, nil, core.Handled
+				}
+			}
+		}
+		return w, nil, core.Ignored
+
+	case tea.WindowSizeMsg:
+		// Handle window resize - update viewport dimensions
+		// Use new dimensions if not explicitly set
+		if w.model.props.Width <= 0 {
+			w.model.Model.Width = msg.Width
+		}
+		if w.model.props.Height <= 0 {
+			w.model.Model.Height = msg.Height
+		}
+		// Let viewport handle the resize
+		updatedModel, cmd := HandleViewportUpdate(msg, w.model)
+		w.model = &updatedModel
+		return w, cmd, core.Handled
+	}
+
+	// For other messages, update viewport
+	updatedModel, cmd := HandleViewportUpdate(msg, w.model)
+	w.model = &updatedModel
+	return w, cmd, core.Handled
+}
+
+func (w *ViewportComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *ViewportComponentWrapper) GetID() string {
+	return w.id
+}
+
+// SetContent updates the viewport content through the wrapper
+func (w *ViewportComponentWrapper) SetContent(content string) {
+	w.model.SetContent(content)
+}
+
+// GotoTop scrolls to the top of the viewport through the wrapper
+func (w *ViewportComponentWrapper) GotoTop() {
+	w.model.GotoTop()
+}
+
+// GotoBottom scrolls to the bottom of the viewport through the wrapper
+func (w *ViewportComponentWrapper) GotoBottom() {
+	w.model.GotoBottom()
+}
+
+// SetFocus sets or removes focus from the viewport component
+// Viewport doesn't have a traditional focus state, but we can track it
+func (w *ViewportComponentWrapper) SetFocus(focus bool) {
+	// Viewport doesn't have visual focus indicators like other components
+	// Focus tracking is mainly for keyboard event routing
+	// No action needed for viewport as it handles scroll keys globally
 }

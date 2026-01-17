@@ -111,16 +111,6 @@ func ProcessQuit(process *process.Process) interface{} {
 		"modelID": modelID,
 	}
 }
-	}
-
-	action := &core.Action{Process: "tui.quit"}
-	result, err := ProcessQuitAction(model, action)
-	if err != nil {
-	return map[string]interface{}{
-		"action":  "quit_sent",
-		"modelID": modelID,
-	}
-}
 
 // ProcessExecute executes a TUI action
 // This is called from within TUI when an action is triggered
@@ -183,15 +173,14 @@ func ProcessExit(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.exit"}
-	result, err := ProcessQuitAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(tea.QuitMsg{})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "exit_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessFocusNext focuses the next input component
@@ -207,15 +196,18 @@ func ProcessFocusNext(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.focus.next"}
-	result, err := ProcessFocusNextAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "system",
+			Action: core.EventFocusNext,
+			Data:   nil,
+		})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "focus_next_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessFocusPrev focuses the previous input component
@@ -231,15 +223,18 @@ func ProcessFocusPrev(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.focus.prev"}
-	result, err := ProcessFocusPrevAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "system",
+			Action: core.EventFocusPrev,
+			Data:   nil,
+		})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "focus_prev_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessFormSubmit submits the current form
@@ -255,15 +250,18 @@ func ProcessFormSubmit(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.form.submit"}
-	result, err := ProcessFormSubmitAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "form",
+			Action: core.EventFormSubmitSuccess,
+			Data:   map[string]interface{}{"timestamp": "now"},
+		})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "form_submit_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessSubmit handles general form/data submission
@@ -279,15 +277,18 @@ func ProcessSubmit(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.submit"}
-	result, err := ProcessSubmitAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "form",
+			Action: core.EventFormSubmit,
+			Data:   map[string]interface{}{"timestamp": "now"},
+		})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "submit_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessRefresh refreshes the TUI
@@ -303,15 +304,14 @@ func ProcessRefresh(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.refresh"}
-	result, err := ProcessRefreshAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.RefreshMsg{})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "refresh_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessClear clears the screen
@@ -327,15 +327,14 @@ func ProcessClear(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.clear"}
-	result, err := ProcessClearAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(tea.ClearScreen())
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "clear_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessSuspend suspends the TUI application
@@ -351,15 +350,14 @@ func ProcessSuspend(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.suspend"}
-	result, err := ProcessSuspendAction(model, action)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(tea.SuspendMsg{})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "suspend_sent",
+		"modelID": modelID,
+	}
 }
 
 // ProcessInputEscape handles escape from input component
@@ -376,15 +374,19 @@ func ProcessInputEscape(process *process.Process) interface{} {
 		}
 	}
 
-	action := &core.Action{Process: "tui.input.escape"}
-	result, err := ProcessInputEscapeAction(model, action, inputID)
-	if err != nil {
-		return map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     inputID,
+			Action: core.EventEscapePressed,
+			Data:   map[string]interface{}{"inputID": inputID},
+		})
 	}
-	return result
+
+	return map[string]interface{}{
+		"action":  "input_escape_sent",
+		"inputID": inputID,
+		"modelID": modelID,
+	}
 }
 
 // ProcessMenuSelect handles menu selection action
@@ -401,21 +403,18 @@ func ProcessMenuSelect(process *process.Process) interface{} {
 		}
 	}
 
-	// Get the menu component state and execute the selected item's action
-	_, exists := model.GetState("menuItems")
-	if !exists {
-		return map[string]interface{}{
-			"error":   "No menu items found",
-			"modelID": modelID,
-		}
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "menu",
+			Action: core.EventMenuItemSelected,
+			Data:   map[string]interface{}{"itemIndex": itemIndex},
+		})
 	}
 
-	// Execute the action associated with the selected menu item
-	// This would typically involve executing a process or updating state
 	return map[string]interface{}{
-		"action":    "menu_select",
+		"action":    "menu_select_sent",
 		"itemIndex": itemIndex,
-		"message":   fmt.Sprintf("Menu item %d selected", itemIndex),
+		"modelID":   modelID,
 	}
 }
 
@@ -433,10 +432,18 @@ func ProcessMenuNavigate(process *process.Process) interface{} {
 		}
 	}
 
+	if model.Program != nil {
+		model.Program.Send(core.ActionMsg{
+			ID:     "menu",
+			Action: core.EventMenuNavigate,
+			Data:   map[string]interface{}{"direction": direction},
+		})
+	}
+
 	return map[string]interface{}{
-		"action":    "menu_navigate",
+		"action":    "menu_navigate_sent",
 		"direction": direction,
-		"message":   fmt.Sprintf("Navigated %s in menu", direction),
+		"modelID":   modelID,
 	}
 }
 

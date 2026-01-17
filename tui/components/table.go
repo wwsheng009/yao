@@ -22,7 +22,7 @@ type Column struct {
 	Width int `json:"width"`
 
 	// Style is the column style
-	Style lipgloss.Style `json:"style"`
+	Style lipglossStyleWrapper `json:"style"`
 }
 
 // TableProps defines the properties for the Table component
@@ -97,9 +97,8 @@ func RenderTable(props TableProps, width int) string {
 		row := make([]string, len(rowData))
 		for j, cell := range rowData {
 			// Apply column-specific style if defined, otherwise use default formatting
-			// Check if style is non-empty by comparing string representation
-			if j < len(props.Columns) && props.Columns[j].Style.String() != lipgloss.NewStyle().String() {
-				row[j] = props.Columns[j].Style.Render(formatCell(cell))
+			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
 			} else {
 				row[j] = formatCell(cell)
 			}
@@ -118,6 +117,25 @@ func RenderTable(props TableProps, width int) string {
 	headerStyle := props.HeaderStyle.GetStyle()
 	cellStyle := props.CellStyle.GetStyle()
 	selectedStyle := props.SelectedStyle.GetStyle()
+
+	// Set default styles if not provided for better visibility
+	if headerStyle.String() == lipgloss.NewStyle().String() {
+		headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("214")) // Light orange
+	}
+	if cellStyle.String() == lipgloss.NewStyle().String() {
+		cellStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")) // Dark gray
+	}
+	if selectedStyle.String() == lipgloss.NewStyle().String() {
+		// High-contrast selected style for better visibility
+		selectedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")). // Black
+			Background(lipgloss.Color("39")). // Light blue background
+			Underline(true)
+	}
 
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
@@ -289,8 +307,8 @@ func NewTableModel(props TableProps, id string) TableModel {
 		row := make([]string, len(rowData))
 		for j, cell := range rowData {
 			// Apply column-specific style if defined, otherwise use default formatting
-			if j < len(props.Columns) && props.Columns[j].Style.String() != lipgloss.NewStyle().String() {
-				row[j] = props.Columns[j].Style.Render(formatCell(cell))
+			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
 			} else {
 				row[j] = formatCell(cell)
 			}
@@ -309,6 +327,25 @@ func NewTableModel(props TableProps, id string) TableModel {
 	headerStyle := props.HeaderStyle.GetStyle()
 	cellStyle := props.CellStyle.GetStyle()
 	selectedStyle := props.SelectedStyle.GetStyle()
+
+	// Set default styles if not provided for better visibility
+	if headerStyle.String() == lipgloss.NewStyle().String() {
+		headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("214")) // Light orange
+	}
+	if cellStyle.String() == lipgloss.NewStyle().String() {
+		cellStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")) // Dark gray
+	}
+	if selectedStyle.String() == lipgloss.NewStyle().String() {
+		// High-contrast selected style for better visibility
+		selectedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")). // Black
+			Background(lipgloss.Color("39")). // Light blue background
+			Underline(true)
+	}
 
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
@@ -356,7 +393,58 @@ func (m *TableModel) GetID() string {
 
 // UpdateMsg implements ComponentInterface for table component
 func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Update using the underlying model
+	// If table is not focused, ignore keyboard events but allow pass-through
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// If not focused, ignore keyboard navigation events
+		if !m.Model.Focused() {
+			return m, nil, core.Ignored
+		}
+
+		// Track current selection before update
+		prevSelectedRow := m.Model.Cursor()
+
+		// Update using the underlying model
+		var cmd tea.Cmd
+		m.Model, cmd = m.Model.Update(msg)
+
+		// Check if selection changed after navigation
+		currentSelectedRow := m.Model.Cursor()
+
+		// Publish event for any selection change (including Down key)
+		if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
+			// Get row data if available
+			var rowData interface{}
+			rows := m.Model.Rows()
+			if currentSelectedRow < len(rows) {
+				rowData = rows[currentSelectedRow]
+			}
+
+			// Publish row selected event
+			eventCmd := core.PublishEvent(
+				m.id,
+				core.EventRowSelected,
+				map[string]interface{}{
+					"rowIndex":        currentSelectedRow,
+					"prevRowIndex":    prevSelectedRow,
+					"rowData":         rowData,
+					"tableID":         m.id,
+					"navigationKey":   msg.String(),
+				},
+			)
+
+			// Combine commands if we have an existing cmd
+			if cmd != nil {
+				cmd = tea.Batch(cmd, eventCmd)
+			} else {
+				cmd = eventCmd
+			}
+		}
+
+		return m, cmd, core.Handled
+	}
+
+	// For non-key messages, just update the model
 	var cmd tea.Cmd
 	m.Model, cmd = m.Model.Update(msg)
 	return m, cmd, core.Handled
@@ -387,49 +475,126 @@ func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
-	}
 
-	// Get current selection before update
-	prevSelectedRow := -1
-	if w.model.Model.Focused() {
-		prevSelectedRow = w.model.Model.Cursor()
-	}
+	case tea.KeyMsg:
+		// If not focused, ignore keyboard navigation events
+		if !w.model.Model.Focused() {
+			return w, nil, core.Ignored
+		}
 
-	// Update using the underlying model
-	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+		// Track current selection before update
+		prevSelectedRow := w.model.Model.Cursor()
 
-	// Check if selection changed
-	if w.model.Model.Focused() {
-		currentSelectedRow := w.model.Model.Cursor()
-		if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
-			// Selection changed, publish event
-			// Get row data if available
-			var rowData interface{}
-			rows := w.model.Model.Rows()
-			if currentSelectedRow < len(rows) {
-				rowData = rows[currentSelectedRow]
+		// Handle navigation keys explicitly
+		switch msg.Type {
+		case tea.KeyDown, tea.KeyUp, tea.KeyPgUp, tea.KeyPgDown:
+			// Explicitly handle navigation keys to ensure proper event publishing
+			var cmd tea.Cmd
+			w.model.Model, cmd = w.model.Model.Update(msg)
+
+			// Check if selection changed after navigation
+			currentSelectedRow := w.model.Model.Cursor()
+			if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
+				// Selection changed, publish event
+				// Get row data if available
+				var rowData interface{}
+				rows := w.model.Model.Rows()
+				if currentSelectedRow < len(rows) {
+					rowData = rows[currentSelectedRow]
+				}
+
+				// Publish event with navigation key info
+				eventCmd := core.PublishEvent(
+					w.model.id,
+					core.EventRowSelected,
+					map[string]interface{}{
+						"rowIndex":       currentSelectedRow,
+						"prevRowIndex":   prevSelectedRow,
+						"rowData":        rowData,
+						"tableID":        w.model.id,
+						"navigationKey":  msg.String(),
+						"isNavigation":   true,
+					},
+				)
+
+				// Combine commands if we have an existing cmd
+				if cmd != nil {
+					cmd = tea.Batch(cmd, eventCmd)
+				} else {
+					cmd = eventCmd
+				}
 			}
 
-			eventCmd := core.PublishEvent(
-				w.model.id,
-				core.EventRowSelected,
-				map[string]interface{}{
-					"rowIndex": currentSelectedRow,
-					"rowData":  rowData,
-					"tableID":  w.model.id,
-				},
-			)
+			return w, cmd, core.Handled
 
-			// Combine commands if we have an existing cmd
-			if cmd != nil {
-				cmd = tea.Batch(cmd, eventCmd)
-			} else {
-				cmd = eventCmd
+		case tea.KeyEnter:
+			// Handle Enter key for row selection confirmation
+			currentSelectedRow := w.model.Model.Cursor()
+			if currentSelectedRow >= 0 {
+				// Get row data if available
+				var rowData interface{}
+				rows := w.model.Model.Rows()
+				if currentSelectedRow < len(rows) {
+					rowData = rows[currentSelectedRow]
+				}
+
+				// Publish row double-click / enter pressed event
+				eventCmd := core.PublishEvent(
+					w.model.id,
+					core.EventRowDoubleClicked,
+					map[string]interface{}{
+						"rowIndex": currentSelectedRow,
+						"rowData":  rowData,
+						"tableID":  w.model.id,
+						"trigger":  "enter_key",
+					},
+				)
+
+				return w, eventCmd, core.Handled
 			}
+			return w, nil, core.Handled
+
+		default:
+			// For other key messages, update normally and check for selection changes
+			var cmd tea.Cmd
+			w.model.Model, cmd = w.model.Model.Update(msg)
+
+			// Check if selection changed
+			currentSelectedRow := w.model.Model.Cursor()
+			if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
+				// Selection changed, publish event
+				// Get row data if available
+				var rowData interface{}
+				rows := w.model.Model.Rows()
+				if currentSelectedRow < len(rows) {
+					rowData = rows[currentSelectedRow]
+				}
+
+				eventCmd := core.PublishEvent(
+					w.model.id,
+					core.EventRowSelected,
+					map[string]interface{}{
+						"rowIndex": currentSelectedRow,
+						"rowData":  rowData,
+						"tableID":  w.model.id,
+					},
+				)
+
+				// Combine commands if we have an existing cmd
+				if cmd != nil {
+					cmd = tea.Batch(cmd, eventCmd)
+				} else {
+					cmd = eventCmd
+				}
+			}
+
+			return w, cmd, core.Handled
 		}
 	}
 
+	// For non-key messages, update using the underlying model
+	var cmd tea.Cmd
+	w.model.Model, cmd = w.model.Model.Update(msg)
 	return w, cmd, core.Handled
 }
 

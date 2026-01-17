@@ -72,6 +72,12 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 			model.Components[id].Instance = newComp
 			cmds = append(cmds, cmd)
 		}
+
+		// Trigger auto-focus after window size is received and components are initialized
+		cmds = append(cmds, func() tea.Msg {
+			return core.FocusFirstComponentMsg{}
+		})
+
 		return model, tea.Batch(cmds...)
 	}
 
@@ -103,8 +109,29 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		actionMsg := msg.(core.ActionMsg)
 		log.Trace("TUI Update: Received ActionMsg: %s from %s", actionMsg.Action, actionMsg.ID)
 
-		// Publish to EventBus for component communication
-		model.EventBus.Publish(actionMsg)
+		// Handle specific system actions
+		switch actionMsg.Action {
+		case core.EventFocusNext:
+			// Move focus to next input component
+			model.focusNextInput()
+		case core.EventFocusPrev:
+			// Move focus to previous input component
+			model.focusPrevInput()
+		case core.EventFocusChanged:
+			// Update focus based on data
+			if data, ok := actionMsg.Data.(map[string]interface{}); ok {
+				if focused, ok := data["focused"].(bool); ok && focused {
+					// Set focus to the component that sent this message
+					model.setFocus(actionMsg.ID)
+				} else {
+					// Clear focus if focused is false
+					model.clearFocus()
+				}
+			}
+		default:
+			// For other actions, publish to EventBus for component communication
+			model.EventBus.Publish(actionMsg)
+		}
 
 		return model, nil
 	}
@@ -188,6 +215,28 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		return model, nil
 	}
 
+	// Register handler for FocusFirstComponentMsg
+	handlers["FocusFirstComponentMsg"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
+		model, ok := m.(*Model)
+		if !ok {
+			return m.(tea.Model), nil
+		}
+
+		if !model.Ready {
+			return model, nil
+		}
+
+		// Get all focusable components
+		focusableIDs := model.getFocusableComponentIDs()
+		if len(focusableIDs) > 0 {
+			// Set focus to the first focusable component
+			model.setFocus(focusableIDs[0])
+			log.Trace("TUI: Auto-focus to first focusable component: %s", focusableIDs[0])
+		}
+
+		return model, nil
+	}
+
 	// Register handler for core.MenuActionTriggered
 	handlers["MenuActionTriggered"] = func(m interface{}, msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, ok := m.(*Model)
@@ -217,12 +266,21 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 func (m *Model) Init() tea.Cmd {
 	log.Trace("TUI Init: %s", m.Config.Name)
 
+	// Build a list of commands to execute
+	var cmds []tea.Cmd
+
 	// Execute onLoad action if specified
 	if m.Config.OnLoad != nil {
-		return m.executeAction(m.Config.OnLoad)
+		cmds = append(cmds, m.executeAction(m.Config.OnLoad))
 	}
 
-	return nil
+	// Auto-focus to the first focusable component after initialization
+	// This ensures that interactive components (like tables) can receive keyboard events
+	cmds = append(cmds, func() tea.Msg {
+		return core.FocusFirstComponentMsg{}
+	})
+
+	return tea.Batch(cmds...)
 }
 
 // Update handles incoming messages and updates the Model accordingly.
@@ -318,6 +376,8 @@ func getMsgTypeName(msg tea.Msg) string {
 		return "QuitMsg"
 	case core.RefreshMsg:
 		return "RefreshMsg"
+	case core.FocusFirstComponentMsg:
+		return "FocusFirstComponentMsg"
 	case core.LogMsg:
 		return "LogMsg"
 	case core.MenuActionTriggered:
@@ -368,17 +428,8 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Bubble phase: Handle general navigation and bound actions
 	// Handle ESC key to clear focus
 	if msg.Type == tea.KeyEsc && m.CurrentFocus != "" {
-		// Clear focus from component if it exists in Components map
-		if comp, exists := m.Components[m.CurrentFocus]; exists {
-			comp.Instance.SetFocus(false)
-		}
-		// Clear focus
-		m.CurrentFocus = ""
+		m.clearFocus()
 		return m, nil
-	}
-
-	if msg.Type == tea.KeyTab {
-		return m.handleTabNavigation()
 	}
 
 	// Handle bound actions for keys
@@ -389,7 +440,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 	log.Trace("Tab pressed, cycling focus between components, current focus: %s", m.CurrentFocus)
 
-	// First, cycle through inputs if available
+	// First, check if there are any input components
 	hasInputs := false
 	for _, comp := range m.Components {
 		if comp.Type == "input" {
@@ -399,22 +450,7 @@ func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 	}
 
 	if hasInputs {
-		if m.CurrentFocus == "" {
-			// If no focus, start with first input
-			for id, comp := range m.Components {
-				if comp.Type == "input" {
-					m.CurrentFocus = id
-					comp.Instance.SetFocus(true)
-					log.Trace("Focused input: %s", id)
-					break
-				}
-			}
-			m.updateInputFocusStates()
-		} else {
-			// Cycle to next input
-			m.focusNextInput()
-			m.updateInputFocusStates()
-		}
+		m.focusNextInput()
 	}
 	// Note: Menu components are handled through their own UpdateMsg method
 	return m, nil
@@ -791,7 +827,11 @@ func (m *Model) focusNextInput() {
 		}
 	}
 
-	// Find current position and move to next
+	if len(inputIDs) == 0 {
+		return
+	}
+
+	// Find current position
 	currentIndex := -1
 	for i, id := range inputIDs {
 		if id == m.CurrentFocus {
@@ -800,12 +840,182 @@ func (m *Model) focusNextInput() {
 		}
 	}
 
-	// Move to next input, wrap around if needed
+	// Determine next focus ID
+	var nextFocus string
 	if currentIndex >= 0 && currentIndex < len(inputIDs)-1 {
-		m.CurrentFocus = inputIDs[currentIndex+1]
-	} else if len(inputIDs) > 0 {
-		m.CurrentFocus = inputIDs[0] // Wrap to first
+		nextFocus = inputIDs[currentIndex+1]
+	} else {
+		nextFocus = inputIDs[0] // Wrap to first
 	}
+
+	// Use setFocus which handles focus change events
+	m.setFocus(nextFocus)
+}
+
+func (m *Model) focusPrevInput() {
+	// Find all input component IDs from Components map
+	inputIDs := []string{}
+	for id, comp := range m.Components {
+		if comp.Type == "input" {
+			inputIDs = append(inputIDs, id)
+		}
+	}
+
+	if len(inputIDs) == 0 {
+		return
+	}
+
+	// Find current position
+	currentIndex := -1
+	for i, id := range inputIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
+			break
+		}
+	}
+
+	// Determine previous focus ID
+	var prevFocus string
+	if currentIndex > 0 {
+		prevFocus = inputIDs[currentIndex-1]
+	} else if currentIndex == 0 {
+		prevFocus = inputIDs[len(inputIDs)-1] // Wrap to last
+	} else {
+		// No current focus, start from last
+		prevFocus = inputIDs[len(inputIDs)-1]
+	}
+
+	// Use setFocus which handles focus change events
+	m.setFocus(prevFocus)
+}
+
+// setFocus sets focus to a specific component
+func (m *Model) setFocus(componentID string) {
+	if componentID == m.CurrentFocus {
+		return // Already focused
+	}
+
+	// Clear focus from current component
+	m.clearFocus()
+
+	// Set new focus
+	m.CurrentFocus = componentID
+	if comp, exists := m.Components[componentID]; exists {
+		comp.Instance.SetFocus(true)
+	}
+
+	// Publish focus changed event
+	m.EventBus.Publish(core.ActionMsg{
+		ID:     componentID,
+		Action: core.EventFocusChanged,
+		Data:   map[string]interface{}{"focused": true},
+	})
+
+	log.Trace("TUI Focus: Focus set to %s", componentID)
+}
+
+// clearFocus clears focus from current component
+func (m *Model) clearFocus() {
+	if m.CurrentFocus == "" {
+		return
+	}
+
+	// Clear focus from component
+	if comp, exists := m.Components[m.CurrentFocus]; exists {
+		comp.Instance.SetFocus(false)
+	}
+
+	oldFocus := m.CurrentFocus
+	m.CurrentFocus = ""
+
+	// Publish focus changed event
+	m.EventBus.Publish(core.ActionMsg{
+		ID:     oldFocus,
+		Action: core.EventFocusChanged,
+		Data:   map[string]interface{}{"focused": false},
+	})
+
+	log.Trace("TUI Focus: Focus cleared from %s", oldFocus)
+}
+
+// focusNextComponent moves focus to the next focusable component
+func (m *Model) focusNextComponent() {
+	// Get all focusable component IDs
+	focusableIDs := m.getFocusableComponentIDs()
+	if len(focusableIDs) == 0 {
+		return
+	}
+
+	// Find current position
+	currentIndex := -1
+	for i, id := range focusableIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
+			break
+		}
+	}
+
+	// Move to next component, wrap around if needed
+	var nextFocus string
+	if currentIndex >= 0 && currentIndex < len(focusableIDs)-1 {
+		nextFocus = focusableIDs[currentIndex+1]
+	} else {
+		nextFocus = focusableIDs[0] // Wrap to first
+	}
+
+	m.setFocus(nextFocus)
+}
+
+// focusPrevComponent moves focus to the previous focusable component
+func (m *Model) focusPrevComponent() {
+	// Get all focusable component IDs
+	focusableIDs := m.getFocusableComponentIDs()
+	if len(focusableIDs) == 0 {
+		return
+	}
+
+	// Find current position
+	currentIndex := -1
+	for i, id := range focusableIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
+			break
+		}
+	}
+
+	// Move to previous component, wrap around if needed
+	var prevFocus string
+	if currentIndex > 0 {
+		prevFocus = focusableIDs[currentIndex-1]
+	} else if currentIndex == 0 {
+		prevFocus = focusableIDs[len(focusableIDs)-1] // Wrap to last
+	} else {
+		// No current focus, start from last
+		prevFocus = focusableIDs[len(focusableIDs)-1]
+	}
+
+	m.setFocus(prevFocus)
+}
+
+// getFocusableComponentIDs returns IDs of all focusable components
+func (m *Model) getFocusableComponentIDs() []string {
+	// Define which component types are focusable
+	focusableTypes := map[string]bool{
+		"input": true,
+		"menu":  true,
+		"form":  true,
+		"table": true,
+		"crud":  true,
+		"chat":  true,
+	}
+
+	ids := []string{}
+	for id, comp := range m.Components {
+		if focusableTypes[comp.Type] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // syncInputComponentState synchronizes the state of an input component

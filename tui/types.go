@@ -17,6 +17,15 @@ import (
 // and returns an updated model and command
 type MessageHandler func(*Model, tea.Msg) (tea.Model, tea.Cmd)
 
+// Bridge message types for internal routing
+const (
+	MsgTypeTargeted         = "TARGETED_MESSAGE"
+	MsgTypeStateUpdate      = "STATE_UPDATE"
+	MsgTypeStateBatchUpdate = "STATE_BATCH_UPDATE"
+	MsgTypeProcessResult    = "PROCESS_RESULT"
+	MsgTypeError            = "ERROR"
+)
+
 // Config represents the parsed .tui.yao configuration file.
 // It defines the TUI's name, initial data state, layout structure,
 // and event bindings.
@@ -109,7 +118,7 @@ func NewBridge(eventBus *core.EventBus) *Bridge {
 				// So we'll publish it as a special action
 				bridge.EventBus.Publish(core.ActionMsg{
 					ID:     "bridge",
-					Action: "TARGETED_MESSAGE",
+					Action: MsgTypeTargeted,
 					Data:   v,
 				})
 
@@ -117,7 +126,7 @@ func NewBridge(eventBus *core.EventBus) *Bridge {
 				// Handle state updates directly
 				bridge.EventBus.Publish(core.ActionMsg{
 					ID:     "bridge",
-					Action: "STATE_UPDATE",
+					Action: MsgTypeStateUpdate,
 					Data:   v,
 				})
 
@@ -125,7 +134,7 @@ func NewBridge(eventBus *core.EventBus) *Bridge {
 				// Handle batch state updates
 				bridge.EventBus.Publish(core.ActionMsg{
 					ID:     "bridge",
-					Action: "STATE_BATCH_UPDATE",
+					Action: MsgTypeStateBatchUpdate,
 					Data:   v,
 				})
 
@@ -133,7 +142,7 @@ func NewBridge(eventBus *core.EventBus) *Bridge {
 				// Handle process results
 				bridge.EventBus.Publish(core.ActionMsg{
 					ID:     "bridge",
-					Action: "PROCESS_RESULT",
+					Action: MsgTypeProcessResult,
 					Data:   v,
 				})
 
@@ -141,7 +150,7 @@ func NewBridge(eventBus *core.EventBus) *Bridge {
 				// Handle errors
 				bridge.EventBus.Publish(core.ActionMsg{
 					ID:     "bridge",
-					Action: "ERROR",
+					Action: MsgTypeError,
 					Data:   v,
 				})
 

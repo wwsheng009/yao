@@ -162,7 +162,7 @@ func ProcessFormSubmitAction(model *Model, action *core.Action) (interface{}, er
 	if model.Program != nil {
 		model.Program.Send(core.ActionMsg{
 			ID:     "form_submit",
-			Action: "FORM_SUBMIT_SUCCESS",
+			Action: core.EventFormSubmitSuccess,
 			Data:   map[string]interface{}{"timestamp": time.Now()},
 		})
 	}
