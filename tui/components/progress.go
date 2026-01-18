@@ -315,3 +315,13 @@ func (w *ProgressComponentWrapper) Cleanup() {
 	// Progress components typically don't need cleanup
 	// This is a no-op for progress components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *ProgressComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Progress component may have state
+	return map[string]interface{}{
+		w.GetID() + "_percent": w.model.Model.Percent(),
+		w.GetID() + "_value":   w.model.Model.View(),
+	}, true
+}
+

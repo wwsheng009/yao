@@ -288,6 +288,12 @@ func (w *CursorComponentWrapper) Cleanup() {
 	// 这是一个空操作
 }
 
+// GetStateChanges returns the state changes from this component
+func (w *CursorComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Cursor component doesn't have meaningful state changes
+	return nil, false
+}
+
 // getCursorMode returns the cursor mode based on style string
 func getCursorMode(style string) cursor.Mode {
 	switch style {

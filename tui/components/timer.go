@@ -330,3 +330,14 @@ func (w *TimerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 func (w *TimerComponentWrapper) Cleanup() {
 	// 计时器组件通常不需要特殊清理操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *TimerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Timer component may have state
+	return map[string]interface{}{
+		w.GetID() + "_timeout": w.model.Model.Timeout,
+		w.GetID() + "_running": w.model.Model.Running(),
+	}, true
+}
+
+

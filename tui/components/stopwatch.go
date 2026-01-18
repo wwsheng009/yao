@@ -315,3 +315,13 @@ func (w *StopwatchComponentWrapper) Cleanup() {
 	// 停止秒表并清理相关资源
 	w.model.Model.Stop()
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *StopwatchComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Stopwatch component may have state
+	return map[string]interface{}{
+		w.GetID() + "_elapsed": w.model.Model.Elapsed(),
+		w.GetID() + "_running": w.model.Model.Running(),
+	}, true
+}
+

@@ -232,3 +232,9 @@ func (w *HeaderComponentWrapper) Cleanup() {
 	// Header components typically don't need cleanup
 	// This is a no-op for header components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *HeaderComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Static components don't have state changes
+	return nil, false
+}

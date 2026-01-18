@@ -337,3 +337,10 @@ func (w *SpinnerComponentWrapper) Cleanup() {
 	// Spinner components typically don't need cleanup
 	// This is a no-op for spinner components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *SpinnerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Spinner component doesn't have meaningful state
+	return nil, false
+}
+

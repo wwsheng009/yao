@@ -421,3 +421,18 @@ func (w *PaginatorComponentWrapper) Cleanup() {
 	// Paginator components typically don't need cleanup
 	// This is a no-op for paginator components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *PaginatorComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	page := w.model.Model.Page
+	perPage := w.model.Model.PerPage
+	totalPages := w.model.Model.TotalPages
+
+	return map[string]interface{}{
+		w.GetID() + "_page":        page,
+		w.GetID() + "_per_page":    perPage,
+		w.GetID() + "_total_pages": totalPages,
+	}, totalPages > 0
+}
+
+

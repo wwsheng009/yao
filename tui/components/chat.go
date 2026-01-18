@@ -627,3 +627,15 @@ func (w *ChatComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 func (w *ChatComponentWrapper) Cleanup() {
 	// Chat 组件通常不需要特殊清理操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *ChatComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Chat component stores its messages and current input value
+	return map[string]interface{}{
+		w.GetID() + "_messages": w.model.messages,
+		w.GetID() + "_input":    w.model.TextInput.Value(),
+	}, len(w.model.messages) > 0 || w.model.TextInput.Value() != ""
+}
+
+
+

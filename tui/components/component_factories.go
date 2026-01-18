@@ -1,10 +1,5 @@
 package components
 
-import (
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/yaoapp/yao/tui/core"
-)
-
 // Note: NewHeaderComponent and NewTextComponent are already defined in their respective files
 // These factory functions only exist for components that don't have their own
 // New*Component(id) functions
@@ -284,46 +279,3 @@ func NewKeyComponent(id string) *KeyComponentWrapper {
 	}
 }
 
-// CRUDComponentWrapper wraps CRUDComponent for unified factory interface
-type CRUDComponentWrapper struct {
-	component *CRUDComponent
-}
-
-// NewCRUDComponentWrapper creates a wrapper around CRUD component
-func NewCRUDComponentWrapper(id string) *CRUDComponentWrapper {
-	return &CRUDComponentWrapper{
-		component: NewCRUDComponent(id, nil),
-	}
-}
-
-func (w *CRUDComponentWrapper) Init() tea.Cmd {
-	return w.component.Init()
-}
-
-func (w *CRUDComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	return w.component.UpdateMsg(msg)
-}
-
-func (w *CRUDComponentWrapper) View() string {
-	return w.component.View()
-}
-
-func (w *CRUDComponentWrapper) GetID() string {
-	return w.component.GetID()
-}
-
-func (w *CRUDComponentWrapper) SetFocus(focus bool) {
-	w.component.SetFocus(focus)
-}
-
-func (w *CRUDComponentWrapper) GetComponentType() string {
-	return w.component.GetComponentType()
-}
-
-func (w *CRUDComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.component.Render(config)
-}
-
-func (w *CRUDComponentWrapper) Cleanup() {
-	w.component.Cleanup()
-}

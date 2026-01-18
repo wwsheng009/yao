@@ -282,3 +282,9 @@ func (w *FilePickerComponentWrapper) Cleanup() {
 	// FilePicker组件通常不需要清理资源
 	// 这是一个空操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *FilePickerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// FilePicker component state tracking
+	return nil, false
+}

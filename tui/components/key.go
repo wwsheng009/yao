@@ -287,3 +287,9 @@ func (w *KeyComponentWrapper) Cleanup() {
 	// Key组件通常不需要清理资源
 	// 这是一个空操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *KeyComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Static components don't have state changes
+	return nil, false
+}

@@ -424,6 +424,12 @@ func (m *FormModel) Cleanup() {
 	// 这是一个空操作
 }
 
+// GetStateChanges returns the state changes from this component
+func (m *FormModel) GetStateChanges() (map[string]interface{}, bool) {
+	// Form component doesn't have state changes at the model level
+	return nil, false
+}
+
 func (w *FormComponentWrapper) GetComponentType() string {
 	return "form"
 }
@@ -457,4 +463,11 @@ func (w *FormComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 func (w *FormComponentWrapper) Cleanup() {
 	// Form组件通常不需要清理资源
 	// 这是一个空操作
+}
+
+// GetStateChanges returns the state changes from this component
+func (w *FormComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Form component collects values from child components
+	// For now, return nil as form values are collected differently
+	return nil, false
 }

@@ -644,11 +644,32 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	rendered, err := componentInstance.Instance.Render(renderConfig)
 	if err != nil {
-		log.Warn("Component render failed: %v, component: %s", err, comp.Type)
-		return componentInstance.Instance.View()
+		errorMsg := fmt.Sprintf("Component %s (%s) render failed: %v", comp.ID, comp.Type, err)
+		log.Error(errorMsg)
+
+		// Store error in state for potential display
+		m.StateMu.Lock()
+		m.State["__error_"+comp.ID] = errorMsg
+		m.StateMu.Unlock()
+
+		// Render error component
+		return m.renderErrorComponent(comp.ID, comp.Type, err)
 	}
 	return rendered
 }
+
+// renderErrorComponent renders an error display for a failed component
+func (m *Model) renderErrorComponent(componentID string, componentType string, err error) string {
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")). // Red
+		Background(lipgloss.Color("52")). // Dark red
+		Padding(0, 2).
+		Bold(true)
+
+	errorMsg := fmt.Sprintf("[ERROR] %s (%s): %v", componentID, componentType, err)
+	return style.Render(errorMsg)
+}
+
 
 // isInteractiveComponent 判断组件是否是交互式的
 func isInteractiveComponent(componentType string) bool {

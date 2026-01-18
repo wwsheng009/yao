@@ -273,3 +273,9 @@ func (w *FooterComponentWrapper) Cleanup() {
 	// Footer组件通常不需要清理资源
 	// 这是一个空操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *FooterComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Static components don't have state changes
+	return nil, false
+}

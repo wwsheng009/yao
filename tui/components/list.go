@@ -421,3 +421,20 @@ func (w *ListComponentWrapper) Cleanup() {
 	// List components typically don't need cleanup
 	// This is a no-op for list components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	selectedItem := w.model.Model.SelectedItem()
+	if selectedItem == nil {
+		return map[string]interface{}{
+			w.GetID() + "_selected_index": -1,
+			w.GetID() + "_selected_item": nil,
+		}, false
+	}
+
+	return map[string]interface{}{
+		w.GetID() + "_selected_index": w.model.Model.Index(),
+		w.GetID() + "_selected_item": selectedItem,
+	}, true
+}
+

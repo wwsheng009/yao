@@ -49,6 +49,9 @@ type ComponentInterface interface {
 	// 组件生命周期方法
 	UpdateRenderConfig(config RenderConfig) error // 更新渲染配置而不重新创建实例
 	Cleanup()                                 // 清理资源（可选）
+
+	// 状态同步方法
+	GetStateChanges() (map[string]interface{}, bool) // 返回组件对 global state 的更改
 }
 
 // TargetedMsg 用于定向消息投递

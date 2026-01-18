@@ -657,6 +657,12 @@ func (m *TableModel) Cleanup() {
 	// TableModel 通常不需要特殊清理操作
 }
 
+// GetStateChanges returns the state changes from this component
+func (m *TableModel) GetStateChanges() (map[string]interface{}, bool) {
+	// Table state is managed by the wrapper
+	return nil, false
+}
+
 func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 	// This method is kept for backward compatibility
 	// It now delegates to UpdateRenderConfig
@@ -678,5 +684,21 @@ func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 func (w *TableComponentWrapper) Cleanup() {
 	// Table components typically don't need cleanup
 	// This is a no-op for table components
+}
+
+// GetStateChanges returns the state changes from this component
+func (w *TableComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	selectedRow := w.model.Model.Cursor()
+	rows := w.model.Model.Rows()
+
+	rowData := interface{}(nil)
+	if selectedRow >= 0 && selectedRow < len(rows) {
+		rowData = rows[selectedRow]
+	}
+
+	return map[string]interface{}{
+		w.GetID() + "_selected_row": selectedRow,
+		w.GetID() + "_selected_data": rowData,
+	}, len(rows) > 0 && selectedRow >= 0
 }
 

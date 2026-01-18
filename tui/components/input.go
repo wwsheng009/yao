@@ -209,21 +209,11 @@ func (m *InputModel) GetComponentType() string {
 }
 
 func (m *InputModel) Render(config core.RenderConfig) (string, error) {
-	// Parse configuration data
-	propsMap, ok := config.Data.(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("InputModel: invalid data type")
-	}
-
-	// Parse input properties
-	props := ParseInputProps(propsMap)
-
-	// Update component properties
-	m.props = props
-
-	// Return rendered view
+	// Render should be a pure function - it should not modify internal state
+	// All state updates should happen in UpdateRenderConfig
 	return m.View(), nil
 }
+
 
 // InputComponentWrapper wraps InputModel to implement ComponentInterface properly
 type InputComponentWrapper struct {
@@ -387,4 +377,13 @@ func (w *InputComponentWrapper) Cleanup() {
 	// Input components typically don't need cleanup
 	// This is a no-op for input components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *InputComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// For input components, we always sync the current value
+	return map[string]interface{}{
+		w.GetID(): w.GetValue(),
+	}, true
+}
+
 

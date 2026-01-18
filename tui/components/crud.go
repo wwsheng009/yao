@@ -76,6 +76,12 @@ func (c *CRUDComponent) Cleanup() {
 	c.unsubscribeFuncs = []func(){}
 }
 
+// GetStateChanges returns the state changes from this component
+func (c *CRUDComponent) GetStateChanges() (map[string]interface{}, bool) {
+	// CRUD component state is managed by the wrapper
+	return nil, false
+}
+
 // GetID returns the unique identifier for this component instance
 func (c *CRUDComponent) GetID() string {
 	return c.id
@@ -228,4 +234,60 @@ func (c *CRUDComponent) UpdateRenderConfig(config core.RenderConfig) error {
 
 func (c *CRUDComponent) Render(config core.RenderConfig) (string, error) {
 	return c.View(), nil
+}
+
+// CRUDComponentWrapper wraps CRUDComponent for unified factory interface
+type CRUDComponentWrapper struct {
+	component *CRUDComponent
+}
+
+// NewCRUDComponentWrapper creates a wrapper around CRUD component
+func NewCRUDComponentWrapper(id string) *CRUDComponentWrapper {
+	// Create a new event bus for this CRUD component instance
+	eventBus := core.NewEventBus()
+	return &CRUDComponentWrapper{
+		component: NewCRUDComponent(id, eventBus),
+	}
+}
+
+func (w *CRUDComponentWrapper) Init() tea.Cmd {
+	return w.component.Init()
+}
+
+func (w *CRUDComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	return w.component.UpdateMsg(msg)
+}
+
+func (w *CRUDComponentWrapper) View() string {
+	return w.component.View()
+}
+
+func (w *CRUDComponentWrapper) GetID() string {
+	return w.component.GetID()
+}
+
+func (w *CRUDComponentWrapper) SetFocus(focus bool) {
+	w.component.SetFocus(focus)
+}
+
+func (w *CRUDComponentWrapper) GetComponentType() string {
+	return w.component.GetComponentType()
+}
+
+func (w *CRUDComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.component.Render(config)
+}
+
+func (w *CRUDComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	return w.component.UpdateRenderConfig(config)
+}
+
+func (w *CRUDComponentWrapper) Cleanup() {
+	w.component.Cleanup()
+}
+
+// GetStateChanges returns the state changes from this component
+func (w *CRUDComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// CRUD component wraps a table, so delegate to the table component
+	return w.component.GetStateChanges()
 }

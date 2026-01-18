@@ -1055,9 +1055,19 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 	updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
 	m.Components[componentID].Instance = updatedComp
 
-	// Sync input state for input components
+	// Sync input state for input components (legacy support)
 	if inputWrapper, ok := updatedComp.(*components.InputComponentWrapper); ok {
 		m.syncInputComponentState(componentID, inputWrapper)
+	}
+
+	// Unified state synchronization using GetStateChanges()
+	stateChanges, hasChanges := updatedComp.GetStateChanges()
+	if hasChanges {
+		m.StateMu.Lock()
+		for key, value := range stateChanges {
+			m.State[key] = value
+		}
+		m.StateMu.Unlock()
 	}
 
 	return m, cmd, response == core.Handled

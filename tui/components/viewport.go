@@ -465,3 +465,12 @@ func (w *ViewportComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 func (w *ViewportComponentWrapper) Cleanup() {
 	// 视口组件通常不需要特殊清理操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *ViewportComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Viewport component may have state (scroll position, etc.)
+	return map[string]interface{}{
+		w.GetID() + "_scroll_position": w.model.Model.GotoTop,
+	}, false
+}
+

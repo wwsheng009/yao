@@ -447,3 +447,12 @@ func (w *TextareaComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 func (w *TextareaComponentWrapper) Cleanup() {
 	// 文本区域组件通常不需要特殊清理操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *TextareaComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Textarea components work like input - sync the current value
+	return map[string]interface{}{
+		w.GetID(): w.GetValue(),
+	}, true
+}
+

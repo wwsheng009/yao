@@ -115,3 +115,9 @@ func (c *StaticComponent) UpdateRenderConfig(config core.RenderConfig) error {
 func (c *StaticComponent) Cleanup() {
 	// 静态组件通常不需要特殊清理操作
 }
+
+// GetStateChanges returns the state changes from this component
+func (c *StaticComponent) GetStateChanges() (map[string]interface{}, bool) {
+	// Static components don't have state changes
+	return nil, false
+}

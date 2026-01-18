@@ -756,21 +756,11 @@ func (m *MenuInteractiveModel) GetComponentType() string {
 }
 
 func (m *MenuInteractiveModel) Render(config core.RenderConfig) (string, error) {
-	// Parse configuration data
-	propsMap, ok := config.Data.(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("MenuInteractiveModel: invalid data type")
-	}
-
-	// Parse menu properties
-	props := ParseMenuProps(propsMap)
-
-	// Update component properties
-	m.props = props
-
-	// Return rendered view
+	// Render should be a pure function - it should not modify internal state
+	// All state updates should happen in UpdateRenderConfig
 	return m.View(), nil
 }
+
 
 // MenuComponentWrapper wraps MenuInteractiveModel to implement ComponentInterface properly
 type MenuComponentWrapper struct {
@@ -891,4 +881,25 @@ func (w *MenuComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 func (w *MenuComponentWrapper) Cleanup() {
 	// Menu components typically don't need cleanup
 	// This is a no-op for menu components
+}
+
+// GetStateChanges returns the state changes from this component
+func (w *MenuComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	selectedItem, ok := w.model.GetSelectedItem()
+	if !ok {
+		return map[string]interface{}{
+			w.GetID() + "_selected_index": -1,
+			w.GetID() + "_selected_item": nil,
+		}, false
+	}
+
+	return map[string]interface{}{
+		w.GetID() + "_selected_index": w.model.Index(),
+		w.GetID() + "_selected_item": map[string]interface{}{
+			"title":      selectedItem.Title,
+			"value":      selectedItem.Value,
+			"disabled":   selectedItem.Disabled,
+			"hasSubmenu": selectedItem.HasSubmenu(),
+		},
+	}, true
 }

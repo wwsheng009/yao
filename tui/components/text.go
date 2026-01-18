@@ -246,8 +246,15 @@ func (m *TextModel) Cleanup() {
 	// TextModel 通常不需要特殊清理操作
 }
 
+// GetStateChanges returns the state changes from this component
+func (m *TextModel) GetStateChanges() (map[string]interface{}, bool) {
+	// Text component is static, no state changes
+	return nil, false
+}
+
 // TextComponentWrapper wraps TextModel to implement ComponentInterface properly
 type TextComponentWrapper struct {
+
 	model *TextModel
 }
 
@@ -319,3 +326,10 @@ func (w *TextComponentWrapper) Cleanup() {
 	// Text components typically don't need cleanup
 	// This is a no-op for text components
 }
+
+// GetStateChanges returns the state changes from this component
+func (w *TextComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// Static components don't have state changes
+	return nil, false
+}
+
