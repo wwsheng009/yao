@@ -1,6 +1,12 @@
 {
    "go.delveConfig": {
-    "debugAdapter":"dlv-dap",
-    "dlvFlags": ["--only-same-user=false"]
-   }
+      "debugAdapter": "dlv-dap",
+      "dlvFlags": [
+         "--only-same-user=false"
+      ]
+   },
+   "go.testEnvVars": {
+      "YAO_TEST_APPLICATION": "E:/projects/yao/demos/cui-demo",
+      "YAO_ROOT": "E:/projects/yao/demos/cui-demo"
+   },
 }

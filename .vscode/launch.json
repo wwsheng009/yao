@@ -8,35 +8,38 @@
       "name": "Launch Package",
       "type": "go",
       "request": "launch",
+      "console": "integratedTerminal",
       "mode": "auto",
       "program": "main.go",
-      // "dlvFlags": [
-      //   "--log"
-      // ],
+      "dlvFlags": [
+        // "--check-go-version=false",
+      ],
       "args": [
         "start"
       ],
       // "cwd": "/mnt/d/projects/go/yao/wwsheng009/yao-bench",
-      // "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
+      "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
       // "cwd": "E:/projects/yao/yao-projects/yao-chatgpt",
-      "cwd": "E:/projects/yao/wwsheng009/yao-init"
+      // "cwd": "E:/projects/yao/wwsheng009/yao-init",
+      // "cwd": "E:/projects/yao/demos/cui-demo"
       // "cwd": "E:/projects/yao/demos/yao-dev-app"
       // "cwd": "E:/projects/yao/demos/yao-website"
       // "cwd": "E:/projects/yao/yao-projects/yao-wms"
       // "cwd": "E:/projects/yao/temp/x1"
+      // "cwd": "E:/projects/yao/temp/test"
     },
     {
-      "name": "test ai",
+      "name": "test run script",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "args": [
         "run",
-        "scripts.ai.deepseek.Call",
-        "你好",
+        "scripts.systemmanager_import.importFormLayout",
+        "Bangongyongpin"
       ],
-      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
+      "cwd": "E:\\projects\\metalowcode\\Yao-MetaLowCode"
     },
     {
       "name": "test sui build",
@@ -53,7 +56,61 @@
         "web",
         "default"
       ],
-      "cwd": "E:/projects/yao/demos/yao-website"
+      // "cwd": "E:/projects/yao/yao-projects/yao-amis-admin"
+      // "cwd": "E:/projects/yao/demos/yao-website"
+      "cwd": "E:/projects/yao/demos/cui-demo"
+    },
+    {
+      "name": "test sui watch",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "dlvFlags": [
+        "--log"
+      ],
+      "args": [
+        "sui",
+        "watch",
+        "web",
+        "default"
+      ],
+      // "cwd": "E:/projects/yao/yao-projects/yao-amis-admin"
+      // "cwd": "E:/projects/yao/demos/yao-website"
+      "cwd": "E:/projects/yao/demos/cui-demo"
+    },
+    {
+      "name": "test sui trans",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "dlvFlags": [
+        "--log"
+      ],
+      "args": [
+        "sui",
+        "trans",
+        "blog",
+        "website"
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-amis-admin"
+    },
+    {
+      "name": "test read dir",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "dlvFlags": [
+        "--log"
+      ],
+      "args": [
+        "run",
+        "fs.system.readdir",
+        "../../"
+      ],
+      "cwd": "E:/projects/yao/plugins/yao-plugin-browser/packages/bunlib"
     },
     {
       "name": "test run",
@@ -84,15 +141,14 @@
       "cwd": "E:/projects/yao/yao-projects/yao-wms"
     },
     {
-      "name": "test pipe",
+      "name": "test mcp",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "args": [
         "run",
-        "pipes.cli.translator",
-        "::{\"placeholder\":\"translate\\nhello world\"}"
+        "scripts.mcpclient.test"
       ],
       "cwd": "E:/projects/yao/demos/yao-dev-app"
     },
@@ -104,11 +160,10 @@
       "program": "main.go",
       "args": [
         "migrate",
-        "--reset",
         "-n",
-        "doc.vector"
+        "demo"
       ],
-      "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
+      "cwd": "E:/projects/yao/temp/test"
     },
     {
       "name": "Launch stream",
@@ -124,32 +179,29 @@
       "cwd": "E:/projects/yao/yao-projects/yao-chatgpt"
     },
     {
-      "name": "Launch search",
+      "name": "Launch model create",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "args": [
         "run",
-        "websocket.Write",
-        "message",
-        "hello"
+        "scripts.config.test",
       ],
-      "cwd": "/data/projects/yao/demos-v1.0/yao-node-client/"
+      "cwd": "E:/projects/yao/temp/test"
     },
     {
-      "name": "Studio test",
+      "name": "script test",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "program": "main.go",
       "args": [
-        "studio",
         "run",
-        "convert.writeDslFile",
-        "User"
+        "models.ddic.model.get",
+        "::{\"debug\":true,\"withs\":{\"rel\":{},\"col\":{}}}"
       ],
-      "cwd": "E:/projects/metalowcode/Yao-MetaLowCode"
+      "cwd": "E:/projects/yao/temp/test"
     },
     {
       "name": "Launch flows.image1",
@@ -197,9 +249,61 @@
       "program": "main.go",
       "args": [
         "run",
-        "scripts.parser.v4.test1.dummy"
+        "Oauth.Token.Make",
+        "123456"
       ],
-      "cwd": "D:\\projects\\go\\yao\\wwsheng009\\yao-odata"
+      "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
+    },
+    {
+      "name": "test run xxx",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "scripts.system.model.getAllModelNameOptions",
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
+    },
+    {
+      "name": "test run pipe",
+      "type": "go",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "pipes.cli.translator1",
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-docs/docs/YaoApps/script_min_app",
+    },
+    {
+      "name": "test run tui_app",
+      "type": "go",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "tui",
+        "table",
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-docs/docs/YaoApps/tui_app",
+    },
+    {
+      "name": "decode jwt",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "main.go",
+      "args": [
+        "run",
+        "Oauth.Token.Verify",
+        "eyJhbGciOiJSUzI1NiIsImtpZCI6IjQwMTM5NDczOTU1NTE2MjQyNTEyNzYxOTA4NjA1OTcyMTcxNDQ4ODU3NDIyNzY0OSIsInR5cCI6IkpXVCJ9.eyJfX2lucHV0IjoiMTIzNDU2IiwiYXVkIjoiMTIzNDEyMzQxMjM0MTIzNDEyMzQxMjM0MTIzNDEyMzQiLCJjbGllbnRfaWQiOiIxMjM0MTIzNDEyMzQxMjM0MTIzNDEyMzQxMjM0MTIzNCIsImV4cCI6MTc2Nzg1NTQ0MCwiaWF0IjoxNzY3ODUxODQwLCJpc3MiOiJodHRwczovL2xvY2FsaG9zdDo1MDk5IiwianRpIjoiWDloT1pGZmhYSEVoTUVlYUxvLWFzUSIsIm5iZiI6MTc2Nzg1MTg0MCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCIsInN1YiI6IjI2NzgwNzQ5MDUxMDk1NzkiLCJ0b2tlbl90eXBlIjoiYWNjZXNzX3Rva2VuIn0.R84l5LVvrMJVA9iXd72mDDYXYwaLj79TpojRKKKrM_JwvSoQPJ7xoHWn-rWt_17oJbMoRV6bI1_vUxsBME7T9y3AmVE9ama6F-ITSapq99DImY3p9LLoR3Gjz5wt8yaIsGbcswLwTAMHxFbf61K7ungYfYpapiBW77hG28-i1T6GYlv1GruGtyP0UwJ65RnR0yGkPptvy8I_JQFzj-7k9T5b32yhU3DugIeVIfx58BkUn4otJwFMquqdYZycOkT5MOHq8vLV5J-dGOdPJ5mx0b2nZ4gHz2tjaFhlEJVt614pHX-hhiBMChWE34fVj1jZ2JqfYjv4dpf5WvutL5bBOA"
+      ],
+      "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
     }
   ]
 }

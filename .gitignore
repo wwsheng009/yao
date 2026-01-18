@@ -59,3 +59,5 @@ introduction/*
 .codebuddy
 yao-docs
 AGENTS.md
+bindata.go
+.vscode
