@@ -1,11 +1,33 @@
 package tui
 
 import (
+	"reflect"
 	"sync"
 
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
+
+// isRenderConfigChanged checks if two RenderConfig values are different
+func isRenderConfigChanged(old, new core.RenderConfig) bool {
+	// Compare Data field using reflection
+	if !reflect.DeepEqual(old.Data, new.Data) {
+		return true
+	}
+	
+	// Compare Width
+	if old.Width != new.Width {
+		return true
+	}
+	
+	// Compare Height
+	if old.Height != new.Height {
+		return true
+	}
+	
+	// No significant changes detected
+	return false
+}
 
 // ComponentInstanceRegistry manages component instances with lifecycle
 type ComponentInstanceRegistry struct {
@@ -33,17 +55,35 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 	if comp, exists := r.components[id]; exists {
 		// Check if the existing component is of the same type
 		if comp.Type == componentType {
-			// Update existing instance's render config
+			log.Trace("GetOrCreate: component=%s, type=%s, updating existing", id, componentType)
+			// Update existing instance's render config only if config changed
 			if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
+				// Check if config has changed before updating
+				if !isRenderConfigChanged(comp.LastConfig, renderConfig) {
+					log.Trace("GetOrCreate: config unchanged for %s, skipping update", id)
+					r.mu.RUnlock()
+					return comp, false
+				}
+
+				// Validate config before updating
+				if validator, ok := comp.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
+					if err := validator.ValidateConfig(renderConfig); err != nil {
+						log.Warn("Config validation failed for %s: %v", id, err)
+					}
+				}
 				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
 					log.Warn("Failed to update render config for component %s: %v", id, err)
 				}
+				// Store the new config for future comparison
+				comp.LastConfig = renderConfig
 			}
 			r.mu.RUnlock()
 			return comp, false // false means existing instance
 		}
+		log.Warn("Component type mismatch for %s: %s -> %s, will recreate", id, comp.Type, componentType)
 		r.mu.RUnlock()
 	} else {
+		log.Trace("GetOrCreate: component=%s not found, will create new", id)
 		r.mu.RUnlock()
 	}
 
@@ -54,8 +94,19 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 	// Double-check locking
 	if comp, exists := r.components[id]; exists {
 		if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
-			if err := updater.UpdateRenderConfig(renderConfig); err != nil {
-				log.Warn("Failed to update render config for component %s: %v", id, err)
+			// Check if config has changed before updating
+			if isRenderConfigChanged(comp.LastConfig, renderConfig) {
+				// Validate config before updating
+				if validator, ok := comp.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
+					if err := validator.ValidateConfig(renderConfig); err != nil {
+						log.Warn("Config validation failed for %s: %v", id, err)
+					}
+				}
+				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
+					log.Warn("Failed to update render config for component %s: %v", id, err)
+				}
+				// Store the new config for future comparison
+				comp.LastConfig = renderConfig
 			}
 		}
 		return comp, false
@@ -64,9 +115,10 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 	// Create new instance
 	instance := factory(renderConfig, id)
 	comp := &core.ComponentInstance{
-		ID:       id,
-		Type:     componentType,
-		Instance: instance,
+		ID:        id,
+		Type:      componentType,
+		Instance:  instance,
+		LastConfig: renderConfig,
 	}
 	r.components[id] = comp
 	return comp, true // true means newly created

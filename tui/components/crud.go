@@ -250,12 +250,23 @@ type CRUDComponentWrapper struct {
 }
 
 // NewCRUDComponentWrapper creates a wrapper around CRUD component
-func NewCRUDComponentWrapper(id string) *CRUDComponentWrapper {
+func NewCRUDComponentWrapper(config core.RenderConfig, id string) *CRUDComponentWrapper {
 	// Create a new event bus for this CRUD component instance
 	eventBus := core.NewEventBus()
-	return &CRUDComponentWrapper{
+	
+	// Create component with default configuration
+	wrapper := &CRUDComponentWrapper{
 		component: NewCRUDComponent(id, eventBus),
 	}
+	
+	// Update with provided configuration if available
+	if config.Data != nil {
+		if err := wrapper.UpdateRenderConfig(config); err != nil {
+			log.Error("Failed to update CRUD component config: %v", err)
+		}
+	}
+	
+	return wrapper
 }
 
 func (w *CRUDComponentWrapper) Init() tea.Cmd {

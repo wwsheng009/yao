@@ -175,9 +175,10 @@ type LogMsg struct {
 
 // ComponentInstance represents a runtime instance of a component with its own UID
 type ComponentInstance struct {
-	ID       string
-	Type     string
-	Instance ComponentInterface
+	ID        string
+	Type      string
+	Instance  ComponentInterface
+	LastConfig RenderConfig
 }
 
 // ActionMsg represents an internal action message for cross-component communication

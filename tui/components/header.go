@@ -145,8 +145,27 @@ type HeaderComponentWrapper struct {
 }
 
 // NewHeaderComponent creates a new Header component wrapper
-func NewHeaderComponent(id string) *HeaderComponentWrapper {
-	model := NewHeaderModel(HeaderProps{}, id)
+func NewHeaderComponent(config core.RenderConfig, id string) *HeaderComponentWrapper {
+	var props HeaderProps
+	
+	// Extract props from config
+	if config.Data != nil {
+		if dataMap, ok := config.Data.(map[string]interface{}); ok {
+			props = ParseHeaderProps(dataMap)
+		}
+	}
+	
+	// Use defaults if no data provided
+	if props.Title == "" {
+		props = HeaderProps{
+			Title: "",
+			Align: "left",
+			Color: "",
+			Background: "",
+		}
+	}
+	
+	model := NewHeaderModel(props, id)
 	return &HeaderComponentWrapper{
 		model: &model,
 	}

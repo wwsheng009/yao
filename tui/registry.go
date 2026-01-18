@@ -38,6 +38,7 @@ const (
 
 // ComponentFactory creates a component instance
 // Accepts RenderConfig for unified rendering approach
+// The config parameter contains the initial properties for the component
 type ComponentFactory func(config core.RenderConfig, id string) core.ComponentInterface
 
 // ComponentRegistry holds all registered component factories
@@ -71,87 +72,87 @@ func (r *ComponentRegistry) RegisterBuiltInComponents() {
 	// Components will parse props in their Render() methods
 
 	r.factories[HeaderComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewHeaderComponent(id)
+		return components.NewHeaderComponent(config, id)
 	}
 
 	r.factories[TextComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewTextComponent(id)
+		return components.NewTextComponent(config, id)
 	}
 
 	r.factories[FooterComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewFooterComponent(id)
+		return components.NewFooterComponent(config, id)
 	}
 
 	r.factories[InputComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewInputComponent(id)
+		return components.NewInputComponent(config, id)
 	}
 
 	r.factories[TextareaComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewTextareaComponent(id)
+		return components.NewTextareaComponent(config, id)
 	}
 
 	r.factories[MenuComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewMenuComponent(id)
+		return components.NewMenuComponent(config, id)
 	}
 
 	r.factories[ChatComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewChatComponent(id)
+		return components.NewChatComponent(config, id)
 	}
 
 	r.factories[CursorComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewCursorComponent(id)
+		return components.NewCursorComponent(config, id)
 	}
 
 	r.factories[FilePickerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewFilePickerComponent(id)
+		return components.NewFilePickerComponent(config, id)
 	}
 
 	r.factories[HelpComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewHelpComponent(id)
+		return components.NewHelpComponent(config, id)
 	}
 
 	r.factories[KeyComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewKeyComponent(id)
+		return components.NewKeyComponent(config, id)
 	}
 
 	r.factories[ListComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewListComponent(id)
+		return components.NewListComponent(config, id)
 	}
 
 	r.factories[PaginatorComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewPaginatorComponent(id)
+		return components.NewPaginatorComponent(config, id)
 	}
 
 	r.factories[ProgressComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewProgressComponent(id)
+		return components.NewProgressComponent(config, id)
 	}
 
 	r.factories[SpinnerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewSpinnerComponent(id)
+		return components.NewSpinnerComponent(config, id)
 	}
 
 	r.factories[TimerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewTimerComponent(id)
+		return components.NewTimerComponent(config, id)
 	}
 
 	r.factories[StopwatchComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewStopwatchComponent(id)
+		return components.NewStopwatchComponent(config, id)
 	}
 
 	r.factories[TableComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewTableComponent(id)
+		return components.NewTableComponent(config, id)
 	}
 
 	r.factories[FormComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewFormComponent(id)
+		return components.NewFormComponent(config, id)
 	}
 
 	r.factories[ViewportComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewViewportComponent(id)
+		return components.NewViewportComponent(config, id)
 	}
 
 	r.factories[CRUDComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewCRUDComponentWrapper(id)
+		return components.NewCRUDComponentWrapper(config, id)
 	}
 }
 

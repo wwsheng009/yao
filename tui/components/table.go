@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -632,24 +633,22 @@ func (w *TableComponentWrapper) GetComponentType() string {
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
 func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
-	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("TableModel: invalid data type")
 	}
-
-	// Parse table properties
-	props := ParseTableProps(propsMap)
-
-	// Update component properties
-	m.props = props
-
-	// Update table data if provided
-	if props.Data != nil {
-		m.data = props.Data
+	
+	newProps := ParseTableProps(propsMap)
+	oldProps := m.props
+	
+	// Determine if we need to rebuild the model
+	if m.shouldRebuildModel(oldProps, newProps) {
+		// Completely rebuild table model
+		return m.rebuildTableModel(newProps)
 	}
-
-	return nil
+	
+	// Perform lightweight update
+	return m.lightweightUpdate(oldProps, newProps)
 }
 
 // Cleanup 清理资源
@@ -717,3 +716,100 @@ func (w *TableComponentWrapper) GetSubscribedMessageTypes() []string {
 	}
 }
 
+// shouldRebuildModel determines if the table model needs to be rebuilt
+func (m *TableModel) shouldRebuildModel(oldProps, newProps TableProps) bool {
+	// Check if number of columns changed
+	if len(oldProps.Columns) != len(newProps.Columns) {
+		return true
+	}
+	
+	// Check if any column definition changed
+	for i := range oldProps.Columns {
+		if oldProps.Columns[i].Key != newProps.Columns[i].Key ||
+			oldProps.Columns[i].Title != newProps.Columns[i].Title ||
+			oldProps.Columns[i].Width != newProps.Columns[i].Width {
+			return true
+		}
+	}
+	
+	// Check if focused state changed
+	if oldProps.Focused != newProps.Focused {
+		return true
+	}
+	
+	return false
+}
+
+// rebuildTableModel recreates the entire table model with new data
+func (m *TableModel) rebuildTableModel(props TableProps) error {
+	newModel := NewTableModel(props, m.id)
+	m.Model = newModel.Model
+	m.props = props
+	m.data = props.Data
+	log.Trace("TableModel: Rebuilt table model for %s", m.id)
+	return nil
+}
+
+// lightweightUpdate performs a light update without rebuilding the model
+func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
+	// Update data if it changed
+	if !sliceEqual(oldProps.Data, newProps.Data) {
+		rows := make([]table.Row, 0, len(newProps.Data))
+		for _, rowData := range newProps.Data {
+			// Skip rows that don't match column count
+			if len(rowData) != len(newProps.Columns) {
+				continue
+			}
+			row := make([]string, len(rowData))
+			for j, cell := range rowData {
+				// Apply column-specific style if defined, otherwise use default formatting
+				if j < len(newProps.Columns) && newProps.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+					row[j] = newProps.Columns[j].Style.GetStyle().Render(formatCell(cell))
+				} else {
+					row[j] = formatCell(cell)
+				}
+			}
+			rows = append(rows, row)
+		}
+		m.Model.SetRows(rows)
+		m.data = newProps.Data
+	}
+	
+	// Update dimensions if changed
+	if oldProps.Width != newProps.Width {
+		m.Model.SetWidth(newProps.Width)
+	}
+	if oldProps.Height != newProps.Height {
+		m.Model.SetHeight(newProps.Height)
+	}
+	
+	// Update focus if changed
+	if oldProps.Focused != newProps.Focused {
+		if newProps.Focused {
+			m.Model.Focus()
+		} else {
+			m.Model.Blur()
+		}
+	}
+	
+	m.props = newProps
+	return nil
+}
+
+// sliceEqual compares two slices of interface{} slices for equality
+func sliceEqual(a, b [][]interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if len(a[i]) != len(b[i]) {
+			return false
+		}
+		for j := range a[i] {
+			if a[i][j] != b[i][j] {
+				return false
+			}
+		}
+	}
+	return true
+}

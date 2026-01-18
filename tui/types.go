@@ -231,6 +231,9 @@ type Model struct {
 
 	// logLevel controls the verbosity of logging for this TUI instance
 	logLevel string
+
+	// propsCache caches resolved props for performance
+	propsCache *PropsCache
 }
 
 // Validate validates the Config structure.
@@ -336,4 +339,146 @@ func (m *Model) Error(format string, args ...interface{}) {
 	if m.shouldLog("error") {
 		log.Error(format, args...)
 	}
+}
+
+// PropsCache caches resolved props for performance
+type PropsCache struct {
+	cache map[string]cachedProps
+	mu    sync.RWMutex
+}
+
+type cachedProps struct {
+	originalProps map[string]interface{}
+	resolvedProps map[string]interface{}
+	state         map[string]interface{}
+	time          int64
+}
+
+func NewPropsCache() *PropsCache {
+	return &PropsCache{
+		cache: make(map[string]cachedProps),
+	}
+}
+
+// GetOrResolve returns cached props if valid, otherwise resolves and caches them
+func (pc *PropsCache) GetOrResolve(
+	compID string,
+	compProps map[string]interface{},
+	currentState map[string]interface{},
+	resolver func() (map[string]interface{}, error),
+) (map[string]interface{}, error) {
+	pc.mu.RLock()
+	cached, exists := pc.cache[compID]
+	pc.mu.RUnlock()
+
+	if exists && mapsEqual(cached.originalProps, compProps) && mapsEqual(cached.state, currentState) {
+		return cached.resolvedProps, nil
+	}
+
+	resolvedProps, err := resolver()
+	if err != nil {
+		return nil, err
+	}
+
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	pc.cache[compID] = cachedProps{
+		originalProps: cloneMap(compProps),
+		resolvedProps: resolvedProps,
+		state:         cloneMap(currentState),
+	}
+
+	return resolvedProps, nil
+}
+
+// Invalidate removes a cached entry
+func (pc *PropsCache) Invalidate(compID string) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	delete(pc.cache, compID)
+}
+
+// Clear removes all cached entries
+func (pc *PropsCache) Clear() {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	pc.cache = make(map[string]cachedProps)
+}
+
+// mapsEqual compares two maps for equality
+func mapsEqual(a, b map[string]interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, v := range a {
+		if bv, exists := b[k]; !exists {
+			return false
+		} else if !valuesEqual(v, bv) {
+			return false
+		}
+	}
+	return true
+}
+
+// valuesEqual compares two values for equality (handles nested maps and slices)
+func valuesEqual(a, b interface{}) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+
+	// Handle primitive types
+	switch av := a.(type) {
+	case string:
+		bv, ok := b.(string)
+		return ok && av == bv
+	case int, int8, int16, int32, int64:
+		switch bv := b.(type) {
+		case int, int8, int16, int32, int64:
+			return fmt.Sprintf("%v", av) == fmt.Sprintf("%v", bv)
+		default:
+			return false
+		}
+	case float32, float64:
+		switch bv := b.(type) {
+		case float32, float64:
+			return fmt.Sprintf("%v", av) == fmt.Sprintf("%v", bv)
+		default:
+			return false
+		}
+	case bool:
+		bv, ok := b.(bool)
+		return ok && av == bv
+	case []interface{}:
+		bv, ok := b.([]interface{})
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !valuesEqual(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]interface{}:
+		bv, ok := b.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		return mapsEqual(av, bv)
+	default:
+		return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+	}
+}
+
+// cloneMap creates a shallow copy of a map
+func cloneMap(m map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
 }

@@ -25,6 +25,7 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 		MessageSubscriptionManager: NewMessageSubscriptionManager(),
 		exprCache:                  NewExpressionCache(),
 		logLevel:                   cfg.LogLevel,
+		propsCache:                 NewPropsCache(),
 	}
 
 	// Initialize the Bridge after EventBus is created
@@ -484,6 +485,12 @@ func (m *Model) handleMenuSelectionChange(menuID string, selectedItem interface{
 	m.StateMu.Unlock()
 	log.Trace("TUI KeyPress: Updated selected item for %s: %v", menuID, selectedItem)
 
+	// Invalidate props cache when selection changes
+	if m.propsCache != nil {
+		m.propsCache.Clear()
+		log.Trace("Menu selection changed, cleared props cache")
+	}
+
 	// If the selected item has changed, send a refresh command to update UI
 	if !existed {
 		// If there was no previous selection, this is a change
@@ -607,6 +614,13 @@ func (m *Model) handleProcessResult(msg core.ProcessResultMsg) (tea.Model, tea.C
 			m.State[msg.Target] = msg.Data
 			m.StateMu.Unlock()
 			log.Trace("TUI ProcessResult: %s = %v", msg.Target, msg.Data)
+
+			// Invalidate props cache when state changes
+			if m.propsCache != nil {
+				m.propsCache.Clear()
+				log.Trace("Process result updated state, cleared props cache")
+			}
+
 			// Trigger refresh to display new data in UI
 			return m, func() tea.Msg { return core.RefreshMsg{} }
 		}
@@ -1074,6 +1088,13 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 			m.State[key] = value
 		}
 		m.StateMu.Unlock()
+
+		// Invalidate props cache for components that reference state
+		// This ensures expressions are re-evaluated when state changes
+		if m.propsCache != nil {
+			m.propsCache.Clear()
+			log.Trace("State changes detected, cleared props cache")
+		}
 	}
 
 	return m, cmd, response == core.Handled

@@ -209,15 +209,34 @@ func (m *Model) evaluateValue(value interface{}) interface{} {
 	case string:
 		// Check if the string contains {{}} expressions
 		if containsExpression(v) {
-			// Extract the expression from {{ expression }}
-			trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(v, "{{"), "}}"))
-			res, err := m.evaluateExpression(trimmed)
-			if err != nil {
-				log.Warn("Expression evaluation failed: %v, expression: %s", err, trimmed)
-				return v // Return original string if evaluation fails
+			// Find all {{ expression }} patterns
+			matches := stmtRe.FindAllStringSubmatchIndex(v, -1)
+			if len(matches) == 0 {
+				return v
 			}
-			// Return the evaluated result directly without converting to string
-			return res
+			
+			// Process expressions in the string
+			// If there's only one match and it's the entire string (like "{{variable}}"), return the evaluated value directly
+			if len(matches) == 1 && matches[0][0] == 0 && matches[0][1] == len(v) {
+				// This is a single expression like {{variable}}, return the evaluated value directly
+				expression := strings.TrimSpace(v[matches[0][2]:matches[0][3]])
+				// Skip empty expressions to avoid compilation errors
+				if expression == "" {
+					log.Warn("Skipping empty expression in: %s", v)
+					return v
+				}
+				// Evaluate the expression
+				res, err := m.evaluateExpression(expression)
+				if err != nil {
+					log.Warn("Expression evaluation failed: %v, expression: %s", err, expression)
+					return v
+				}
+				// Return the evaluated value directly, preserving its type
+				return res
+			} else {
+				// Multiple expressions or partial match, do string replacement using applyState
+				return m.applyState(v)
+			}
 		}
 		return v
 	case map[string]interface{}:
@@ -321,28 +340,54 @@ func (m *Model) resolveProps(comp *Component) map[string]interface{} {
 		return make(map[string]interface{})
 	}
 
+	// Get current state snapshot for cache comparison
+	m.StateMu.RLock()
+	currentState := make(map[string]interface{}, len(m.State))
+	for k, v := range m.State {
+		currentState[k] = v
+	}
+	m.StateMu.RUnlock()
+
+	// Use props cache if available
+	if m.propsCache != nil && comp.ID != "" {
+		resolvedProps, err := m.propsCache.GetOrResolve(
+			comp.ID,
+			comp.Props,
+			currentState,
+			func() (map[string]interface{}, error) {
+				result := make(map[string]interface{})
+
+				// Process each prop
+				for key, value := range comp.Props {
+					// Use evaluateValue for consistent processing of all value types
+					result[key] = m.evaluateValue(value)
+				}
+
+				// Handle bind attribute - bind entire state object
+				if comp.Bind != "" {
+					m.StateMu.RLock()
+					if bindValue, ok := m.State[comp.Bind]; ok {
+						result["__bind_data"] = bindValue
+					}
+					m.StateMu.RUnlock()
+				}
+
+				return result, nil
+			},
+		)
+		if err == nil {
+			return resolvedProps
+		}
+		// If caching fails, fall back to normal processing
+	}
+
+	// Normal processing without cache
 	result := make(map[string]interface{})
 
 	// Process each prop
 	for key, value := range comp.Props {
-		// Check if value is a string containing an expression like {{expression}}
-		if str, ok := value.(string); ok {
-			if containsExpression(str) {
-				// Extract the expression from {{ expression }}
-				trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(str, "{{"), "}}"))
-				resolvedValue, success := m.resolveExpressionValue(trimmed)
-				if success {
-					result[key] = resolvedValue
-				} else {
-					result[key] = value // Keep original value if resolution fails
-				}
-			} else {
-				result[key] = value // Keep original value if no expression
-			}
-		} else {
-			// For non-string values, recursively evaluate nested expressions
-			result[key] = m.evaluateValue(value)
-		}
+		// Use evaluateValue for consistent processing of all value types
+		result[key] = m.evaluateValue(value)
 	}
 
 	// Handle bind attribute - bind entire state object
@@ -603,6 +648,18 @@ func (m *Model) RenderComponent(comp *Component) string {
 	if comp == nil || comp.Type == "" {
 		return ""
 	}
+
+	// Validate component type
+	if comp.Type == "" {
+		log.Warn("Component type is empty for ID: %s", comp.ID)
+		return m.renderUnknownComponent("empty_type")
+	}
+
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime)
+		log.Trace("RenderComponent: %s (type: %s) took %v", comp.ID, comp.Type, duration)
+	}()
 
 	// Apply state binding to props
 	props := m.resolveProps(comp)

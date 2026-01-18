@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -157,10 +158,18 @@ type TextModel struct {
 }
 
 // NewTextComponent creates a new Text component wrapper
-func NewTextComponent(id string) *TextComponentWrapper {
+func NewTextComponent(config core.RenderConfig, id string) *TextComponentWrapper {
 	model := &TextModel{
 		id: id,
 	}
+	
+	// Update with provided configuration if available
+	if config.Data != nil {
+		if err := model.UpdateRenderConfig(config); err != nil {
+			log.Error("Failed to update Text component config: %v", err)
+		}
+	}
+	
 	return &TextComponentWrapper{
 		model: model,
 	}
