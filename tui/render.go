@@ -643,6 +643,15 @@ func (m *Model) RenderComponent(comp *Component) string {
 			}
 			m.Components[comp.ID] = componentInstance
 			log.Trace("RenderComponent: Registered new component instance %s (type: %s)", comp.ID, comp.Type)
+
+			// Register message subscriptions if component implements GetSubscribedMessageTypes
+			if subscriber, ok := componentInstance.Instance.(interface{ GetSubscribedMessageTypes() []string }); ok {
+				messageTypes := subscriber.GetSubscribedMessageTypes()
+				if len(messageTypes) > 0 {
+					m.MessageSubscriptionManager.Subscribe(comp.ID, messageTypes)
+					log.Trace("RenderComponent: Registered message subscriptions for %s: %v", comp.ID, messageTypes)
+				}
+			}
 		}
 
 		// Always update focus state for this component

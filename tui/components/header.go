@@ -84,7 +84,8 @@ func RenderHeader(props HeaderProps, width int) string {
 func ParseHeaderProps(props map[string]interface{}) HeaderProps {
 	// Set defaults
 	hp := HeaderProps{
-		Bold: true, // Default to bold
+		Align: "left", // Default alignment
+		Bold:  false,  // Default to not bold
 	}
 
 	// Unmarshal properties

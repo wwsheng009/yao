@@ -88,7 +88,7 @@ func (m *MessageSubscriptionManager) GetSubscribers(messageType string) []string
 	defer m.RUnlock()
 
 	subs, exists := m.subscriptions[messageType]
-	if !exists {
+	if !exists || len(subs) == 0 {
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func (m *MessageSubscriptionManager) GetComponentSubscriptions(componentID strin
 	defer m.RUnlock()
 
 	subs, exists := m.componentSubscriptions[componentID]
-	if !exists {
+	if !exists || len(subs) == 0 {
 		return nil
 	}
 
