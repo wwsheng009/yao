@@ -293,3 +293,25 @@ func (m *StopwatchModel) Render(config core.RenderConfig) (string, error) {
 func (w *StopwatchComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (w *StopwatchComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("StopwatchComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse stopwatch properties
+	props := ParseStopwatchProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (w *StopwatchComponentWrapper) Cleanup() {
+	// 停止秒表并清理相关资源
+	w.model.Model.Stop()
+}

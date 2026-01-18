@@ -590,31 +590,59 @@ func (m *Model) RenderComponent(comp *Component) string {
 		return m.renderUnknownComponent(comp.Type)
 	}
 
-	// Create component instance using unified factory signature
-	componentInstance := factory(renderConfig, comp.ID)
+	// Ensure component registry is initialized
+	if m.ComponentInstanceRegistry == nil {
+		m.ComponentInstanceRegistry = NewComponentInstanceRegistry()
+	}
 
-	// For interactive components with ID, register instance for message handling
+	// Get or create component instance using registry (P0 fix: reuse instances)
+	componentInstance, isNew := m.ComponentInstanceRegistry.GetOrCreate(
+		comp.ID,
+		comp.Type,
+		factory,
+		renderConfig,
+	)
+
+	// For interactive components with ID, manage message handling and focus (P0 fix)
 	if comp.ID != "" && isInteractiveComponent(comp.Type) {
-		// Register as ComponentInstance for message handling
-		if m.Components == nil {
-			m.Components = make(map[string]*core.ComponentInstance)
-		}
-		m.Components[comp.ID] = &core.ComponentInstance{
-			ID:       comp.ID,
-			Type:     comp.Type,
-			Instance: componentInstance,
+		// Register in Components map only for new instances
+		if isNew {
+			if m.Components == nil {
+				m.Components = make(map[string]*core.ComponentInstance)
+			}
+			m.Components[comp.ID] = componentInstance
+			log.Trace("RenderComponent: Registered new component instance %s (type: %s)", comp.ID, comp.Type)
 		}
 
-		// Set focus for interactive components
-		if m.CurrentFocus == "" && comp.Type == "input" {
-			m.CurrentFocus = comp.ID
+		// Always update focus state for this component
+		shouldFocus := (m.CurrentFocus == comp.ID)
+		componentInstance.Instance.SetFocus(shouldFocus)
+
+		// Auto-focus first focusable component if no focus is set
+		if m.CurrentFocus == "" {
+			// For backward compatibility, prioritize input components
+			// but also consider other focusable types
+			focusableTypes := map[string]bool{
+				"input":  true,
+				"table":  true,
+				"menu":   true,
+				"form":   true,
+				"chat":   true,
+				"crud":   true,
+				"cursor": true,
+			}
+			if focusableTypes[comp.Type] {
+				m.CurrentFocus = comp.ID
+				componentInstance.Instance.SetFocus(true)
+				log.Trace("RenderComponent: Auto-focused component %s (type: %s)", comp.ID, comp.Type)
+			}
 		}
 	}
 
-	rendered, err := componentInstance.Render(renderConfig)
+	rendered, err := componentInstance.Instance.Render(renderConfig)
 	if err != nil {
 		log.Warn("Component render failed: %v, component: %s", err, comp.Type)
-		return componentInstance.View()
+		return componentInstance.Instance.View()
 	}
 	return rendered
 }

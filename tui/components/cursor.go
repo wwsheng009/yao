@@ -246,11 +246,11 @@ func (w *CursorComponentWrapper) GetComponentType() string {
 	return "cursor"
 }
 
-func (m *CursorModel) Render(config core.RenderConfig) (string, error) {
+func (m *CursorModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("CursorModel: invalid data type")
+		return fmt.Errorf("CursorModel: invalid data type")
 	}
 
 	// Parse cursor properties
@@ -259,12 +259,33 @@ func (m *CursorModel) Render(config core.RenderConfig) (string, error) {
 	// Update component properties
 	m.props = props
 
-	// Return rendered view
+	return nil
+}
+
+func (m *CursorModel) Cleanup() {
+	// Cursor模型通常不需要清理资源
+	// 这是一个空操作
+}
+
+func (m *CursorModel) Render(config core.RenderConfig) (string, error) {
+	// This method is kept for backward compatibility
+	// It now delegates to UpdateRenderConfig
+	_ = m.UpdateRenderConfig(config)
 	return m.View(), nil
 }
 
 func (w *CursorComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+func (w *CursorComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	// 委托给底层的 CursorModel
+	return w.model.UpdateRenderConfig(config)
+}
+
+func (w *CursorComponentWrapper) Cleanup() {
+	// Cursor组件通常不需要清理资源
+	// 这是一个空操作
 }
 
 // getCursorMode returns the cursor mode based on style string

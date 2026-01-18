@@ -403,6 +403,27 @@ func (m *FormModel) GetComponentType() string {
 	return "form"
 }
 
+func (m *FormModel) UpdateRenderConfig(config core.RenderConfig) error {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("FormModel: invalid data type")
+	}
+
+	// Parse form properties
+	props := ParseFormProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	return nil
+}
+
+func (m *FormModel) Cleanup() {
+	// Form模型通常不需要清理资源
+	// 这是一个空操作
+}
+
 func (w *FormComponentWrapper) GetComponentType() string {
 	return "form"
 }
@@ -426,4 +447,14 @@ func (m *FormModel) Render(config core.RenderConfig) (string, error) {
 
 func (w *FormComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+func (w *FormComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	// 委托给底层的 FormModel
+	return w.model.UpdateRenderConfig(config)
+}
+
+func (w *FormComponentWrapper) Cleanup() {
+	// Form组件通常不需要清理资源
+	// 这是一个空操作
 }

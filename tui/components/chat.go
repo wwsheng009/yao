@@ -604,3 +604,26 @@ func (w *ChatComponentWrapper) GetComponentType() string {
 func (w *ChatComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (w *ChatComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ChatComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse chat properties
+	props := ParseChatProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+	w.model.messages = props.Messages
+	w.model.updateHistoryText()
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (w *ChatComponentWrapper) Cleanup() {
+	// Chat 组件通常不需要特殊清理操作
+}

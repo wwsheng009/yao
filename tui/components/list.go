@@ -357,6 +357,67 @@ func (m *ListModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
+// UpdateRenderConfig 更新渲染配置
+func (m *ListModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ListModel: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse list properties
+	props := ParseListProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Update list items if provided
+	if props.Items != nil {
+		listItems := make([]list.Item, len(props.Items))
+		for i, item := range props.Items {
+			listItems[i] = item
+		}
+		m.Model.SetItems(listItems)
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *ListModel) Cleanup() {
+	// ListModel 通常不需要特殊清理操作
+}
+
 func (w *ListComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *ListComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ListComponentWrapper: invalid data type")
+	}
+
+	// Parse list properties
+	props := ParseListProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update list items if provided
+	if props.Items != nil {
+		listItems := make([]list.Item, len(props.Items))
+		for i, item := range props.Items {
+			listItems[i] = item
+		}
+		w.model.Model.SetItems(listItems)
+	}
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the list component
+func (w *ListComponentWrapper) Cleanup() {
+	// List components typically don't need cleanup
+	// This is a no-op for list components
 }

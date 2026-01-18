@@ -853,5 +853,42 @@ func (w *MenuComponentWrapper) GetComponentType() string {
 }
 
 func (w *MenuComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.View(), nil
+	return w.model.Render(config)
+}
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *MenuComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("MenuComponentWrapper: invalid data type")
+	}
+
+	// Parse menu properties
+	props := ParseMenuProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update menu items if provided
+	if props.Items != nil {
+		menuItems := make([]list.Item, len(props.Items))
+		for i, item := range props.Items {
+			menuItems[i] = MenuItem{
+				Title:       item.Title,
+				Description: item.Description,
+				Value:       item.Value,
+				Action:      item.Action,
+				Disabled:    item.Disabled,
+			}
+		}
+		w.model.Model.SetItems(menuItems)
+	}
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the menu component
+func (w *MenuComponentWrapper) Cleanup() {
+	// Menu components typically don't need cleanup
+	// This is a no-op for menu components
 }

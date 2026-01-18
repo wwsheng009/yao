@@ -290,3 +290,24 @@ func (m *HelpModel) Render(config core.RenderConfig) (string, error) {
 func (w *HelpComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (w *HelpComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("HelpComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse help properties
+	props := ParseHelpProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+func (w *HelpComponentWrapper) Cleanup() {
+	// Help组件通常不需要清理资源
+	// 这是一个空操作
+}

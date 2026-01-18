@@ -14,13 +14,14 @@ import (
 // the reactive environment.
 func NewModel(cfg *Config, program *tea.Program) *Model {
 	model := &Model{
-		Config:          cfg,
-		State:           make(map[string]interface{}),
-		Components:      make(map[string]*core.ComponentInstance),
-		EventBus:        core.NewEventBus(),
-		Program:         program,
-		Ready:           false,
-		MessageHandlers: GetDefaultMessageHandlersFromCore(),
+		Config:                 cfg,
+		State:                  make(map[string]interface{}),
+		Components:             make(map[string]*core.ComponentInstance),
+		ComponentInstanceRegistry: NewComponentInstanceRegistry(),
+		EventBus:               core.NewEventBus(),
+		Program:                program,
+		Ready:                  false,
+		MessageHandlers:         GetDefaultMessageHandlersFromCore(),
 	}
 
 	// Initialize the Bridge after EventBus is created

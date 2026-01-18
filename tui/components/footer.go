@@ -252,3 +252,24 @@ func (w *FooterComponentWrapper) GetComponentType() string {
 func (w *FooterComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (w *FooterComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("FooterComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse footer properties
+	props := ParseFooterProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+func (w *FooterComponentWrapper) Cleanup() {
+	// Footer组件通常不需要清理资源
+	// 这是一个空操作
+}

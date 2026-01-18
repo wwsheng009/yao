@@ -358,5 +358,33 @@ func (w *InputComponentWrapper) GetComponentType() string {
 }
 
 func (w *InputComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.View(), nil
+	return w.model.Render(config)
 }
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *InputComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("InputComponentWrapper: invalid data type")
+	}
+
+	// Parse input properties
+	props := ParseInputProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update underlying model if value changed
+	if props.Value != "" && w.model.Value() != props.Value {
+		w.model.SetValue(props.Value)
+	}
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the input component
+func (w *InputComponentWrapper) Cleanup() {
+	// Input components typically don't need cleanup
+	// This is a no-op for input components
+}
+

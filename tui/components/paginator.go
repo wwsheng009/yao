@@ -362,3 +362,62 @@ func (m *PaginatorModel) Render(config core.RenderConfig) (string, error) {
 func (w *PaginatorComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *PaginatorComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("PaginatorComponentWrapper: invalid data type")
+	}
+
+	// Parse paginator properties
+	props := ParsePaginatorProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update pagination settings
+	if props.TotalPages > 0 {
+		w.model.TotalPages = props.TotalPages
+	} else if props.TotalItems > 0 && props.PageSize > 0 {
+		w.model.TotalPages = (props.TotalItems + props.PageSize - 1) / props.PageSize
+	}
+
+	// Set current page
+	if props.CurrentPage > 0 {
+		w.model.Page = props.CurrentPage - 1 // Convert to 0-indexed
+	}
+
+	// Set paginator type
+	if props.Type == "dots" {
+		w.model.Type = paginator.Dots
+	} else {
+		w.model.Type = paginator.Arabic
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to paginator
+	w.model.ActiveDot = style.Render("•")
+
+	// Set inactive color
+	if props.InactiveColor != "" {
+		inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(props.InactiveColor))
+		w.model.InactiveDot = inactiveStyle.Render("•")
+	}
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the paginator component
+func (w *PaginatorComponentWrapper) Cleanup() {
+	// Paginator components typically don't need cleanup
+	// This is a no-op for paginator components
+}

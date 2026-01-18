@@ -388,6 +388,62 @@ func (m *TextareaModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
+// UpdateRenderConfig 更新渲染配置
+func (m *TextareaModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TextareaModel: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse textarea properties
+	props := ParseTextareaProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Update textarea value if provided
+	if value, exists := propsMap["value"]; exists {
+		if valueStr, ok := value.(string); ok {
+			m.SetValue(valueStr)
+		}
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *TextareaModel) Cleanup() {
+	// TextareaModel 通常不需要特殊清理操作
+}
+
 func (w *TextareaComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+// UpdateRenderConfig 更新渲染配置
+func (w *TextareaComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TextareaComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse textarea properties
+	props := ParseTextareaProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update textarea value if provided
+	if value, exists := propsMap["value"]; exists {
+		if valueStr, ok := value.(string); ok {
+			w.model.SetValue(valueStr)
+		}
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (w *TextareaComponentWrapper) Cleanup() {
+	// 文本区域组件通常不需要特殊清理操作
 }

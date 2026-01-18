@@ -241,11 +241,11 @@ func (w *FilePickerComponentWrapper) GetComponentType() string {
 	return "filepicker"
 }
 
-func (m *FilePickerModel) Render(config core.RenderConfig) (string, error) {
+func (m *FilePickerModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("FilePickerModel: invalid data type")
+		return fmt.Errorf("FilePickerModel: invalid data type")
 	}
 
 	// Parse filepicker properties
@@ -254,10 +254,31 @@ func (m *FilePickerModel) Render(config core.RenderConfig) (string, error) {
 	// Update component properties
 	m.props = props
 
-	// Return rendered view
+	return nil
+}
+
+func (m *FilePickerModel) Cleanup() {
+	// FilePicker模型通常不需要清理资源
+	// 这是一个空操作
+}
+
+func (m *FilePickerModel) Render(config core.RenderConfig) (string, error) {
+	// This method is kept for backward compatibility
+	// It now delegates to UpdateRenderConfig
+	_ = m.UpdateRenderConfig(config)
 	return m.View(), nil
 }
 
 func (w *FilePickerComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+func (w *FilePickerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	// 委托给底层的 FilePickerModel
+	return w.model.UpdateRenderConfig(config)
+}
+
+func (w *FilePickerComponentWrapper) Cleanup() {
+	// FilePicker组件通常不需要清理资源
+	// 这是一个空操作
 }

@@ -220,6 +220,12 @@ func (c *CRUDComponent) GetComponentType() string {
 	return "crud"
 }
 
+func (c *CRUDComponent) UpdateRenderConfig(config core.RenderConfig) error {
+	// CRUD组件目前不需要更新渲染配置
+	// 未来可以在这里更新子组件的配置
+	return nil
+}
+
 func (c *CRUDComponent) Render(config core.RenderConfig) (string, error) {
 	return c.View(), nil
 }

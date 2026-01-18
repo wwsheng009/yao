@@ -406,6 +406,62 @@ func (m *ViewportModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
+// UpdateRenderConfig 更新渲染配置
+func (m *ViewportModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ViewportModel: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse viewport properties
+	props := ParseViewportProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Update content if provided
+	if content, exists := propsMap["content"]; exists {
+		if contentStr, ok := content.(string); ok {
+			m.SetContent(contentStr)
+		}
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *ViewportModel) Cleanup() {
+	// ViewportModel 通常不需要特殊清理操作
+}
+
 func (w *ViewportComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+// UpdateRenderConfig 更新渲染配置
+func (w *ViewportComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ViewportComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse viewport properties
+	props := ParseViewportProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	// Update content if provided
+	if content, exists := propsMap["content"]; exists {
+		if contentStr, ok := content.(string); ok {
+			w.model.SetContent(contentStr)
+		}
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (w *ViewportComponentWrapper) Cleanup() {
+	// 视口组件通常不需要特殊清理操作
 }

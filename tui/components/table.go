@@ -62,8 +62,9 @@ type TableProps struct {
 type TableModel struct {
 	table.Model
 	props               TableProps
-	id                  string // Unique identifier for this instance
-	previousSelectedRow int    // Track previous selection for change detection
+	data                [][]interface{} // Store the original data
+	id                  string        // Unique identifier for this instance
+	previousSelectedRow int           // Track previous selection for change detection
 }
 
 // RenderTable renders a table component
@@ -372,6 +373,7 @@ func NewTableModel(props TableProps, id string) TableModel {
 	return TableModel{
 		Model: t,
 		props: props,
+		data:  props.Data, // Initialize with provided data
 		id:    id,
 	}
 }
@@ -628,11 +630,12 @@ func (w *TableComponentWrapper) GetComponentType() string {
 	return "table"
 }
 
-func (m *TableModel) Render(config core.RenderConfig) (string, error) {
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("TableModel: invalid data type")
+		return fmt.Errorf("TableModel: invalid data type")
 	}
 
 	// Parse table properties
@@ -641,10 +644,39 @@ func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 	// Update component properties
 	m.props = props
 
-	// Return rendered view
+	// Update table data if provided
+	if props.Data != nil {
+		m.data = props.Data
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *TableModel) Cleanup() {
+	// TableModel 通常不需要特殊清理操作
+}
+
+func (m *TableModel) Render(config core.RenderConfig) (string, error) {
+	// This method is kept for backward compatibility
+	// It now delegates to UpdateRenderConfig
+	_ = m.UpdateRenderConfig(config)
 	return m.View(), nil
 }
+
 
 func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	return w.model.UpdateRenderConfig(config)
+}
+
+// Cleanup cleans up resources used by the table component
+func (w *TableComponentWrapper) Cleanup() {
+	// Table components typically don't need cleanup
+	// This is a no-op for table components
+}
+

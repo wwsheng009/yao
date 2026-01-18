@@ -285,6 +285,48 @@ func (m *TimerModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
+// UpdateRenderConfig 更新渲染配置
+func (m *TimerModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TimerModel: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse timer properties
+	props := ParseTimerProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *TimerModel) Cleanup() {
+	// TimerModel 通常不需要特殊清理操作
+}
+
 func (w *TimerComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+// UpdateRenderConfig 更新渲染配置
+func (w *TimerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TimerComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse timer properties
+	props := ParseTimerProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (w *TimerComponentWrapper) Cleanup() {
+	// 计时器组件通常不需要特殊清理操作
 }

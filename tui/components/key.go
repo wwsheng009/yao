@@ -266,3 +266,24 @@ func (m *KeyModel) Render(config core.RenderConfig) (string, error) {
 func (w *KeyComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (w *KeyComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("KeyComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse key properties
+	props := ParseKeyProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+func (w *KeyComponentWrapper) Cleanup() {
+	// Key组件通常不需要清理资源
+	// 这是一个空操作
+}

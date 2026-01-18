@@ -224,6 +224,28 @@ func (m *TextModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
+// UpdateRenderConfig 更新渲染配置
+func (m *TextModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TextModel: invalid data type, expected map[string]interface{}, got %T", config.Data)
+	}
+
+	// 解析属性
+	props := ParseTextProps(propsMap)
+
+	// 更新组件属性
+	m.Props = props
+	m.Width = config.Width
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *TextModel) Cleanup() {
+	// TextModel 通常不需要特殊清理操作
+}
+
 // TextComponentWrapper wraps TextModel to implement ComponentInterface properly
 type TextComponentWrapper struct {
 	model *TextModel
@@ -273,4 +295,27 @@ func (w *TextComponentWrapper) GetComponentType() string {
 
 func (w *TextComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
+}
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *TextComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TextComponentWrapper: invalid data type")
+	}
+
+	// Parse text properties
+	props := ParseTextProps(propsMap)
+
+	// Update component properties
+	w.model.Props = props
+	w.model.Width = config.Width
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the text component
+func (w *TextComponentWrapper) Cleanup() {
+	// Text components typically don't need cleanup
+	// This is a no-op for text components
 }

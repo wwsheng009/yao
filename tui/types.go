@@ -187,8 +187,11 @@ type Model struct {
 	// StateMu protects State for concurrent access
 	StateMu sync.RWMutex
 
-	// Components holds the runtime instances of components
+	// Components holds the runtime instances of components (for backward compatibility)
 	Components map[string]*core.ComponentInstance
+
+	// ComponentInstanceRegistry manages component lifecycle and prevents recreation
+	ComponentInstanceRegistry *ComponentInstanceRegistry
 
 	// EventBus provides cross-component communication
 	EventBus *core.EventBus

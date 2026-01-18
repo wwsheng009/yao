@@ -45,6 +45,10 @@ type ComponentInterface interface {
 
 	// 渲染方法（从ComponentRenderer合并）
 	Render(config RenderConfig) (string, error)
+
+	// 组件生命周期方法
+	UpdateRenderConfig(config RenderConfig) error // 更新渲染配置而不重新创建实例
+	Cleanup()                                 // 清理资源（可选）
 }
 
 // TargetedMsg 用于定向消息投递

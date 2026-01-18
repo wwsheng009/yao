@@ -293,3 +293,25 @@ func (m *ProgressModel) Render(config core.RenderConfig) (string, error) {
 func (w *ProgressComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (w *ProgressComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("ProgressComponentWrapper: invalid data type")
+	}
+
+	// Parse progress properties
+	props := ParseProgressProps(propsMap)
+
+	// Update component properties
+	w.model.props = props
+
+	return nil
+}
+
+// Cleanup cleans up resources used by the progress component
+func (w *ProgressComponentWrapper) Cleanup() {
+	// Progress components typically don't need cleanup
+	// This is a no-op for progress components
+}

@@ -91,3 +91,27 @@ func (c *StaticComponent) SetWidth(width int) {
 func (c *StaticComponent) SetID(id string) {
 	c.ID = id
 }
+
+// UpdateRenderConfig 更新渲染配置
+func (c *StaticComponent) UpdateRenderConfig(config core.RenderConfig) error {
+	// 更新宽度配置
+	if config.Width > 0 {
+		c.Width = config.Width
+	}
+
+	// 更新属性
+	if config.Data != nil {
+		if props, ok := config.Data.(map[string]interface{}); ok {
+			c.Props = props
+		} else {
+			return fmt.Errorf("invalid data type for StaticComponent: expected map[string]interface{}, got %T", config.Data)
+		}
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (c *StaticComponent) Cleanup() {
+	// 静态组件通常不需要特殊清理操作
+}
