@@ -66,19 +66,14 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		model.Ready = true // Mark model as ready after receiving window size
 
 		// Broadcast window size to all components
-		var cmds []tea.Cmd
-		for id, comp := range model.Components {
-			newComp, cmd, _ := comp.Instance.UpdateMsg(msg)
-			model.Components[id].Instance = newComp
-			cmds = append(cmds, cmd)
-		}
+		broadcastCmd := func() tea.Msg { return core.FocusFirstComponentMsg{} }
+		updatedModel, cmd := model.dispatchMessageToAllComponents(msg)
 
 		// Trigger auto-focus after window size is received and components are initialized
-		cmds = append(cmds, func() tea.Msg {
-			return core.FocusFirstComponentMsg{}
-		})
+		var cmds []tea.Cmd
+		cmds = append(cmds, cmd, broadcastCmd)
 
-		return model, tea.Batch(cmds...)
+		return updatedModel, tea.Batch(cmds...)
 	}
 
 	// Register handler for core.TargetedMsg
@@ -89,15 +84,9 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		}
 		targetedMsg := msg.(core.TargetedMsg)
 
-		// Find target component
-		if comp, exists := model.Components[targetedMsg.TargetID]; exists {
-			newComp, cmd, _ := comp.Instance.UpdateMsg(targetedMsg.InnerMsg)
-			model.Components[targetedMsg.TargetID].Instance = newComp
-			return model, cmd
-		}
-
-		// Target not found, ignore message
-		return model, nil
+		// Find target component and dispatch message
+		updatedModel, cmd, _ := model.dispatchMessageToComponent(targetedMsg.TargetID, targetedMsg.InnerMsg)
+		return updatedModel, cmd
 	}
 
 	// Register handler for core.ActionMsg
@@ -276,9 +265,16 @@ func (m *Model) Init() tea.Cmd {
 
 	// Auto-focus to the first focusable component after initialization
 	// This ensures that interactive components (like tables) can receive keyboard events
-	cmds = append(cmds, func() tea.Msg {
-		return core.FocusFirstComponentMsg{}
-	})
+	focusableIDs := m.getFocusableComponentIDs()
+	if len(focusableIDs) > 0 {
+		cmds = append(cmds, func() tea.Msg {
+			return core.FocusFirstComponentMsg{}
+		})
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
 
 	return tea.Batch(cmds...)
 }
@@ -293,6 +289,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Capture phase: System-level message interception
 	// Priority 1: Critical system messages
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m, nil
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
 			// Always intercept Ctrl+C regardless of focus
@@ -316,20 +314,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if handler, exists := m.MessageHandlers[msgType]; exists {
 			log.Trace("TUI Update: Using handler for message type %s", msgType)
 			return handler(m, msg)
-		}
-	}
-
-	// For regular messages, try to dispatch to focused component
-	if m.CurrentFocus != "" {
-		// Check if there's a registered component with this focus ID
-		if comp, exists := m.Components[m.CurrentFocus]; exists {
-			updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
-			if response == core.Handled {
-				log.Trace("TUI Update: Message handled by focused component %s", m.CurrentFocus)
-				m.Components[m.CurrentFocus].Instance = updatedComp
-				return m, cmd
-			}
-			// If not handled, continue to global handlers
 		}
 	}
 
@@ -405,54 +389,86 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// Dispatch phase: Route to focused component
+	// Dispatch phase: Route to focused component first
 	if m.CurrentFocus != "" {
-		// Check if there's a registered component with this focus ID
-		if comp, exists := m.Components[m.CurrentFocus]; exists {
-			updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
-			if response == core.Handled {
-				// Update the component instance
-				m.Components[m.CurrentFocus].Instance = updatedComp
-				// Sync input state for input components
-				if inputWrapper, ok := updatedComp.(*components.InputComponentWrapper); ok {
-					m.syncInputComponentState(m.CurrentFocus, inputWrapper)
-				}
-				return m, cmd
+		updatedModel, cmd, handled := m.dispatchMessageToComponent(m.CurrentFocus, msg)
+		if handled {
+			// Component handled the message, but global navigation keys have priority
+			if m.isGlobalNavigationKey(msg) {
+				// Global navigation takes precedence over component handling
+				return m.handleGlobalNavigation(msg)
 			}
+			return updatedModel, cmd
 		}
-
-		// All components should be in the new system (Components)
-		// No legacy handling needed
+		m = updatedModel.(*Model)
 	}
 
-	// Bubble phase: Handle general navigation and bound actions
-	// Handle ESC key to clear focus
-	if msg.Type == tea.KeyEsc && m.CurrentFocus != "" {
-		m.clearFocus()
-		return m, nil
+	// Global navigation keys as fallback
+	if m.isGlobalNavigationKey(msg) {
+		return m.handleGlobalNavigation(msg)
 	}
 
 	// Handle bound actions for keys
 	return m.handleBoundActions(msg)
 }
 
+// isGlobalNavigationKey checks if the key is a global navigation key
+func (m *Model) isGlobalNavigationKey(msg tea.KeyMsg) bool {
+	return msg.Type == tea.KeyTab || msg.Type == tea.KeyShiftTab ||
+		(msg.Type == tea.KeyEsc && m.CurrentFocus != "")
+}
+
+// handleGlobalNavigation handles global navigation keys
+func (m *Model) handleGlobalNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyTab:
+		return m.handleTabNavigation()
+	case tea.KeyShiftTab:
+		m.focusPrevComponent()
+		return m, nil
+	case tea.KeyEsc:
+		if m.CurrentFocus != "" {
+			m.clearFocus()
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
 // handleTabNavigation handles tab navigation between components
 func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 	log.Trace("Tab pressed, cycling focus between components, current focus: %s", m.CurrentFocus)
 
-	// First, check if there are any input components
-	hasInputs := false
-	for _, comp := range m.Components {
-		if comp.Type == "input" {
-			hasInputs = true
+	focusableIDs := m.getFocusableComponentIDs()
+	if len(focusableIDs) == 0 {
+		log.Trace("No focusable components found")
+		return m, nil
+	}
+
+	if m.CurrentFocus == "" {
+		m.setFocus(focusableIDs[0])
+		log.Trace("Focused to first component: %s", focusableIDs[0])
+		return m, nil
+	}
+
+	currentIndex := -1
+	for i, id := range focusableIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
 			break
 		}
 	}
 
-	if hasInputs {
-		m.focusNextInput()
+	if currentIndex == -1 {
+		m.setFocus(focusableIDs[0])
+		log.Trace("Current focus not found, focusing to first: %s", focusableIDs[0])
+		return m, nil
 	}
-	// Note: Menu components are handled through their own UpdateMsg method
+
+	nextIndex := (currentIndex + 1) % len(focusableIDs)
+	m.setFocus(focusableIDs[nextIndex])
+	log.Trace("Focused to next component: %s (index %d)", focusableIDs[nextIndex], nextIndex)
+
 	return m, nil
 }
 
@@ -1024,4 +1040,34 @@ func (m *Model) syncInputComponentState(id string, wrapper *components.InputComp
 	m.StateMu.Lock()
 	m.State[id] = wrapper.GetValue()
 	m.StateMu.Unlock()
+}
+
+// dispatchMessageToComponent dispatches a message to a specific component
+// Returns (updatedModel, cmd, handled) where handled indicates if the component processed the message
+func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	comp, exists := m.Components[componentID]
+	if !exists {
+		return m, nil, false
+	}
+
+	updatedComp, cmd, response := comp.Instance.UpdateMsg(msg)
+	m.Components[componentID].Instance = updatedComp
+
+	// Sync input state for input components
+	if inputWrapper, ok := updatedComp.(*components.InputComponentWrapper); ok {
+		m.syncInputComponentState(componentID, inputWrapper)
+	}
+
+	return m, cmd, response == core.Handled
+}
+
+// dispatchMessageToAllComponents dispatches a message to all components
+// Returns (updatedModel, cmd) where cmd is a batch of all component commands
+func (m *Model) dispatchMessageToAllComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	for id := range m.Components {
+		_, cmd, _ := m.dispatchMessageToComponent(id, msg)
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
 }
