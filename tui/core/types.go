@@ -21,14 +21,30 @@ const (
 // and returns an updated model and command
 type MessageHandler func(interface{}, tea.Msg) (tea.Model, tea.Cmd)
 
-// ComponentInterface 增强型组件接口
+// RenderConfig 统一渲染配置
+type RenderConfig struct {
+	Data   interface{} // 组件数据
+	Width  int         // 渲染宽度
+	Height int         // 渲染高度
+}
+
+// ComponentInterface 统一的组件接口
+// 合并了ComponentInterface和ComponentRenderer的功能
 type ComponentInterface interface {
-	Init() tea.Cmd
-	// 返回处理后的组件、命令以及处理状态
-	UpdateMsg(msg tea.Msg) (ComponentInterface, tea.Cmd, Response)
+	// 渲染相关方法
 	View() string
+
+	// 交互相关方法（对于静态组件，这些方法可以是空实现）
+	Init() tea.Cmd
+	UpdateMsg(msg tea.Msg) (ComponentInterface, tea.Cmd, Response)
 	GetID() string       // 返回组件的唯一标识符
 	SetFocus(focus bool) // 设置/取消焦点
+
+	// 类型识别方法
+	GetComponentType() string
+
+	// 渲染方法（从ComponentRenderer合并）
+	Render(config RenderConfig) (string, error)
 }
 
 // TargetedMsg 用于定向消息投递

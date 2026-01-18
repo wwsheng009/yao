@@ -2,6 +2,7 @@ package components
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -378,4 +379,33 @@ func (w *ViewportComponentWrapper) SetFocus(focus bool) {
 	// Viewport doesn't have visual focus indicators like other components
 	// Focus tracking is mainly for keyboard event routing
 	// No action needed for viewport as it handles scroll keys globally
+}
+
+func (m *ViewportModel) GetComponentType() string {
+	return "viewport"
+}
+
+func (w *ViewportComponentWrapper) GetComponentType() string {
+	return "viewport"
+}
+
+func (m *ViewportModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("ViewportModel: invalid data type")
+	}
+
+	// Parse viewport properties
+	props := ParseViewportProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
+func (w *ViewportComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
 }

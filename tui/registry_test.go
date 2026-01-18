@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 func TestComponentRegistry(t *testing.T) {
@@ -11,37 +12,33 @@ func TestComponentRegistry(t *testing.T) {
 	registry := NewComponentRegistry()
 
 	// Test registering a component
-	err := registry.RegisterComponent("test", func(props map[string]interface{}, width int) string {
-		return "test component"
+	err := registry.RegisterComponent(ComponentType("test"), func(config core.RenderConfig, id string) core.ComponentInterface {
+		return nil
 	})
 	assert.NoError(t, err)
 
 	// Test getting a registered component
-	renderer, err := registry.GetComponent("test")
+	factory, err := registry.GetComponentFactory(ComponentType("test"))
 	assert.NoError(t, err)
-	assert.NotNil(t, renderer)
-
-	// Test getting the rendered output
-	result := renderer(nil, 0)
-	assert.Equal(t, "test component", result)
+	assert.NotNil(t, factory)
 
 	// Test getting an unregistered component
-	_, err = registry.GetComponent("nonexistent")
+	_, err = registry.GetComponentFactory(ComponentType("nonexistent"))
 	assert.Error(t, err)
 
 	// Test unregistering a component
-	registry.UnregisterComponent("test")
-	_, err = registry.GetComponent("test")
+	registry.UnregisterComponent(ComponentType("test"))
+	_, err = registry.GetComponentFactory(ComponentType("test"))
 	assert.Error(t, err)
 
 	// Test listing components
-	err = registry.RegisterComponent("test1", func(props map[string]interface{}, width int) string {
-		return "test1"
+	err = registry.RegisterComponent(ComponentType("test1"), func(config core.RenderConfig, id string) core.ComponentInterface {
+		return nil
 	})
 	assert.NoError(t, err)
 
-	err = registry.RegisterComponent("test2", func(props map[string]interface{}, width int) string {
-		return "test2"
+	err = registry.RegisterComponent(ComponentType("test2"), func(config core.RenderConfig, id string) core.ComponentInterface {
+		return nil
 	})
 	assert.NoError(t, err)
 
@@ -53,21 +50,58 @@ func TestComponentRegistry(t *testing.T) {
 	assert.NotNil(t, globalReg)
 
 	// Ensure it has built-in components
-	_, err = globalReg.GetComponent(TableComponent)
+	_, err = globalReg.GetComponentFactory(TableComponent)
 	assert.NoError(t, err)
 
-	_, err = globalReg.GetComponent(FormComponent)
+	_, err = globalReg.GetComponentFactory(FormComponent)
 	assert.NoError(t, err)
 
-	_, err = globalReg.GetComponent(InputComponent)
+	_, err = globalReg.GetComponentFactory(InputComponent)
 	assert.NoError(t, err)
 
-	_, err = globalReg.GetComponent(ViewportComponent)
+	_, err = globalReg.GetComponentFactory(ViewportComponent)
 	assert.NoError(t, err)
 
-	_, err = globalReg.GetComponent(FooterComponent)
+	_, err = globalReg.GetComponentFactory(FooterComponent)
 	assert.NoError(t, err)
 
-	_, err = globalReg.GetComponent(ChatComponent)
+	_, err = globalReg.GetComponentFactory(ChatComponent)
+	assert.NoError(t, err)
+
+	// Test new components are registered
+	_, err = globalReg.GetComponentFactory(TimerComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(StopwatchComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(FilePickerComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(HelpComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(KeyComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(CursorComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(ListComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(PaginatorComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(ProgressComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(SpinnerComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(TextareaComponent)
+	assert.NoError(t, err)
+
+	_, err = globalReg.GetComponentFactory(CRUDComponent)
 	assert.NoError(t, err)
 }

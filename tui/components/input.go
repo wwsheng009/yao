@@ -2,6 +2,7 @@ package components
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -202,6 +203,28 @@ func (m *InputModel) GetID() string {
 	return m.id
 }
 
+// GetComponentType returns the component type
+func (m *InputModel) GetComponentType() string {
+	return "input"
+}
+
+func (m *InputModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("InputModel: invalid data type")
+	}
+
+	// Parse input properties
+	props := ParseInputProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
 // InputComponentWrapper wraps InputModel to implement ComponentInterface properly
 type InputComponentWrapper struct {
 	model *InputModel
@@ -328,4 +351,12 @@ func (w *InputComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
 	// Note: We don't publish event here since it would require changing the interface.
 	// Events for focus changes are published in the UpdateMsg method for ESC key.
+}
+
+func (w *InputComponentWrapper) GetComponentType() string {
+	return "input"
+}
+
+func (w *InputComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.View(), nil
 }

@@ -215,3 +215,11 @@ func (c *CRUDComponent) SetFocus(focus bool) {
 		}
 	}
 }
+
+func (c *CRUDComponent) GetComponentType() string {
+	return "crud"
+}
+
+func (c *CRUDComponent) Render(config core.RenderConfig) (string, error) {
+	return c.View(), nil
+}

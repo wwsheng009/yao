@@ -197,11 +197,15 @@ func TestRenderHeaderComponent(t *testing.T) {
 	model := NewModel(cfg, nil)
 	model.Width = 80
 
-	props := map[string]interface{}{
-		"title": "Test Header",
+	// Test using the new renderer system
+	comp := &Component{
+		Type: "header",
+		Props: map[string]interface{}{
+			"title": "Test Header",
+		},
 	}
 
-	result := model.renderHeaderComponent(props)
+	result := model.RenderComponent(comp)
 	assert.NotEmpty(t, result)
 	assert.Contains(t, result, "Test Header")
 }
@@ -218,32 +222,41 @@ func TestRenderTextComponent(t *testing.T) {
 	model.Width = 80
 
 	t.Run("with content", func(t *testing.T) {
-		props := map[string]interface{}{
-			"content": "Hello World",
+		comp := &Component{
+			Type: "text",
+			Props: map[string]interface{}{
+				"content": "Hello World",
+			},
 		}
 
-		result := model.renderTextComponent(props)
+		result := model.RenderComponent(comp)
 		assert.NotEmpty(t, result)
 		assert.Contains(t, result, "Hello World")
 	})
 
 	t.Run("with bind data", func(t *testing.T) {
-		props := map[string]interface{}{
-			"__bind_data": "Bound content",
+		comp := &Component{
+			Type: "text",
+			Props: map[string]interface{}{
+				"__bind_data": "Bound content",
+			},
 		}
 
-		result := model.renderTextComponent(props)
+		result := model.RenderComponent(comp)
 		assert.NotEmpty(t, result)
 		assert.Contains(t, result, "Bound content")
 	})
 
 	t.Run("with alignment", func(t *testing.T) {
-		props := map[string]interface{}{
-			"content": "Centered",
-			"align":   "center",
+		comp := &Component{
+			Type: "text",
+			Props: map[string]interface{}{
+				"content": "Centered",
+				"align":   "center",
+			},
 		}
 
-		result := model.renderTextComponent(props)
+		result := model.RenderComponent(comp)
 		assert.NotEmpty(t, result)
 	})
 }

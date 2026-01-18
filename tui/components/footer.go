@@ -2,8 +2,11 @@ package components
 
 import (
 	"encoding/json"
+	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // FooterProps defines the properties for the Footer component
@@ -128,4 +131,124 @@ func ParseFooterProps(props map[string]interface{}) FooterProps {
 	}
 
 	return fp
+}
+
+// FooterModel wraps the footer properties for TUI integration
+type FooterModel struct {
+	props FooterProps
+	id    string // Unique identifier for this instance
+}
+
+// NewFooterModel creates a new FooterModel from FooterProps
+func NewFooterModel(props FooterProps, id string) FooterModel {
+	return FooterModel{
+		props: props,
+		id:    id,
+	}
+}
+
+// HandleFooterUpdate handles updates for footer components
+func HandleFooterUpdate(msg tea.Msg, footerModel *FooterModel) (FooterModel, tea.Cmd) {
+	if footerModel == nil {
+		return FooterModel{}, nil
+	}
+
+	return *footerModel, nil
+}
+
+// Init initializes the footer model
+func (m *FooterModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the footer
+func (m *FooterModel) View() string {
+	return RenderFooter(m.props, m.props.Width)
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *FooterModel) GetID() string {
+	return m.id
+}
+
+// SetFocus sets or removes focus from footer component
+func (m *FooterModel) SetFocus(focus bool) {
+	// Footer doesn't have focus concept
+}
+
+func (m *FooterModel) GetComponentType() string {
+	return "footer"
+}
+
+func (m *FooterModel) Render(config core.RenderConfig) (string, error) {
+	// 解析配置数据
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("FooterModel: invalid data type, expected map[string]interface{}, got %T", config.Data)
+	}
+
+	// 解析属性
+	props := ParseFooterProps(propsMap)
+
+	// 更新组件属性
+	m.props = props
+
+	// 验证必要的属性
+	if m.props.Text == "" && propsMap["__bind_data"] == nil {
+		return "", fmt.Errorf("FooterModel: missing required 'text' property")
+	}
+
+	// 返回渲染结果
+	return m.View(), nil
+}
+
+// FooterComponentWrapper wraps FooterModel to implement ComponentInterface properly
+type FooterComponentWrapper struct {
+	model *FooterModel
+}
+
+// NewFooterComponentWrapper creates a wrapper that implements ComponentInterface
+func NewFooterComponentWrapper(footerModel *FooterModel) *FooterComponentWrapper {
+	return &FooterComponentWrapper{
+		model: footerModel,
+	}
+}
+
+func (w *FooterComponentWrapper) Init() tea.Cmd {
+	return w.model.Init()
+}
+
+func (w *FooterComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
+	switch msg := msg.(type) {
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.model.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+	}
+
+	// Footer is a static component, no need to handle other messages
+	return w, nil, core.Ignored
+}
+
+func (w *FooterComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *FooterComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+func (w *FooterComponentWrapper) SetFocus(focus bool) {
+	// Footer doesn't have focus concept
+}
+
+func (w *FooterComponentWrapper) GetComponentType() string {
+	return "footer"
+}
+
+func (w *FooterComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
 }

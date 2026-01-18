@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yaoapp/yao/tui/components"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // ComponentType represents the type of a component
@@ -12,24 +13,37 @@ type ComponentType string
 
 const (
 	// Built-in component types
-	HeaderComponent    ComponentType = "header"
-	TextComponent      ComponentType = "text"
-	TableComponent     ComponentType = "table"
-	FormComponent      ComponentType = "form"
-	InputComponent     ComponentType = "input"
-	ViewportComponent  ComponentType = "viewport"
-	FooterComponent    ComponentType = "footer"
-	ChatComponent      ComponentType = "chat"
-	MenuComponent      ComponentType = "menu"
+	HeaderComponent     ComponentType = "header"
+	TextComponent       ComponentType = "text"
+	TableComponent      ComponentType = "table"
+	FormComponent       ComponentType = "form"
+	InputComponent      ComponentType = "input"
+	ViewportComponent   ComponentType = "viewport"
+	FooterComponent     ComponentType = "footer"
+	ChatComponent       ComponentType = "chat"
+	MenuComponent       ComponentType = "menu"
+	TimerComponent      ComponentType = "timer"
+	StopwatchComponent  ComponentType = "stopwatch"
+	FilePickerComponent ComponentType = "filepicker"
+	HelpComponent       ComponentType = "help"
+	KeyComponent        ComponentType = "key"
+	CursorComponent     ComponentType = "cursor"
+	ListComponent       ComponentType = "list"
+	PaginatorComponent  ComponentType = "paginator"
+	ProgressComponent   ComponentType = "progress"
+	SpinnerComponent    ComponentType = "spinner"
+	TextareaComponent   ComponentType = "textarea"
+	CRUDComponent      ComponentType = "crud"
 )
 
-// ComponentRenderer is a function that renders a component
-type ComponentRenderer func(map[string]interface{}, int) string
+// ComponentFactory creates a component instance
+// Accepts RenderConfig for unified rendering approach
+type ComponentFactory func(config core.RenderConfig, id string) core.ComponentInterface
 
-// ComponentRegistry holds all registered components
+// ComponentRegistry holds all registered component factories
 type ComponentRegistry struct {
-	mutex      sync.RWMutex
-	components map[ComponentType]ComponentRenderer
+	mutex     sync.RWMutex
+	factories map[ComponentType]ComponentFactory
 }
 
 // Global registry instance
@@ -46,88 +60,132 @@ func GetGlobalRegistry() *ComponentRegistry {
 	return globalRegistry
 }
 
-// RegisterBuiltInComponents registers all built-in components
+// RegisterBuiltInComponents registers all built-in component factories.
+// Uses unified signature: func(config core.RenderConfig, id string) ComponentInterface
+// Props are parsed during the component's Render() method call.
 func (r *ComponentRegistry) RegisterBuiltInComponents() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.components[HeaderComponent] = func(props map[string]interface{}, width int) string {
-		headerProps := components.ParseHeaderProps(props)
-		return components.RenderHeader(headerProps, width)
+	// All components use the unified factory signature
+	// Components will parse props in their Render() methods
+
+	r.factories[HeaderComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewHeaderComponent(id)
 	}
 
-	r.components[TextComponent] = func(props map[string]interface{}, width int) string {
-		textProps := components.ParseTextProps(props)
-		return components.RenderText(textProps, width)
+	r.factories[TextComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewTextComponent(id)
 	}
 
-	r.components[TableComponent] = func(props map[string]interface{}, width int) string {
-		tableProps := components.ParseTableProps(props)
-		return components.RenderTable(tableProps, width)
+	r.factories[FooterComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewFooterComponent(id)
 	}
 
-	r.components[FormComponent] = func(props map[string]interface{}, width int) string {
-		formProps := components.ParseFormProps(props)
-		return components.RenderForm(formProps, width)
+	r.factories[InputComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewInputComponent(id)
 	}
 
-	r.components[InputComponent] = func(props map[string]interface{}, width int) string {
-		inputProps := components.ParseInputProps(props)
-		return components.RenderInput(inputProps, width)
+	r.factories[TextareaComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewTextareaComponent(id)
 	}
 
-	r.components[ViewportComponent] = func(props map[string]interface{}, width int) string {
-		viewportProps := components.ParseViewportProps(props)
-		return components.RenderViewport(viewportProps, width)
+	r.factories[MenuComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewMenuComponent(id)
 	}
 
-	r.components[FooterComponent] = func(props map[string]interface{}, width int) string {
-		footerProps := components.ParseFooterProps(props)
-		return components.RenderFooter(footerProps, width)
+	r.factories[ChatComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewChatComponent(id)
 	}
 
-	r.components[ChatComponent] = func(props map[string]interface{}, width int) string {
-		chatProps := components.ParseChatProps(props)
-		return components.RenderChat(chatProps, width)
+	r.factories[CursorComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewCursorComponent(id)
 	}
 
-	r.components[MenuComponent] = func(props map[string]interface{}, width int) string {
-		menuProps := components.ParseMenuProps(props)
-		return components.RenderMenu(menuProps, width)
+	r.factories[FilePickerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewFilePickerComponent(id)
+	}
+
+	r.factories[HelpComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewHelpComponent(id)
+	}
+
+	r.factories[KeyComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewKeyComponent(id)
+	}
+
+	r.factories[ListComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewListComponent(id)
+	}
+
+	r.factories[PaginatorComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewPaginatorComponent(id)
+	}
+
+	r.factories[ProgressComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewProgressComponent(id)
+	}
+
+	r.factories[SpinnerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewSpinnerComponent(id)
+	}
+
+	r.factories[TimerComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewTimerComponent(id)
+	}
+
+	r.factories[StopwatchComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewStopwatchComponent(id)
+	}
+
+	r.factories[TableComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewTableComponent(id)
+	}
+
+	r.factories[FormComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewFormComponent(id)
+	}
+
+	r.factories[ViewportComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewViewportComponent(id)
+	}
+
+	r.factories[CRUDComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
+		return components.NewCRUDComponentWrapper(id)
 	}
 }
 
 // NewComponentRegistry creates a new component registry
 func NewComponentRegistry() *ComponentRegistry {
 	return &ComponentRegistry{
-		components: make(map[ComponentType]ComponentRenderer),
+		factories: make(map[ComponentType]ComponentFactory),
 	}
 }
 
-// RegisterComponent registers a new component renderer
-func (r *ComponentRegistry) RegisterComponent(componentType ComponentType, renderer ComponentRenderer) error {
+// RegisterComponent registers a new component factory
+func (r *ComponentRegistry) RegisterComponent(componentType ComponentType, factory ComponentFactory) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if renderer == nil {
-		return fmt.Errorf("renderer cannot be nil")
+	if factory == nil {
+		return fmt.Errorf("factory cannot be nil")
 	}
 
-	r.components[componentType] = renderer
+	r.factories[componentType] = factory
 	return nil
 }
 
-// GetComponent retrieves a component renderer
-func (r *ComponentRegistry) GetComponent(componentType ComponentType) (ComponentRenderer, error) {
+// GetComponent retrieves a component factory
+func (r *ComponentRegistry) GetComponent(componentType ComponentType) (ComponentFactory, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	renderer, exists := r.components[componentType]
+	factory, exists := r.factories[componentType]
 	if !exists {
 		return nil, fmt.Errorf("component type '%s' not registered", componentType)
 	}
 
-	return renderer, nil
+	return factory, nil
 }
 
 // UnregisterComponent removes a component from the registry
@@ -135,7 +193,7 @@ func (r *ComponentRegistry) UnregisterComponent(componentType ComponentType) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	delete(r.components, componentType)
+	delete(r.factories, componentType)
 }
 
 // ListComponents returns all registered component types
@@ -143,20 +201,19 @@ func (r *ComponentRegistry) ListComponents() []ComponentType {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	types := make([]ComponentType, 0, len(r.components))
-	for componentType := range r.components {
+	types := make([]ComponentType, 0, len(r.factories))
+	for componentType := range r.factories {
 		types = append(types, componentType)
 	}
 
 	return types
 }
 
-// GetComponentRenderer returns the renderer function for a component type
-func (r *ComponentRegistry) GetComponentRenderer(componentType ComponentType) (ComponentRenderer, bool) {
+// GetComponentFactory returns the factory function for a component type
+func (r *ComponentRegistry) GetComponentFactory(componentType ComponentType) (ComponentFactory, bool) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	renderer, exists := r.components[componentType]
-	return renderer, exists
+	factory, exists := r.factories[componentType]
+	return factory, exists
 }
-

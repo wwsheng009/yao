@@ -3,7 +3,9 @@ package components
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 func TestParseFooterProps(t *testing.T) {
@@ -73,4 +75,53 @@ func TestRenderFooter(t *testing.T) {
 
 	result := RenderFooter(props, 80)
 	assert.NotEmpty(t, result)
+}
+
+func TestFooterModel_UpdateMsg(t *testing.T) {
+	// Create a footer model with proper props
+	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
+
+	// Create wrapper
+	wrapper := NewFooterComponentWrapper(&footerModel)
+
+	// Test targeted message
+	targetedMsg := core.TargetedMsg{
+		TargetID: "test-footer",
+		InnerMsg: nil,
+	}
+
+	updatedWrapper, cmd, response := wrapper.UpdateMsg(targetedMsg)
+	assert.Equal(t, core.Ignored, response)
+	assert.Nil(t, cmd)
+	assert.Equal(t, wrapper, updatedWrapper)
+
+	// Test non-targeted message
+	updatedWrapper, cmd, response = wrapper.UpdateMsg(tea.KeyMsg{})
+	assert.Equal(t, core.Ignored, response)
+	assert.Nil(t, cmd)
+	assert.Equal(t, wrapper, updatedWrapper)
+}
+
+func TestFooterModel_View(t *testing.T) {
+	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
+
+	wrapper := NewFooterComponentWrapper(&footerModel)
+	result := wrapper.View()
+	assert.NotEmpty(t, result)
+}
+
+func TestFooterModel_GetID(t *testing.T) {
+	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
+
+	wrapper := NewFooterComponentWrapper(&footerModel)
+	assert.Equal(t, "test-footer", wrapper.GetID())
+}
+
+func TestFooterModel_SetFocus(t *testing.T) {
+	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
+
+	wrapper := NewFooterComponentWrapper(&footerModel)
+	// Should not panic
+	wrapper.SetFocus(true)
+	wrapper.SetFocus(false)
 }

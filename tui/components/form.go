@@ -398,3 +398,32 @@ func (m *FormModel) SetFocus(focus bool) {
 func (w *FormComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
 }
+
+func (m *FormModel) GetComponentType() string {
+	return "form"
+}
+
+func (w *FormComponentWrapper) GetComponentType() string {
+	return "form"
+}
+
+func (m *FormModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("FormModel: invalid data type")
+	}
+
+	// Parse form properties
+	props := ParseFormProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
+func (w *FormComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
+}

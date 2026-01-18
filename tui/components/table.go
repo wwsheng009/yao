@@ -100,7 +100,7 @@ func RenderTable(props TableProps, width int) string {
 			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
 				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
 			} else {
-			row[j] = formatCell(cell)
+				row[j] = formatCell(cell)
 			}
 		}
 		rows = append(rows, row)
@@ -133,13 +133,13 @@ func RenderTable(props TableProps, width int) string {
 		selectedStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("231")). // Black
-			Background(lipgloss.Color("39")). // Light blue background
+			Background(lipgloss.Color("39")).  // Light blue background
 			Underline(true)
 	}
 
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
-			Header:   headerStyle,
+			Header: headerStyle,
 			// Cell:     cellStyle,
 			Selected: selectedStyle,
 		})
@@ -343,13 +343,13 @@ func NewTableModel(props TableProps, id string) TableModel {
 		selectedStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("231")). // Black
-			Background(lipgloss.Color("39")). // Light blue background
+			Background(lipgloss.Color("39")).  // Light blue background
 			Underline(true)
 	}
 
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
-			Header:   headerStyle,
+			Header: headerStyle,
 			// Cell:     cellStyle,
 			Selected: selectedStyle,
 		})
@@ -389,6 +389,11 @@ func (m *TableModel) View() string {
 // GetID returns the unique identifier for this component instance
 func (m *TableModel) GetID() string {
 	return m.id
+}
+
+// GetComponentType returns the component type
+func (m *TableModel) GetComponentType() string {
+	return "table"
 }
 
 // UpdateMsg implements ComponentInterface for table component
@@ -617,4 +622,29 @@ func (m *TableModel) SetFocus(focus bool) {
 
 func (w *TableComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+func (w *TableComponentWrapper) GetComponentType() string {
+	return "table"
+}
+
+func (m *TableModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("TableModel: invalid data type")
+	}
+
+	// Parse table properties
+	props := ParseTableProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
+func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
 }

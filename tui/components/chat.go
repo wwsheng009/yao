@@ -367,6 +367,28 @@ func (m *ChatModel) GetID() string {
 	return m.id
 }
 
+// GetComponentType returns the component type
+func (m *ChatModel) GetComponentType() string {
+	return "chat"
+}
+
+func (m *ChatModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("ChatModel: invalid data type")
+	}
+
+	// Parse chat properties
+	props := ParseChatProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
 // AddMessage adds a new message to the chat
 func (m *ChatModel) AddMessage(role, content string) {
 	msg := Message{
@@ -573,4 +595,12 @@ func (m *ChatModel) SetFocus(focus bool) {
 
 func (w *ChatComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+func (w *ChatComponentWrapper) GetComponentType() string {
+	return "chat"
+}
+
+func (w *ChatComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
 }

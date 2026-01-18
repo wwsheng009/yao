@@ -750,6 +750,28 @@ func (m *MenuInteractiveModel) GetID() string {
 	return m.ID
 }
 
+// GetComponentType returns the component type
+func (m *MenuInteractiveModel) GetComponentType() string {
+	return "menu"
+}
+
+func (m *MenuInteractiveModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("MenuInteractiveModel: invalid data type")
+	}
+
+	// Parse menu properties
+	props := ParseMenuProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
 // MenuComponentWrapper wraps MenuInteractiveModel to implement ComponentInterface properly
 type MenuComponentWrapper struct {
 	model *MenuInteractiveModel
@@ -824,4 +846,12 @@ func (m *MenuInteractiveModel) SetFocus(focus bool) {
 
 func (w *MenuComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+func (w *MenuComponentWrapper) GetComponentType() string {
+	return "menu"
+}
+
+func (w *MenuComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.View(), nil
 }

@@ -2,8 +2,11 @@ package components
 
 import (
 	"encoding/json"
+	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // HeaderProps defines the properties for the Header component.
@@ -90,4 +93,120 @@ func ParseHeaderProps(props map[string]interface{}) HeaderProps {
 	}
 
 	return hp
+}
+
+// HeaderModel wraps the header properties for TUI integration
+type HeaderModel struct {
+	props HeaderProps
+	id    string // Unique identifier for this instance
+}
+
+// NewHeaderModel creates a new HeaderModel
+func NewHeaderModel(id string) HeaderModel {
+	return HeaderModel{
+		id: id,
+	}
+}
+
+// HandleHeaderUpdate handles updates for header components
+func HandleHeaderUpdate(msg tea.Msg, headerModel *HeaderModel) (HeaderModel, tea.Cmd) {
+	if headerModel == nil {
+		return HeaderModel{}, nil
+	}
+
+	return *headerModel, nil
+}
+
+// Init initializes the header model
+func (m *HeaderModel) Init() tea.Cmd {
+	return nil
+}
+
+// View returns the string representation of the header
+func (m *HeaderModel) View() string {
+	return RenderHeader(m.props, m.props.Width)
+}
+
+// GetID returns the unique identifier for this component instance
+func (m *HeaderModel) GetID() string {
+	return m.id
+}
+
+// SetFocus sets or removes focus from header component
+func (m *HeaderModel) SetFocus(focus bool) {
+	// Header doesn't have focus concept
+}
+
+// HeaderComponentWrapper wraps HeaderModel to implement ComponentInterface properly
+type HeaderComponentWrapper struct {
+	model *HeaderModel
+}
+
+// NewHeaderComponent creates a new Header component wrapper
+func NewHeaderComponent(id string) *HeaderComponentWrapper {
+	model := NewHeaderModel(id)
+	return &HeaderComponentWrapper{
+		model: &model,
+	}
+}
+
+func (w *HeaderComponentWrapper) Init() tea.Cmd {
+	return w.model.Init()
+}
+
+func (w *HeaderComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
+	switch msg := msg.(type) {
+	case core.TargetedMsg:
+		// Check if this message is targeted to this component
+		if msg.TargetID == w.model.id {
+			return w.UpdateMsg(msg.InnerMsg)
+		}
+		return w, nil, core.Ignored
+	}
+
+	// Header is a static component, no need to handle other messages
+	return w, nil, core.Ignored
+}
+
+func (w *HeaderComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *HeaderComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+func (w *HeaderComponentWrapper) SetFocus(focus bool) {
+	// Header doesn't have focus concept
+}
+
+func (w *HeaderComponentWrapper) GetComponentType() string {
+	return "header"
+}
+
+func (m *HeaderModel) Render(config core.RenderConfig) (string, error) {
+	// 解析配置数据
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("HeaderModel: invalid data type, expected map[string]interface{}, got %T", config.Data)
+	}
+
+	// 解析属性
+	props := ParseHeaderProps(propsMap)
+
+	// 更新组件属性
+	m.props = props
+
+	// 验证必要的属性
+	if m.props.Title == "" && propsMap["__bind_data"] == nil {
+		return "", fmt.Errorf("HeaderModel: missing required 'title' property")
+	}
+
+	// 返回渲染结果
+	return m.View(), nil
+}
+
+func (w *HeaderComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.Render(config)
 }

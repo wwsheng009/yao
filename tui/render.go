@@ -13,7 +13,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/components"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -567,174 +566,72 @@ func (m *Model) renderLayoutNode(layout *Layout, width, height int) string {
 	return result
 }
 
-// RenderComponent renders a single component based on its type.
-// It routes to the appropriate component renderer.
+// RenderComponent renders a single component based on its type using the new Render() method.
+// It delegates rendering to the component's Render() method with the new render configuration.
 func (m *Model) RenderComponent(comp *Component) string {
 	if comp == nil || comp.Type == "" {
 		return ""
 	}
 
 	// Apply state binding to props
-	props := m.applyStateToProps(comp)
+	props := m.resolveProps(comp)
 
-	// Route to component renderer
-	switch comp.Type {
-	case "input":
-		// Special handling for input components
-		if comp.ID != "" {
-			// Create or update component if it doesn't exist
-			if _, exists := m.Components[comp.ID]; !exists {
-				inputProps := components.ParseInputProps(props)
-				inputModel := components.NewInputModel(inputProps, comp.ID)
+	// Create render config
+	renderConfig := core.RenderConfig{
+		Data:  props,
+		Width: m.Width,
+	}
 
-				// Register as ComponentInstance for message handling
-				if m.Components == nil {
-					m.Components = make(map[string]*core.ComponentInstance)
-				}
-				m.Components[comp.ID] = &core.ComponentInstance{
-					ID:       comp.ID,
-					Type:     "input",
-					Instance: components.NewInputComponentWrapper(&inputModel),
-				}
+	// Get component factory from global registry
+	registry := GetGlobalRegistry()
+	factory, exists := registry.GetComponentFactory(ComponentType(comp.Type))
+	if !exists || factory == nil {
+		log.Warn("Unknown component type: %s", comp.Type)
+		return m.renderUnknownComponent(comp.Type)
+	}
 
-				// Set this input as focused if it's the first one or no other input is focused
-				if m.CurrentFocus == "" {
-					m.CurrentFocus = comp.ID
-					inputModel.Model.Focus()
-				} else if m.CurrentFocus == comp.ID {
-					inputModel.Model.Focus()
-				} else {
-					inputModel.Model.Blur()
-				}
-			}
+	// Create component instance using unified factory signature
+	componentInstance := factory(renderConfig, comp.ID)
 
-			// Return the input view from component instance
-			if compInstance, exists := m.Components[comp.ID]; exists {
-				return compInstance.Instance.View()
-			}
+	// For interactive components with ID, register instance for message handling
+	if comp.ID != "" && isInteractiveComponent(comp.Type) {
+		// Register as ComponentInstance for message handling
+		if m.Components == nil {
+			m.Components = make(map[string]*core.ComponentInstance)
 		}
-		return ""
-
-	case "menu":
-		log.Trace("TUI RenderComponent: Processing menu component with ID: %s", comp.ID)
-		// Special handling for menu components
-		if comp.ID != "" {
-			// Use resolveProps to preserve complex data types like arrays
-			resolvedProps := m.resolveProps(comp)
-			// Create or update component if it doesn't exist
-			if _, exists := m.Components[comp.ID]; !exists {
-				log.Trace("TUI RenderComponent: Creating new menu model for ID: %s", comp.ID)
-				menuProps := components.ParseMenuProps(resolvedProps)
-				menuModel := components.NewMenuInteractiveModel(menuProps)
-				menuModel.ID = comp.ID
-
-				// Register as ComponentInstance for message handling
-				if m.Components == nil {
-					m.Components = make(map[string]*core.ComponentInstance)
-				}
-				m.Components[comp.ID] = &core.ComponentInstance{
-					ID:       comp.ID,
-					Type:     "menu",
-					Instance: components.NewMenuComponentWrapper(&menuModel),
-				}
-
-				// Set this menu as focused if it's the first one or no other component is focused
-				if m.CurrentFocus == "" {
-					m.CurrentFocus = comp.ID
-					log.Trace("TUI RenderComponent: Set focus to menu: %s", comp.ID)
-				}
-			} else {
-				log.Trace("TUI RenderComponent: Using existing menu model for ID: %s", comp.ID)
-			}
-
-			// Return the menu view from component instance
-			if compInstance, exists := m.Components[comp.ID]; exists {
-				log.Trace("TUI RenderComponent: Rendering menu view for ID: %s", comp.ID)
-				return compInstance.Instance.View()
-			}
+		m.Components[comp.ID] = &core.ComponentInstance{
+			ID:       comp.ID,
+			Type:     comp.Type,
+			Instance: componentInstance,
 		}
-		return ""
-	case "table":
-		log.Trace("TUI RenderComponent: Processing table component with ID: %s", comp.ID)
-		// Special handling for table components
-		if comp.ID != "" {
-			// Create or update component if it doesn't exist
-			if _, exists := m.Components[comp.ID]; !exists {
-				tableProps := components.ParseTableProps(props)
-				tableModel := components.NewTableModel(tableProps, comp.ID)
 
-				// Register as ComponentInstance for message handling
-				if m.Components == nil {
-					m.Components = make(map[string]*core.ComponentInstance)
-				}
-				m.Components[comp.ID] = &core.ComponentInstance{
-					ID:       comp.ID,
-					Type:     "table",
-					Instance: components.NewTableComponentWrapper(&tableModel),
-				}
-			}
-
-			// Return table view from component instance
-			if compInstance, exists := m.Components[comp.ID]; exists {
-				return compInstance.Instance.View()
-			}
+		// Set focus for interactive components
+		if m.CurrentFocus == "" && comp.Type == "input" {
+			m.CurrentFocus = comp.ID
 		}
-		return components.RenderTable(components.ParseTableProps(props), m.Width)
-	case "form":
-		log.Trace("TUI RenderComponent: Processing form component with ID: %s", comp.ID)
-		// Special handling for form components
-		if comp.ID != "" {
-			// Create or update component if it doesn't exist
-			if _, exists := m.Components[comp.ID]; !exists {
-				formProps := components.ParseFormProps(props)
-				formModel := components.NewFormModel(formProps, comp.ID)
+	}
 
-				// Register as ComponentInstance for message handling
-				if m.Components == nil {
-					m.Components = make(map[string]*core.ComponentInstance)
-				}
-				m.Components[comp.ID] = &core.ComponentInstance{
-					ID:       comp.ID,
-					Type:     "form",
-					Instance: components.NewFormComponentWrapper(&formModel),
-				}
-			}
+	rendered, err := componentInstance.Render(renderConfig)
+	if err != nil {
+		log.Warn("Component render failed: %v, component: %s", err, comp.Type)
+		return componentInstance.View()
+	}
+	return rendered
+}
 
-			// Return form view from component instance
-			if compInstance, exists := m.Components[comp.ID]; exists {
-				return compInstance.Instance.View()
-			}
-		}
-		return components.RenderForm(components.ParseFormProps(props), m.Width)
+// isInteractiveComponent 判断组件是否是交互式的
+func isInteractiveComponent(componentType string) bool {
+	switch componentType {
+	case "input", "textarea", "menu", "table", "form", "viewport", "chat",
+		"list", "paginator", "filepicker", "cursor", "crud":
+		return true
 	default:
-		// Use component registry for other component types
-		registry := GetGlobalRegistry()
-		renderer, err := registry.GetComponent(ComponentType(comp.Type))
-		if err != nil {
-			log.Warn("Unknown component type: %s", comp.Type)
-			return m.renderUnknownComponent(comp.Type, props)
-		}
-
-		// Apply state binding and render using the registered renderer
-		boundProps := m.applyStateToProps(comp)
-		return renderer(boundProps, m.Width)
+		return false
 	}
 }
 
-// renderHeaderComponent renders a header component.
-func (m *Model) renderHeaderComponent(props map[string]interface{}) string {
-	headerProps := components.ParseHeaderProps(props)
-	return components.RenderHeader(headerProps, m.Width)
-}
-
-// renderTextComponent renders a text component.
-func (m *Model) renderTextComponent(props map[string]interface{}) string {
-	textProps := components.ParseTextProps(props)
-	return components.RenderText(textProps, m.Width)
-}
-
 // renderUnknownComponent renders a placeholder for unknown component types.
-func (m *Model) renderUnknownComponent(typeName string, props map[string]interface{}) string {
+func (m *Model) renderUnknownComponent(typeName string) string {
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196")).
 		Padding(0, 1)
