@@ -57,3 +57,5 @@ agent/test/UPGRADE_PLAN.md
 introduction/*
 .vscode
 .codebuddy
+yao-docs
+AGENTS.md
