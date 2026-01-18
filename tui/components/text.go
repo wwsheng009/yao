@@ -224,10 +224,6 @@ func (m *TextModel) Render(config core.RenderConfig) (string, error) {
 	m.Props = props
 	m.Width = config.Width
 
-	// 验证必要的属性
-	if m.Props.Content == "" && propsMap["__bind_data"] == nil {
-		return "", fmt.Errorf("TextModel: missing required 'content' property")
-	}
 
 	// 返回渲染结果
 	return m.View(), nil

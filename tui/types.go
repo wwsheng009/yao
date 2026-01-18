@@ -55,6 +55,14 @@ type Config struct {
 
 	// AutoFocus enables automatic focus to the first focusable component (default: true)
 	AutoFocus bool `json:"autoFocus,omitempty"`
+
+	// NavigationMode defines how Tab/ShiftTab keys are handled
+	// "native": Tab always navigates between components (default)
+	// "bindable": Tab can be bound to custom actions
+	NavigationMode string `json:"navigationMode,omitempty"`
+
+	// TabCycles defines whether Tab navigation cycles through components (default: true)
+	TabCycles bool `json:"tabCycles,omitempty"`
 }
 
 // Layout describes the UI layout structure.

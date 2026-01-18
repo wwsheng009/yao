@@ -258,9 +258,9 @@ func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 				"focused": false,
 			}))
 			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Ignored
+				return w, tea.Batch(cmds...), core.Handled
 			}
-			return w, nil, core.Ignored
+			return w, nil, core.Handled
 		case tea.KeyEnter:
 			// Publish enter pressed event
 			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
@@ -350,7 +350,7 @@ func (w *InputComponentWrapper) SetFocus(focus bool) {
 
 // HasFocus returns whether the input component currently has focus
 func (w *InputComponentWrapper) HasFocus() bool {
-	return w.model.Focused()
+	return w.model.Model.Focused()
 }
 
 func (w *InputComponentWrapper) GetComponentType() string {

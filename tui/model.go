@@ -397,68 +397,92 @@ func (m *Model) View() string {
 
 // handleKeyPress processes keyboard input and executes bound actions.
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Capture phase: Global system keys
+	// Capture phase: Global system keys (Priority 1)
 	if msg.Type == tea.KeyCtrlC {
 		return m, tea.Quit
 	}
 
-	// Dispatch phase: Route to focused component first
-	// If a component has focus and handles the key, don't check global bindings
+	// ESC key handling (Priority 2): check for ESC bindings first
+	// ESC should work as exit/cancel regardless of component focus
+	if msg.Type == tea.KeyEsc {
+		// Check if there's an ESC binding
+		if m.Config.Bindings != nil {
+			key := msg.String()
+			if action, ok := m.Config.Bindings[key]; ok {
+				return m.executeBoundAction(&action, key)
+			}
+		}
+		// If no ESC binding, let component handle ESC (e.g., cancel input)
+		// This allows input components to use ESC to cancel/blur
+	}
+
+	// Dispatch phase: Route to focused component (Priority 3)
+	componentHandled := false
 	if m.CurrentFocus != "" {
 		updatedModel, cmd, handled := m.dispatchMessageToComponent(m.CurrentFocus, msg)
 		if handled {
-			// Component handled the message, but global navigation keys have priority
-			if m.isGlobalNavigationKey(msg) {
-				// Global navigation takes precedence over component handling
-				return m.handleGlobalNavigation(msg)
-			}
+			// Component handled the message
+			componentHandled = true
+			// Return immediately - don't override component behavior
 			return updatedModel, cmd
 		}
 		m = updatedModel.(*Model)
 	}
 
-	// Global navigation keys (Tab/Shift+Tab/ESC)
-	if m.isGlobalNavigationKey(msg) {
-		return m.handleGlobalNavigation(msg)
+	// Native navigation keys (Priority 4): Tab/ShiftTab handling
+	// Only process if component didn't handle it
+	if !componentHandled && (msg.Type == tea.KeyTab || msg.Type == tea.KeyShiftTab) {
+		return m.handleNativeNavigation(msg)
 	}
 
-	// Handle bound actions for keys (only when no component has focus or component ignored the key)
-	// This ensures global shortcuts work when user is not actively typing in input components
-	if m.CurrentFocus == "" {
+	// Global bindings (Priority 5): Handle bound actions
+	// Execute when:
+	// - No component has focus, OR
+	// - Component ignored the message (componentHandled == false)
+	if !componentHandled {
 		return m.handleBoundActions(msg)
 	}
 
 	return m, nil
 }
 
-// isGlobalNavigationKey checks if the key is a global navigation key
-func (m *Model) isGlobalNavigationKey(msg tea.KeyMsg) bool {
-	return msg.Type == tea.KeyTab || msg.Type == tea.KeyShiftTab ||
-		(msg.Type == tea.KeyEsc && m.CurrentFocus != "")
-}
+// handleNativeNavigation handles Tab/ShiftTab navigation based on NavigationMode
+func (m *Model) handleNativeNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	navigationMode := m.Config.NavigationMode
+	if navigationMode == "" {
+		navigationMode = "native" // Default to native
+	}
 
-// handleGlobalNavigation handles global navigation keys
-func (m *Model) handleGlobalNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyTab:
-		return m.handleTabNavigation()
-	case tea.KeyShiftTab:
-		m.focusPrevComponent()
-		return m, nil
-	case tea.KeyEsc:
-		if m.CurrentFocus != "" {
-			m.clearFocus()
-			// After clearing focus, check if ESC has a global binding and execute it
-			// This allows actions like quitting with ESC when input loses focus
-			key := msg.String()
-			if m.Config.Bindings != nil {
-				if action, ok := m.Config.Bindings[key]; ok {
-					return m.executeBoundAction(&action, key)
-				}
+		// Check if there's a binding for Tab (only in bindable mode)
+		if navigationMode == "bindable" && m.Config.Bindings != nil {
+			if action, ok := m.Config.Bindings[key]; ok {
+				return m.executeBoundAction(&action, key)
 			}
-			return m, nil
 		}
+		// Default: navigate to next component
+		return m.handleTabNavigation()
+
+	case tea.KeyShiftTab:
+		// Check if there's a binding for Shift+Tab (only in bindable mode)
+		if navigationMode == "bindable" && m.Config.Bindings != nil {
+			if action, ok := m.Config.Bindings[key]; ok {
+				return m.executeBoundAction(&action, key)
+			}
+		}
+		// Default: navigate to previous component
+		return m.handleShiftTabNavigation()
 	}
+
+	return m, nil
+}
+
+// handleShiftTabNavigation handles Shift+Tab to focus previous component
+func (m *Model) handleShiftTabNavigation() (tea.Model, tea.Cmd) {
+	log.Trace("Shift+Tab pressed, moving to previous component, current focus: %s", m.CurrentFocus)
+	m.focusPrevComponent()
 	return m, nil
 }
 
@@ -492,9 +516,31 @@ func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	nextIndex := (currentIndex + 1) % len(focusableIDs)
-	m.setFocus(focusableIDs[nextIndex])
-	log.Trace("Focused to next component: %s (index %d)", focusableIDs[nextIndex], nextIndex)
+	// Check if Tab cycling is enabled
+	tabCycles := m.Config.TabCycles
+	if !tabCycles {
+		// Default to true for backward compatibility
+		tabCycles = true
+	}
+
+	var nextFocus string
+	if tabCycles {
+		// Cycling mode: wrap around
+		nextIndex := (currentIndex + 1) % len(focusableIDs)
+		nextFocus = focusableIDs[nextIndex]
+	} else {
+		// Non-cycling mode: stop at last component
+		if currentIndex < len(focusableIDs)-1 {
+			nextFocus = focusableIDs[currentIndex+1]
+		} else {
+			// Already at last component, don't cycle
+			log.Trace("Already at last focusable component, Tab cycling disabled")
+			return m, nil
+		}
+	}
+
+	m.setFocus(nextFocus)
+	log.Trace("Focused to next component: %s (index %d, cycles=%v)", nextFocus, currentIndex+1, tabCycles)
 
 	return m, nil
 }
@@ -1034,6 +1080,13 @@ func (m *Model) focusPrevComponent() {
 		return
 	}
 
+	// Check if Tab cycling is enabled
+	tabCycles := m.Config.TabCycles
+	if !tabCycles {
+		// Default to true for backward compatibility
+		tabCycles = true
+	}
+
 	// Find current position
 	currentIndex := -1
 	for i, id := range focusableIDs {
@@ -1043,18 +1096,29 @@ func (m *Model) focusPrevComponent() {
 		}
 	}
 
-	// Move to previous component, wrap around if needed
+	// Move to previous component
 	var prevFocus string
 	if currentIndex > 0 {
 		prevFocus = focusableIDs[currentIndex-1]
+		m.setFocus(prevFocus)
+		log.Trace("Moved to previous component: %s (index %d)", prevFocus, currentIndex-1)
 	} else if currentIndex == 0 {
-		prevFocus = focusableIDs[len(focusableIDs)-1] // Wrap to last
+		// At first component
+		if tabCycles {
+			// Wrap to last component
+			prevFocus = focusableIDs[len(focusableIDs)-1]
+			m.setFocus(prevFocus)
+			log.Trace("Cycled to last component: %s (index %d)", prevFocus, len(focusableIDs)-1)
+		} else {
+			// Cycling disabled, don't move
+			log.Trace("Already at first component, Tab cycling disabled, staying at %s", m.CurrentFocus)
+		}
 	} else {
 		// No current focus, start from last
 		prevFocus = focusableIDs[len(focusableIDs)-1]
+		m.setFocus(prevFocus)
+		log.Trace("No current focus, set to last component: %s", prevFocus)
 	}
-
-	m.setFocus(prevFocus)
 }
 
 // getFocusableComponentIDs returns IDs of all focusable components
@@ -1116,6 +1180,19 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 		if m.propsCache != nil {
 			m.propsCache.Clear()
 			log.Trace("State changes detected, cleared props cache")
+		}
+	}
+
+	// Check if input component lost focus after processing message
+	// This handles ESC key in input components to clear focus
+	if response == core.Handled && m.CurrentFocus == componentID {
+		// Check if this is an input component that lost focus
+		if inputWrapper, ok := updatedComp.(*components.InputComponentWrapper); ok {
+			log.Trace("TUI: Checking focus for %s, HasFocus=%v", componentID, inputWrapper.HasFocus())
+			if !inputWrapper.HasFocus() {
+				m.CurrentFocus = ""
+				log.Trace("TUI: Input component %s lost focus, cleared CurrentFocus", componentID)
+			}
 		}
 	}
 

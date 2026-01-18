@@ -195,12 +195,28 @@ func loadFile(file string) (*Config, error) {
 	// Set default bindings if they don't exist
 	setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
 	setMissingBinding(cfg.Bindings, "ctrl+c", core.Action{Process: "tui.quit"})
-	setMissingBinding(cfg.Bindings, "tab", core.Action{Process: "tui.focus.next"})
-	setMissingBinding(cfg.Bindings, "shift+tab", core.Action{Process: "tui.focus.prev"})
+
+	// Tab/ShiftTab are handled by native navigation in model.go
+	// They are not bound to allow flexible behavior based on NavigationMode
+	// In "native" mode: Tab/ShiftTab navigate between components
+	// In "bindable" mode: Tab/ShiftTab can be bound to custom actions
+	// setMissingBinding(cfg.Bindings, "tab", core.Action{Process: "tui.focus.next"})
+	// setMissingBinding(cfg.Bindings, "shift+tab", core.Action{Process: "tui.focus.prev"})
+
 	setMissingBinding(cfg.Bindings, "enter", core.Action{Process: "tui.form.submit"})
 	setMissingBinding(cfg.Bindings, "ctrl+r", core.Action{Process: "tui.refresh"})
 	setMissingBinding(cfg.Bindings, "ctrl+l", core.Action{Process: "tui.refresh"})
 	setMissingBinding(cfg.Bindings, "ctrl+z", core.Action{Process: "tui.suspend"})
+
+	// Set default navigation mode if not specified
+	if cfg.NavigationMode == "" {
+		cfg.NavigationMode = "native" // Default to native navigation
+	}
+
+	// Set default tab cycles if not specified (true for backward compatibility)
+	if !cfg.TabCycles {
+		cfg.TabCycles = true
+	}
 	
 	// Add default submit bindings for input components
 	setDefaultInputSubmitBindings(&cfg)
