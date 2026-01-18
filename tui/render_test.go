@@ -292,6 +292,7 @@ func TestRenderComponent(t *testing.T) {
 	t.Run("text component", func(t *testing.T) {
 		comp := &Component{
 			Type: "text",
+			ID:   "test-text-component",
 			Props: map[string]interface{}{
 				"content": "Some text",
 			},
@@ -343,12 +344,14 @@ func TestRenderLayout(t *testing.T) {
 			Children: []Component{
 				{
 					Type: "header",
+					ID:   "test-layout-header",
 					Props: map[string]interface{}{
 						"title": "{{title}}",
 					},
 				},
 				{
 					Type: "text",
+					ID:   "test-layout-text",
 					Props: map[string]interface{}{
 						"content": "Welcome to the app",
 					},

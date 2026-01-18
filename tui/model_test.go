@@ -172,7 +172,9 @@ func TestModelHandleProcessResult(t *testing.T) {
 
 	updatedModel, cmd := model.handleProcessResult(msg)
 
-	assert.Nil(t, cmd)
+	// Verify that refresh command is returned to trigger UI update
+	assert.NotNil(t, cmd, "handleProcessResult should return a refresh command")
+
 	m := updatedModel.(*Model)
 	users, ok := m.State["users"]
 	assert.True(t, ok)

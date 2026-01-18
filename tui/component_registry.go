@@ -31,16 +31,21 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 	// Try read lock first
 	r.mu.RLock()
 	if comp, exists := r.components[id]; exists {
-		// Update existing instance's render config
-		if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
-			if err := updater.UpdateRenderConfig(renderConfig); err != nil {
-				log.Warn("Failed to update render config for component %s: %v", id, err)
+		// Check if the existing component is of the same type
+		if comp.Type == componentType {
+			// Update existing instance's render config
+			if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
+				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
+					log.Warn("Failed to update render config for component %s: %v", id, err)
+				}
 			}
+			r.mu.RUnlock()
+			return comp, false // false means existing instance
 		}
 		r.mu.RUnlock()
-		return comp, false // false means existing instance
+	} else {
+		r.mu.RUnlock()
 	}
-	r.mu.RUnlock()
 
 	// Acquire write lock to create new instance
 	r.mu.Lock()

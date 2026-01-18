@@ -598,6 +598,8 @@ func (m *Model) handleProcessResult(msg core.ProcessResultMsg) (tea.Model, tea.C
 			m.State["__error"] = msg.Error.Error()
 			m.StateMu.Unlock()
 		}
+		// Trigger refresh to display error in UI
+		return m, func() tea.Msg { return core.RefreshMsg{} }
 	} else {
 		// Handle success case
 		if msg.Target != "" {
@@ -605,6 +607,8 @@ func (m *Model) handleProcessResult(msg core.ProcessResultMsg) (tea.Model, tea.C
 			m.State[msg.Target] = msg.Data
 			m.StateMu.Unlock()
 			log.Trace("TUI ProcessResult: %s = %v", msg.Target, msg.Data)
+			// Trigger refresh to display new data in UI
+			return m, func() tea.Msg { return core.RefreshMsg{} }
 		}
 	}
 	return m, nil

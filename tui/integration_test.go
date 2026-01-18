@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // TestComponentInstanceReuse tests that component instances are reused across renders
@@ -746,4 +747,197 @@ func TestNestedLayoutRendering(t *testing.T) {
 	assert.NotEmpty(t, render)
 	assert.Contains(t, render, "Level 1")
 	assert.Contains(t, render, "Level 2")
+}
+
+// TestProcessResultTriggersRefresh tests that handleProcessResult triggers UI refresh
+func TestProcessResultTriggersRefresh(t *testing.T) {
+	cfg := &Config{
+		Name: "Test Process Result Refresh",
+		Data: map[string]interface{}{
+			"message": "initial",
+		},
+		Layout: Layout{
+			Direction: "vertical",
+			Children: []Component{
+				{
+					Type: "text",
+					ID:   "display_text",
+					Props: map[string]interface{}{
+						"content": "{{message}}",
+					},
+				},
+			},
+		},
+	}
+
+	model := NewModel(cfg, nil)
+	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Initial state
+	assert.Equal(t, "initial", model.State["message"])
+
+	// Initial render should show initial message
+	render1 := model.View()
+	assert.NotEmpty(t, render1)
+	assert.Contains(t, render1, "initial")
+
+	// Simulate ProcessResult with new data
+	processResultMsg := core.ProcessResultMsg{
+		Target: "message",
+		Data:   "updated_data",
+	}
+
+	// Handle process result
+	updatedModel, cmd := model.handleProcessResult(processResultMsg)
+
+	// Verify that a refresh command is returned
+	assert.NotNil(t, cmd, "handleProcessResult should return a non-nil command to trigger refresh")
+
+	// Update model references (since handleProcessResult returns a new model)
+	model = updatedModel.(*Model)
+
+	// Verify state was updated
+	assert.Equal(t, "updated_data", model.State["message"])
+
+	// Execute the returned command to simulate UI refresh loop
+	if cmd != nil {
+		refreshMsg := cmd()
+		assert.IsType(t, core.RefreshMsg{}, refreshMsg, "Command should return RefreshMsg")
+
+		// Update model with refresh message
+		_, refreshCmd := model.Update(refreshMsg)
+		assert.Nil(t, refreshCmd, "RefreshMsg should not return additional commands")
+	}
+
+	// Render after state update - should show new message
+	render2 := model.View()
+	assert.NotEmpty(t, render2)
+	assert.Contains(t, render2, "updated_data")
+	assert.NotContains(t, render2, "initial")
+
+	// Cleanup
+	model.ComponentInstanceRegistry.Clear()
+}
+
+// TestProcessResultWithComplexData tests ProcessResult with complex data structures
+func TestProcessResultWithComplexData(t *testing.T) {
+	cfg := &Config{
+		Name: "Test Process Result Complex Data",
+		Layout: Layout{
+			Direction: "vertical",
+			Children: []Component{
+				{
+					Type: "table",
+					ID:   "users_table",
+					Props: map[string]interface{}{
+						"columns": []map[string]interface{}{
+							{"key": "name", "title": "Name", "width": 20},
+							{"key": "age", "title": "Age", "width": 10},
+						},
+						"data": "{{users}}",
+					},
+				},
+			},
+		},
+	}
+
+	model := NewModel(cfg, nil)
+	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Simulate ProcessResult with array data
+	processResultMsg := core.ProcessResultMsg{
+		Target: "users",
+		Data: []map[string]interface{}{
+			{"name": "Alice", "age": 30},
+			{"name": "Bob", "age": 25},
+			{"name": "Charlie", "age": 35},
+		},
+	}
+
+	// Handle process result
+	updatedModel, cmd := model.handleProcessResult(processResultMsg)
+
+	// Verify refresh command is returned
+	assert.NotNil(t, cmd, "handleProcessResult with complex data should return refresh command")
+
+	// Update model
+	model = updatedModel.(*Model)
+
+	// Verify state was updated with complex data
+	users, ok := model.State["users"]
+	assert.True(t, ok)
+	assert.NotNil(t, users)
+
+	// Type assertion - try different slice types
+	var usersSlice []interface{}
+	if s, ok := users.([]interface{}); ok {
+		usersSlice = s
+	} else if s, ok := users.([]map[string]interface{}); ok {
+		// Convert to []interface{} for consistency
+		usersSlice = make([]interface{}, len(s))
+		for i, v := range s {
+			usersSlice[i] = v
+		}
+	}
+	assert.Len(t, usersSlice, 3)
+
+	// Verify data structure - handle both typed and interface slices
+	firstUser := usersSlice[0]
+	switch v := firstUser.(type) {
+	case map[string]interface{}:
+		assert.Equal(t, "Alice", v["name"])
+		assert.Equal(t, 30, v["age"])
+	default:
+		assert.Fail(t, "Expected map[string]interface{}, got %T", firstUser)
+	}
+
+	// Execute refresh
+	if cmd != nil {
+		refreshMsg := cmd()
+		_, _ = model.Update(refreshMsg)
+	}
+
+	// Render should now display the table with data
+	render := model.View()
+	assert.NotEmpty(t, render, "Render should not be empty after data update")
+
+	// Verify state was properly set
+	tableComp, exists := model.ComponentInstanceRegistry.Get("users_table")
+	assert.True(t, exists, "Table component should exist")
+
+	// The core functionality we're testing:
+	// 1. State is updated with complex data ✅
+	// 2. Refresh command is returned to trigger UI update ✅
+	// 3. Component instance registry maintains the table instance ✅
+	_ = tableComp // Used to verify component exists
+
+	// Cleanup
+	model.ComponentInstanceRegistry.Clear()
+}
+
+// TestProcessResultWithEmptyTarget tests ProcessResult without target
+func TestProcessResultWithEmptyTarget(t *testing.T) {
+	cfg := &Config{
+		Name: "Test Process Result No Target",
+		Layout: Layout{
+			Direction: "vertical",
+		},
+	}
+
+	model := NewModel(cfg, nil)
+
+	// ProcessResult without target should not crash
+	processResultMsg := core.ProcessResultMsg{
+		Target: "",
+		Data:   "some_data",
+	}
+
+	// Handle process result
+	updatedModel, cmd := model.handleProcessResult(processResultMsg)
+
+	// Should return nil command (no refresh needed since no target)
+	assert.Nil(t, cmd, "handleProcessResult with empty target should not return command")
+
+	// Model should still be valid
+	assert.NotNil(t, updatedModel)
 }
