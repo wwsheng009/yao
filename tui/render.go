@@ -252,8 +252,10 @@ func (m *Model) resolveExpressionValue(expression string) (interface{}, bool) {
 	env["$"] = m.State
 	m.StateMu.RUnlock()
 
-	// Compile expression with custom functions
-	program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+	// Use cache to compile expression
+	program, err := m.exprCache.GetOrCompile(processedExpression, func(exprStr string) (*vm.Program, error) {
+		return expr.Compile(exprStr, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+	})
 	if err != nil {
 		log.Warn("Expression compilation failed: %v, expression: %s", err, processedExpression)
 		return nil, false
@@ -292,9 +294,10 @@ func (m *Model) evaluateExpression(expression string) (interface{}, error) {
 	env["$"] = m.State
 	m.StateMu.RUnlock()
 
-	// Compile expression with custom functions
-	program, err := expr.Compile(processedExpression, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
-
+	// Use cache to compile expression
+	program, err := m.exprCache.GetOrCompile(processedExpression, func(exprStr string) (*vm.Program, error) {
+		return expr.Compile(exprStr, append([]expr.Option{expr.Env(env)}, exprOptions...)...)
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -217,6 +217,9 @@ type Model struct {
 
 	// MessageHandlers maps message types to their handlers
 	MessageHandlers map[string]core.MessageHandler
+
+	// exprCache caches compiled expressions for performance
+	exprCache *ExpressionCache
 }
 
 // Validate validates the Config structure.
