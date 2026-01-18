@@ -294,6 +294,13 @@ func (w *CursorComponentWrapper) GetStateChanges() (map[string]interface{}, bool
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *CursorComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}
+
 // getCursorMode returns the cursor mode based on style string
 func getCursorMode(style string) cursor.Mode {
 	switch style {

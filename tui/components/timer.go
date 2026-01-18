@@ -340,4 +340,11 @@ func (w *TimerComponentWrapper) GetStateChanges() (map[string]interface{}, bool)
 	}, true
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *TimerComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}
+
 

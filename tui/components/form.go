@@ -430,6 +430,13 @@ func (m *FormModel) GetStateChanges() (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (m *FormModel) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+	}
+}
+
 func (w *FormComponentWrapper) GetComponentType() string {
 	return "form"
 }
@@ -470,4 +477,13 @@ func (w *FormComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	// Form component collects values from child components
 	// For now, return nil as form values are collected differently
 	return nil, false
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *FormComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+		"core.ActionMsg",
+	}
 }

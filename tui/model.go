@@ -14,15 +14,17 @@ import (
 // the reactive environment.
 func NewModel(cfg *Config, program *tea.Program) *Model {
 	model := &Model{
-		Config:                    cfg,
-		State:                     make(map[string]interface{}),
-		Components:                make(map[string]*core.ComponentInstance),
-		ComponentInstanceRegistry: NewComponentInstanceRegistry(),
-		EventBus:                  core.NewEventBus(),
-		Program:                   program,
-		Ready:                     false,
-		MessageHandlers:           GetDefaultMessageHandlersFromCore(),
-		exprCache:                 NewExpressionCache(),
+		Config:                     cfg,
+		State:                      make(map[string]interface{}),
+		Components:                 make(map[string]*core.ComponentInstance),
+		ComponentInstanceRegistry:  NewComponentInstanceRegistry(),
+		EventBus:                   core.NewEventBus(),
+		Program:                    program,
+		Ready:                      false,
+		MessageHandlers:            GetDefaultMessageHandlersFromCore(),
+		MessageSubscriptionManager: NewMessageSubscriptionManager(),
+		exprCache:                  NewExpressionCache(),
+		logLevel:                   cfg.LogLevel,
 	}
 
 	// Initialize the Bridge after EventBus is created
@@ -1074,12 +1076,31 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 }
 
 // dispatchMessageToAllComponents dispatches a message to all components
+// Uses subscription manager to efficiently route messages
 // Returns (updatedModel, cmd) where cmd is a batch of all component commands
 func (m *Model) dispatchMessageToAllComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	for id := range m.Components {
-		_, cmd, _ := m.dispatchMessageToComponent(id, msg)
-		cmds = append(cmds, cmd)
+
+	// Get message type
+	msgType := GetMessageTypeString(msg)
+
+	// Get subscribers for this message type
+	subscribers := m.MessageSubscriptionManager.GetSubscribers(msgType)
+
+	if len(subscribers) > 0 {
+		// Only dispatch to subscribed components
+		for _, id := range subscribers {
+			_, cmd, _ := m.dispatchMessageToComponent(id, msg)
+			cmds = append(cmds, cmd)
+		}
+	} else {
+		// No subscribers, fall back to dispatching to all components
+		// This happens when components don't implement subscription
+		for id := range m.Components {
+			_, cmd, _ := m.dispatchMessageToComponent(id, msg)
+			cmds = append(cmds, cmd)
+		}
 	}
+
 	return m, tea.Batch(cmds...)
 }

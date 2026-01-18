@@ -438,3 +438,11 @@ func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	}, true
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *ListComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
+}
+

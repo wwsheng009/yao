@@ -325,3 +325,10 @@ func (w *StopwatchComponentWrapper) GetStateChanges() (map[string]interface{}, b
 	}, true
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *StopwatchComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}
+

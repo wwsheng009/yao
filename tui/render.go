@@ -24,6 +24,9 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+// maxLayoutDepth is the maximum allowed depth for nested layouts to prevent stack overflow
+const maxLayoutDepth = 50
+
 // generateUniqueID generates a unique identifier for components
 func generateUniqueID(prefix string) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -533,11 +536,25 @@ func (m *Model) RenderLayout() string {
 		return ""
 	}
 
-	return m.renderLayoutNode(&m.Config.Layout, m.Width, m.Height)
+	return m.renderLayoutNode(&m.Config.Layout, m.Width, m.Height, 0)
 }
 
 // renderLayoutNode renders a single layout node (can be nested).
-func (m *Model) renderLayoutNode(layout *Layout, width, height int) string {
+// depth parameter tracks the current recursion depth to prevent stack overflow.
+func (m *Model) renderLayoutNode(layout *Layout, width, height int, depth int) string {
+	// Check maximum layout depth to prevent stack overflow
+	if depth > maxLayoutDepth {
+		errorMsg := fmt.Sprintf("Layout depth exceeded maximum limit: %d (max: %d)", depth, maxLayoutDepth)
+		log.Error("Layout depth exceeded maximum limit: %d (max: %d)", depth, maxLayoutDepth)
+
+		// Store error in state for potential display
+		m.StateMu.Lock()
+		m.State["__layout_depth_error"] = errorMsg
+		m.StateMu.Unlock()
+
+		return m.renderErrorComponent("layout", "root", fmt.Errorf("max layout depth exceeded"))
+	}
+
 	if len(layout.Children) == 0 {
 		return ""
 	}
@@ -546,6 +563,17 @@ func (m *Model) renderLayoutNode(layout *Layout, width, height int) string {
 
 	// Render each child component
 	for _, child := range layout.Children {
+		// If child is a layout component, render it recursively with increased depth
+		if child.Type == "layout" {
+			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
+				rendered := m.renderLayoutNode(nestedLayout, width, height, depth+1)
+				if rendered != "" {
+					renderedChildren = append(renderedChildren, rendered)
+				}
+				continue
+			}
+		}
+
 		rendered := m.RenderComponent(&child)
 		if rendered != "" {
 			renderedChildren = append(renderedChildren, rendered)
@@ -645,7 +673,7 @@ func (m *Model) RenderComponent(comp *Component) string {
 	rendered, err := componentInstance.Instance.Render(renderConfig)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Component %s (%s) render failed: %v", comp.ID, comp.Type, err)
-		log.Error(errorMsg)
+		log.Error("Component %s (%s) render failed: %v", comp.ID, comp.Type, err)
 
 		// Store error in state for potential display
 		m.StateMu.Lock()
@@ -662,14 +690,13 @@ func (m *Model) RenderComponent(comp *Component) string {
 func (m *Model) renderErrorComponent(componentID string, componentType string, err error) string {
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196")). // Red
-		Background(lipgloss.Color("52")). // Dark red
+		Background(lipgloss.Color("52")).  // Dark red
 		Padding(0, 2).
 		Bold(true)
 
 	errorMsg := fmt.Sprintf("[ERROR] %s (%s): %v", componentID, componentType, err)
 	return style.Render(errorMsg)
 }
-
 
 // isInteractiveComponent 判断组件是否是交互式的
 func isInteractiveComponent(componentType string) bool {

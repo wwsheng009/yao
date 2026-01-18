@@ -663,6 +663,13 @@ func (m *TableModel) GetStateChanges() (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (m *TableModel) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+	}
+}
+
 func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 	// This method is kept for backward compatibility
 	// It now delegates to UpdateRenderConfig
@@ -700,5 +707,13 @@ func (w *TableComponentWrapper) GetStateChanges() (map[string]interface{}, bool)
 		w.GetID() + "_selected_row": selectedRow,
 		w.GetID() + "_selected_data": rowData,
 	}, len(rows) > 0 && selectedRow >= 0
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *TableComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
 }
 

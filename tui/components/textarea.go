@@ -456,3 +456,11 @@ func (w *TextareaComponentWrapper) GetStateChanges() (map[string]interface{}, bo
 	}, true
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *TextareaComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
+}
+

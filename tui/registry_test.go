@@ -18,18 +18,18 @@ func TestComponentRegistry(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test getting a registered component
-	factory, err := registry.GetComponentFactory(ComponentType("test"))
-	assert.NoError(t, err)
+	factory, exists := registry.GetComponentFactory(ComponentType("test"))
+	assert.True(t, exists)
 	assert.NotNil(t, factory)
 
 	// Test getting an unregistered component
-	_, err = registry.GetComponentFactory(ComponentType("nonexistent"))
-	assert.Error(t, err)
+	_, exists = registry.GetComponentFactory(ComponentType("nonexistent"))
+	assert.False(t, exists)
 
 	// Test unregistering a component
 	registry.UnregisterComponent(ComponentType("test"))
-	_, err = registry.GetComponentFactory(ComponentType("test"))
-	assert.Error(t, err)
+	_, exists = registry.GetComponentFactory(ComponentType("test"))
+	assert.False(t, exists)
 
 	// Test listing components
 	err = registry.RegisterComponent(ComponentType("test1"), func(config core.RenderConfig, id string) core.ComponentInterface {
@@ -50,58 +50,58 @@ func TestComponentRegistry(t *testing.T) {
 	assert.NotNil(t, globalReg)
 
 	// Ensure it has built-in components
-	_, err = globalReg.GetComponentFactory(TableComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(TableComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(FormComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(FormComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(InputComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(InputComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(ViewportComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(ViewportComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(FooterComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(FooterComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(ChatComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(ChatComponent)
+	assert.True(t, exists)
 
 	// Test new components are registered
-	_, err = globalReg.GetComponentFactory(TimerComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(TimerComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(StopwatchComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(StopwatchComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(FilePickerComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(FilePickerComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(HelpComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(HelpComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(KeyComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(KeyComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(CursorComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(CursorComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(ListComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(ListComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(PaginatorComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(PaginatorComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(ProgressComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(ProgressComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(SpinnerComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(SpinnerComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(TextareaComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(TextareaComponent)
+	assert.True(t, exists)
 
-	_, err = globalReg.GetComponentFactory(CRUDComponent)
-	assert.NoError(t, err)
+	_, exists = globalReg.GetComponentFactory(CRUDComponent)
+	assert.True(t, exists)
 }

@@ -288,3 +288,10 @@ func (w *FilePickerComponentWrapper) GetStateChanges() (map[string]interface{}, 
 	// FilePicker component state tracking
 	return nil, false
 }
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *FilePickerComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}

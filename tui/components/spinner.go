@@ -344,3 +344,10 @@ func (w *SpinnerComponentWrapper) GetStateChanges() (map[string]interface{}, boo
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *SpinnerComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}
+

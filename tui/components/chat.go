@@ -637,5 +637,13 @@ func (w *ChatComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	}, len(w.model.messages) > 0 || w.model.TextInput.Value() != ""
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *ChatComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.ActionMsg",
+	}
+}
+
 
 

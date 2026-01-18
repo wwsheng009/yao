@@ -252,6 +252,13 @@ func (m *TextModel) GetStateChanges() (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (m *TextModel) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}
+
 // TextComponentWrapper wraps TextModel to implement ComponentInterface properly
 type TextComponentWrapper struct {
 
@@ -331,5 +338,12 @@ func (w *TextComponentWrapper) Cleanup() {
 func (w *TextComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Static components don't have state changes
 	return nil, false
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *TextComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
 }
 

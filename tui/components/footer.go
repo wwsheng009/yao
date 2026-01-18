@@ -279,3 +279,10 @@ func (w *FooterComponentWrapper) GetStateChanges() (map[string]interface{}, bool
 	// Static components don't have state changes
 	return nil, false
 }
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *FooterComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
+}

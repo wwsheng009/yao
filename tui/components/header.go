@@ -102,8 +102,9 @@ type HeaderModel struct {
 }
 
 // NewHeaderModel creates a new HeaderModel
-func NewHeaderModel(id string) HeaderModel {
+func NewHeaderModel(props HeaderProps, id string) HeaderModel {
 	return HeaderModel{
+		props: props,
 		id: id,
 	}
 }
@@ -144,7 +145,7 @@ type HeaderComponentWrapper struct {
 
 // NewHeaderComponent creates a new Header component wrapper
 func NewHeaderComponent(id string) *HeaderComponentWrapper {
-	model := NewHeaderModel(id)
+	model := NewHeaderModel(HeaderProps{}, id)
 	return &HeaderComponentWrapper{
 		model: &model,
 	}
@@ -237,4 +238,11 @@ func (w *HeaderComponentWrapper) Cleanup() {
 func (w *HeaderComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Static components don't have state changes
 	return nil, false
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *HeaderComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
 }

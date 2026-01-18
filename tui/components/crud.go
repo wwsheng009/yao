@@ -82,6 +82,14 @@ func (c *CRUDComponent) GetStateChanges() (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (c *CRUDComponent) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+		"core.ActionMsg",
+	}
+}
+
 // GetID returns the unique identifier for this component instance
 func (c *CRUDComponent) GetID() string {
 	return c.id
@@ -290,4 +298,9 @@ func (w *CRUDComponentWrapper) Cleanup() {
 func (w *CRUDComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// CRUD component wraps a table, so delegate to the table component
 	return w.component.GetStateChanges()
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *CRUDComponentWrapper) GetSubscribedMessageTypes() []string {
+	return w.component.GetSubscribedMessageTypes()
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -47,6 +48,10 @@ type Config struct {
 
 	// Bindings maps keyboard shortcuts to actions
 	Bindings map[string]core.Action `json:"bindings,omitempty"`
+
+	// LogLevel controls the verbosity of logging (default: "warn")
+	// Options: "trace", "debug", "info", "warn", "error", "none"
+	LogLevel string `json:"logLevel,omitempty"`
 }
 
 // Layout describes the UI layout structure.
@@ -218,8 +223,14 @@ type Model struct {
 	// MessageHandlers maps message types to their handlers
 	MessageHandlers map[string]core.MessageHandler
 
+	// MessageSubscriptionManager manages component message subscriptions
+	MessageSubscriptionManager *MessageSubscriptionManager
+
 	// exprCache caches compiled expressions for performance
 	exprCache *ExpressionCache
+
+	// logLevel controls the verbosity of logging for this TUI instance
+	logLevel string
 }
 
 // Validate validates the Config structure.
@@ -237,6 +248,23 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid layout.direction: %s (must be 'vertical' or 'horizontal')", c.Layout.Direction)
 	}
 
+	// Validate log level
+	if c.LogLevel == "" {
+		c.LogLevel = "warn" // Default to warn
+	} else {
+		validLevels := map[string]bool{
+			"trace": true,
+			"debug": true,
+			"info":  true,
+			"warn":  true,
+			"error": true,
+			"none":  true,
+		}
+		if !validLevels[c.LogLevel] {
+			return fmt.Errorf("invalid log level: %s (must be one of: trace, debug, info, warn, error, none)", c.LogLevel)
+		}
+	}
+
 	// Validate components
 	for i, comp := range c.Layout.Children {
 		if comp.Type == "" {
@@ -245,4 +273,67 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// logLevelPriority returns the priority of a log level (higher = more important)
+func logLevelPriority(level string) int {
+	levels := map[string]int{
+		"none":  0,
+		"error": 1,
+		"warn":  2,
+		"info":  3,
+		"debug": 4,
+		"trace": 5,
+	}
+	return levels[level]
+}
+
+// shouldLog checks if a message at the given level should be logged based on the configured level
+func (m *Model) shouldLog(level string) bool {
+	// If log level is "none", never log
+	if m.logLevel == "none" {
+		return false
+	}
+	// Always log errors and warnings unless log level is "none"
+	if level == "error" || level == "warn" {
+		return true
+	}
+	// For other levels, check if the message level is >= configured level
+	return logLevelPriority(level) <= logLevelPriority(m.logLevel)
+}
+
+// Trace logs a trace-level message if the log level allows it
+// This is a convenience wrapper to avoid repeated shouldLog checks
+func (m *Model) Trace(format string, args ...interface{}) {
+	if m.shouldLog("trace") {
+		log.Trace(format, args...)
+	}
+}
+
+// Debug logs a debug-level message if the log level allows it
+func (m *Model) Debug(format string, args ...interface{}) {
+	if m.shouldLog("debug") {
+		log.Debug(format, args...)
+	}
+}
+
+// Info logs an info-level message if the log level allows it
+func (m *Model) Info(format string, args ...interface{}) {
+	if m.shouldLog("info") {
+		log.Info(format, args...)
+	}
+}
+
+// Warn logs a warning-level message if the log level allows it
+func (m *Model) Warn(format string, args ...interface{}) {
+	if m.shouldLog("warn") {
+		log.Warn(format, args...)
+	}
+}
+
+// Error logs an error-level message if the log level allows it
+func (m *Model) Error(format string, args ...interface{}) {
+	if m.shouldLog("error") {
+		log.Error(format, args...)
+	}
 }

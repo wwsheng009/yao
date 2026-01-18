@@ -435,4 +435,12 @@ func (w *PaginatorComponentWrapper) GetStateChanges() (map[string]interface{}, b
 	}, totalPages > 0
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *PaginatorComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
+}
+
 

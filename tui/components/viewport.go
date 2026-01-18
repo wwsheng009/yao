@@ -474,3 +474,13 @@ func (w *ViewportComponentWrapper) GetStateChanges() (map[string]interface{}, bo
 	}, false
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *ViewportComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+		"core.ActionMsg",
+		"tea.WindowSizeMsg",
+	}
+}
+

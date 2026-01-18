@@ -761,6 +761,13 @@ func (m *MenuInteractiveModel) Render(config core.RenderConfig) (string, error) 
 	return m.View(), nil
 }
 
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (m *MenuInteractiveModel) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+	}
+}
+
 
 // MenuComponentWrapper wraps MenuInteractiveModel to implement ComponentInterface properly
 type MenuComponentWrapper struct {
@@ -902,4 +909,12 @@ func (w *MenuComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 			"hasSubmenu": selectedItem.HasSubmenu(),
 		},
 	}, true
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *MenuComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
 }
