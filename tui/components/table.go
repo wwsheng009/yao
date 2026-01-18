@@ -64,8 +64,8 @@ type TableModel struct {
 	table.Model
 	props               TableProps
 	data                [][]interface{} // Store the original data
-	id                  string        // Unique identifier for this instance
-	previousSelectedRow int           // Track previous selection for change detection
+	id                  string          // Unique identifier for this instance
+	previousSelectedRow int             // Track previous selection for change detection
 }
 
 // RenderTable renders a table component
@@ -495,6 +495,10 @@ func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 
 		// Handle navigation keys explicitly
 		switch msg.Type {
+		case tea.KeyTab:
+			// Let Tab bubble to handleKeyPress for component navigation
+			return w, nil, core.Ignored
+
 		case tea.KeyDown, tea.KeyUp, tea.KeyPgUp, tea.KeyPgDown:
 			// Explicitly handle navigation keys to ensure proper event publishing
 			var cmd tea.Cmd
@@ -637,16 +641,16 @@ func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	if !ok {
 		return fmt.Errorf("TableModel: invalid data type")
 	}
-	
+
 	newProps := ParseTableProps(propsMap)
 	oldProps := m.props
-	
+
 	// Determine if we need to rebuild the model
 	if m.shouldRebuildModel(oldProps, newProps) {
 		// Completely rebuild table model
 		return m.rebuildTableModel(newProps)
 	}
-	
+
 	// Perform lightweight update
 	return m.lightweightUpdate(oldProps, newProps)
 }
@@ -676,7 +680,6 @@ func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
-
 func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	return w.model.Render(config)
 }
@@ -703,7 +706,7 @@ func (w *TableComponentWrapper) GetStateChanges() (map[string]interface{}, bool)
 	}
 
 	return map[string]interface{}{
-		w.GetID() + "_selected_row": selectedRow,
+		w.GetID() + "_selected_row":  selectedRow,
 		w.GetID() + "_selected_data": rowData,
 	}, len(rows) > 0 && selectedRow >= 0
 }
@@ -722,7 +725,7 @@ func (m *TableModel) shouldRebuildModel(oldProps, newProps TableProps) bool {
 	if len(oldProps.Columns) != len(newProps.Columns) {
 		return true
 	}
-	
+
 	// Check if any column definition changed
 	for i := range oldProps.Columns {
 		if oldProps.Columns[i].Key != newProps.Columns[i].Key ||
@@ -731,12 +734,12 @@ func (m *TableModel) shouldRebuildModel(oldProps, newProps TableProps) bool {
 			return true
 		}
 	}
-	
+
 	// Check if focused state changed
 	if oldProps.Focused != newProps.Focused {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -774,7 +777,7 @@ func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
 		m.Model.SetRows(rows)
 		m.data = newProps.Data
 	}
-	
+
 	// Update dimensions if changed
 	if oldProps.Width != newProps.Width {
 		m.Model.SetWidth(newProps.Width)
@@ -782,7 +785,7 @@ func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
 	if oldProps.Height != newProps.Height {
 		m.Model.SetHeight(newProps.Height)
 	}
-	
+
 	// Update focus if changed
 	if oldProps.Focused != newProps.Focused {
 		if newProps.Focused {
@@ -791,7 +794,7 @@ func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
 			m.Model.Blur()
 		}
 	}
-	
+
 	m.props = newProps
 	return nil
 }

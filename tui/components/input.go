@@ -214,7 +214,6 @@ func (m *InputModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
-
 // InputComponentWrapper wraps InputModel to implement ComponentInterface properly
 type InputComponentWrapper struct {
 	model *InputModel
@@ -242,6 +241,12 @@ func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 		return w, nil, core.Ignored
 
 	case tea.KeyMsg:
+		// If input doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) to work
+		if !w.model.Focused() {
+			return w, nil, core.Ignored
+		}
+
 		oldValue := w.model.Value()
 		var cmds []tea.Cmd
 
@@ -343,6 +348,11 @@ func (w *InputComponentWrapper) SetFocus(focus bool) {
 	// Events for focus changes are published in the UpdateMsg method for ESC key.
 }
 
+// HasFocus returns whether the input component currently has focus
+func (w *InputComponentWrapper) HasFocus() bool {
+	return w.model.Focused()
+}
+
 func (w *InputComponentWrapper) GetComponentType() string {
 	return "input"
 }
@@ -393,5 +403,3 @@ func (w *InputComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-
-

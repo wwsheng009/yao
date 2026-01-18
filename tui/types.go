@@ -52,6 +52,9 @@ type Config struct {
 	// LogLevel controls the verbosity of logging (default: "warn")
 	// Options: "trace", "debug", "info", "warn", "error", "none"
 	LogLevel string `json:"logLevel,omitempty"`
+
+	// AutoFocus enables automatic focus to the first focusable component (default: true)
+	AutoFocus bool `json:"autoFocus,omitempty"`
 }
 
 // Layout describes the UI layout structure.

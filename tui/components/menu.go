@@ -768,7 +768,6 @@ func (m *MenuInteractiveModel) GetSubscribedMessageTypes() []string {
 	}
 }
 
-
 // MenuComponentWrapper wraps MenuInteractiveModel to implement ComponentInterface properly
 type MenuComponentWrapper struct {
 	model *MenuInteractiveModel
@@ -789,6 +788,12 @@ func (w *MenuComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 	// Handle key press events
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// If menu doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) and Tab navigation to work
+		if !w.model.focused {
+			return w, nil, core.Ignored
+		}
+
 		switch msg.Type {
 		case tea.KeyEsc:
 			// Blur menu when ESC is pressed - but list.Model doesn't have Blur
@@ -805,6 +810,9 @@ func (w *MenuComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 					// The action will be triggered by parent component
 				}
 			}
+			return w, nil, core.Ignored
+		case tea.KeyTab:
+			// Let Tab bubble to handleKeyPress for component navigation
 			return w, nil, core.Ignored
 		}
 	case core.TargetedMsg:
@@ -896,7 +904,7 @@ func (w *MenuComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	if !ok {
 		return map[string]interface{}{
 			w.GetID() + "_selected_index": -1,
-			w.GetID() + "_selected_item": nil,
+			w.GetID() + "_selected_item":  nil,
 		}, false
 	}
 

@@ -271,6 +271,12 @@ func (w *TextareaComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 		return w, nil, core.Ignored
 
 	case tea.KeyMsg:
+		// If textarea doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) to work
+		if !w.model.Focused() {
+			return w, nil, core.Ignored
+		}
+
 		oldValue := w.model.Value()
 		var cmds []tea.Cmd
 
@@ -463,4 +469,3 @@ func (w *TextareaComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-

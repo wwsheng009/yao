@@ -252,6 +252,12 @@ func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 		return w, nil, core.Ignored
 
 	case tea.KeyMsg:
+		// If list doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) and Tab navigation to work
+		if !w.model.props.Focused {
+			return w, nil, core.Ignored
+		}
+
 		oldIndex := w.model.Index()
 		var cmds []tea.Cmd
 
@@ -267,6 +273,9 @@ func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 					"value": item.Value,
 				}))
 			}
+		case tea.KeyTab:
+			// Let Tab bubble to handleKeyPress for component navigation
+			return w, nil, core.Ignored
 		}
 
 		// For other key messages, update the model
@@ -428,13 +437,13 @@ func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	if selectedItem == nil {
 		return map[string]interface{}{
 			w.GetID() + "_selected_index": -1,
-			w.GetID() + "_selected_item": nil,
+			w.GetID() + "_selected_item":  nil,
 		}, false
 	}
 
 	return map[string]interface{}{
 		w.GetID() + "_selected_index": w.model.Model.Index(),
-		w.GetID() + "_selected_item": selectedItem,
+		w.GetID() + "_selected_item":  selectedItem,
 	}, true
 }
 
@@ -445,4 +454,3 @@ func (w *ListComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-

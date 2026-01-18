@@ -284,12 +284,21 @@ func (m *FormModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, co
 	// Handle key press events for navigation and submission
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// If form doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) and Tab navigation to work
+		if !m.focused {
+			return m, nil, core.Ignored
+		}
+
 		switch msg.Type {
 		case tea.KeyEnter:
 			// Form submission - bubble to parent to handle
 			return m, nil, core.Ignored
 		case tea.KeyEsc:
 			// Cancel form - bubble to parent
+			return m, nil, core.Ignored
+		case tea.KeyTab:
+			// Let Tab bubble to handleKeyPress for component navigation
 			return m, nil, core.Ignored
 		case tea.KeyUp:
 			// Navigate to previous field
@@ -329,6 +338,12 @@ func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 	// Handle key press events
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// If form doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) and Tab navigation to work
+		if !w.model.focused {
+			return w, nil, core.Ignored
+		}
+
 		switch msg.Type {
 		case tea.KeyEsc:
 			// Publish FORM_CANCEL event when ESC is pressed
@@ -345,11 +360,8 @@ func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 			// Let Enter bubble to handleKeyPress for form submission
 			return w, nil, core.Ignored
 		case tea.KeyTab:
-			// Navigate to next field
-			if w.model.props.Fields != nil && len(w.model.props.Fields) > 0 {
-				w.model.focusIndex = (w.model.focusIndex + 1) % len(w.model.props.Fields)
-			}
-			return w, nil, core.Handled
+			// Let Tab bubble to handleKeyPress for component navigation
+			return w, nil, core.Ignored
 		}
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component

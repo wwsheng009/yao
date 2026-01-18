@@ -220,6 +220,11 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 			return model, nil
 		}
 
+		// Only auto-focus if AutoFocus is enabled
+		if !model.Config.AutoFocus {
+			return model, nil
+		}
+
 		// Get all focusable components
 		focusableIDs := model.getFocusableComponentIDs()
 		if len(focusableIDs) > 0 {
@@ -270,11 +275,14 @@ func (m *Model) Init() tea.Cmd {
 
 	// Auto-focus to the first focusable component after initialization
 	// This ensures that interactive components (like tables) can receive keyboard events
-	focusableIDs := m.getFocusableComponentIDs()
-	if len(focusableIDs) > 0 {
-		cmds = append(cmds, func() tea.Msg {
-			return core.FocusFirstComponentMsg{}
-		})
+	// Only auto-focus if AutoFocus is enabled (default: true for backward compatibility)
+	if m.Config.AutoFocus {
+		focusableIDs := m.getFocusableComponentIDs()
+		if len(focusableIDs) > 0 {
+			cmds = append(cmds, func() tea.Msg {
+				return core.FocusFirstComponentMsg{}
+			})
+		}
 	}
 
 	if len(cmds) == 0 {
@@ -395,6 +403,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Dispatch phase: Route to focused component first
+	// If a component has focus and handles the key, don't check global bindings
 	if m.CurrentFocus != "" {
 		updatedModel, cmd, handled := m.dispatchMessageToComponent(m.CurrentFocus, msg)
 		if handled {
@@ -408,13 +417,18 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = updatedModel.(*Model)
 	}
 
-	// Global navigation keys as fallback
+	// Global navigation keys (Tab/Shift+Tab/ESC)
 	if m.isGlobalNavigationKey(msg) {
 		return m.handleGlobalNavigation(msg)
 	}
 
-	// Handle bound actions for keys
-	return m.handleBoundActions(msg)
+	// Handle bound actions for keys (only when no component has focus or component ignored the key)
+	// This ensures global shortcuts work when user is not actively typing in input components
+	if m.CurrentFocus == "" {
+		return m.handleBoundActions(msg)
+	}
+
+	return m, nil
 }
 
 // isGlobalNavigationKey checks if the key is a global navigation key
@@ -434,6 +448,14 @@ func (m *Model) handleGlobalNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEsc:
 		if m.CurrentFocus != "" {
 			m.clearFocus()
+			// After clearing focus, check if ESC has a global binding and execute it
+			// This allows actions like quitting with ESC when input loses focus
+			key := msg.String()
+			if m.Config.Bindings != nil {
+				if action, ok := m.Config.Bindings[key]; ok {
+					return m.executeBoundAction(&action, key)
+				}
+			}
 			return m, nil
 		}
 	}

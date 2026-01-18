@@ -441,6 +441,12 @@ func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 		return w, nil, core.Ignored
 
 	case tea.KeyMsg:
+		// If chat input doesn't have focus, ignore all key messages
+		// This allows global bindings (like 'q' for quit) to work
+		if !w.model.TextInput.Focused() {
+			return w, nil, core.Ignored
+		}
+
 		var cmds []tea.Cmd
 
 		switch msg.Type {
@@ -644,6 +650,3 @@ func (w *ChatComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.ActionMsg",
 	}
 }
-
-
-
