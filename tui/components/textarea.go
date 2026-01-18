@@ -44,6 +44,9 @@ type TextareaProps struct {
 
 	// CharLimit specifies the maximum character limit (0 for unlimited)
 	CharLimit int `json:"charLimit"`
+
+	// EnterSubmits determines if Enter key submits the form (true) or inserts newline (false)
+	EnterSubmits bool `json:"enterSubmits"`
 }
 
 // TextareaModel wraps the textarea.Model to handle TUI integration
@@ -105,6 +108,11 @@ func RenderTextarea(props TextareaProps, width int) string {
 	if props.CharLimit > 0 {
 		ta.CharLimit = props.CharLimit
 	}
+
+	// Configure Enter key behavior
+	// If EnterSubmits is true, disable InsertNewline so Enter can submit form (Shift+Enter still works for newline)
+	// If EnterSubmits is false (default), Enter inserts newline
+	ta.KeyMap.InsertNewline.SetEnabled(!props.EnterSubmits)
 
 	// Disable if needed
 	if props.Disabled {
@@ -244,6 +252,11 @@ func (m *TextareaModel) SetFocus(focus bool) {
 	}
 }
 
+// HasFocus returns whether the textarea model currently has focus
+func (m *TextareaModel) HasFocus() bool {
+	return m.Model.Focused()
+}
+
 // TextareaComponentWrapper wraps TextareaModel to implement ComponentInterface properly
 type TextareaComponentWrapper struct {
 	model *TextareaModel
@@ -367,6 +380,11 @@ func (w *TextareaComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
 	// Note: We don't publish event here since it would require changing the interface.
 	// Events for focus changes are published in the UpdateMsg method for ESC key.
+}
+
+// HasFocus returns whether the textarea component currently has focus
+func (w *TextareaComponentWrapper) HasFocus() bool {
+	return w.model.Model.Focused()
 }
 
 func (m *TextareaModel) GetComponentType() string {

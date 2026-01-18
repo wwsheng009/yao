@@ -1125,12 +1125,13 @@ func (m *Model) focusPrevComponent() {
 func (m *Model) getFocusableComponentIDs() []string {
 	// Define which component types are focusable
 	focusableTypes := map[string]bool{
-		"input": true,
-		"menu":  true,
-		"form":  true,
-		"table": true,
-		"crud":  true,
-		"chat":  true,
+		"input":    true,
+		"textarea": true,
+		"menu":     true,
+		"form":     true,
+		"table":    true,
+		"crud":     true,
+		"chat":     true,
 	}
 
 	ids := []string{}
@@ -1192,6 +1193,14 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 			if !inputWrapper.HasFocus() {
 				m.CurrentFocus = ""
 				log.Trace("TUI: Input component %s lost focus, cleared CurrentFocus", componentID)
+			}
+		}
+		// Check if this is a textarea component that lost focus
+		if textareaWrapper, ok := updatedComp.(*components.TextareaComponentWrapper); ok {
+			log.Trace("TUI: Checking focus for %s, HasFocus=%v", componentID, textareaWrapper.HasFocus())
+			if !textareaWrapper.HasFocus() {
+				m.CurrentFocus = ""
+				log.Trace("TUI: Textarea component %s lost focus, cleared CurrentFocus", componentID)
 			}
 		}
 	}

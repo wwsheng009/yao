@@ -10,13 +10,27 @@ import (
 	"github.com/yaoapp/yao/tui/core"
 )
 
+// KeyBinding represents a single key binding with key and action
+type KeyBinding struct {
+	Key     string `json:"key"`
+	Action  string `json:"action"`
+	Enabled bool   `json:"enabled"`
+}
+
 // KeyProps defines the properties for the Key component
 type KeyProps struct {
-	// Keys specifies the key combinations
+	// Keys specifies the key combinations (single key mode)
 	Keys []string `json:"keys"`
 
-	// Description specifies the key description
+	// Description specifies the key description (single key mode)
 	Description string `json:"description"`
+
+	// Bindings specifies multiple key bindings (batch mode)
+	// When provided, this overrides Keys and Description
+	Bindings []KeyBinding `json:"bindings"`
+
+	// ShowLabels determines whether to show action labels (batch mode only)
+	ShowLabels bool `json:"showLabels"`
 
 	// Color specifies the text color
 	Color string `json:"color"`
@@ -39,11 +53,14 @@ type KeyProps struct {
 	// Height specifies the key height (0 for auto)
 	Height int `json:"height"`
 
-	// Enabled determines if the key binding is enabled
+	// Enabled determines if the key binding is enabled (single key mode)
 	Enabled bool `json:"enabled"`
 
-	// Shortcut specifies the shortcut display
+	// Shortcut specifies the shortcut display (single key mode)
 	Shortcut string `json:"shortcut"`
+
+	// Spacing specifies spacing between bindings in batch mode (default: 2)
+	Spacing int `json:"spacing"`
 }
 
 // KeyModel wraps the key.Binding to handle TUI integration
@@ -55,6 +72,17 @@ type KeyModel struct {
 
 // RenderKey renders a key component
 func RenderKey(props KeyProps, width int) string {
+	// Batch mode: render multiple bindings
+	if len(props.Bindings) > 0 {
+		return renderBatchBindings(props)
+	}
+
+	// Single key mode: render one binding
+	return renderSingleKey(props, width)
+}
+
+// renderSingleKey renders a single key binding (original behavior)
+func renderSingleKey(props KeyProps, width int) string {
 	// Apply styles
 	style := lipgloss.NewStyle()
 	if props.Color != "" {
@@ -92,19 +120,77 @@ func RenderKey(props KeyProps, width int) string {
 	return style.Render(display)
 }
 
+// renderBatchBindings renders multiple key bindings in batch mode
+func renderBatchBindings(props KeyProps) string {
+	// Create base style
+	baseStyle := lipgloss.NewStyle()
+	if props.Color != "" {
+		baseStyle = baseStyle.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		baseStyle = baseStyle.Background(lipgloss.Color(props.Background))
+	}
+	if props.Bold {
+		baseStyle = baseStyle.Bold(true)
+	}
+	if props.Italic {
+		baseStyle = baseStyle.Italic(true)
+	}
+	if props.Underline {
+		baseStyle = baseStyle.Underline(true)
+	}
+
+	// Determine spacing
+	spacing := props.Spacing
+	if spacing <= 0 {
+		spacing = 2 // Default spacing
+	}
+
+	// Render each binding
+	var bindings []string
+	for _, binding := range props.Bindings {
+		display := binding.Key
+		if props.ShowLabels && binding.Action != "" {
+			display += " - " + binding.Action
+		}
+		bindings = append(bindings, display)
+	}
+
+	// Join with newlines
+	return baseStyle.Render(lipgloss.JoinVertical(lipgloss.Left, bindings...))
+}
+
 // ParseKeyProps converts a generic props map to KeyProps using JSON unmarshaling
 func ParseKeyProps(props map[string]interface{}) KeyProps {
 	// Set defaults
 	kp := KeyProps{
-		Enabled: true,
+		Enabled:   true,
+		Spacing:   2,
+		ShowLabels: true,
 	}
 
-	// Handle keys
+	// Handle keys (single key mode)
 	if keys, ok := props["keys"].([]interface{}); ok {
 		kp.Keys = make([]string, len(keys))
 		for i, v := range keys {
 			if str, ok := v.(string); ok {
 				kp.Keys[i] = str
+			}
+		}
+	}
+
+	// Handle bindings (batch mode)
+	if bindings, ok := props["bindings"].([]interface{}); ok {
+		kp.Bindings = make([]KeyBinding, len(bindings))
+		for i, v := range bindings {
+			if bindingMap, ok := v.(map[string]interface{}); ok {
+				// Marshal and unmarshal to populate KeyBinding struct
+				if bytes, err := json.Marshal(bindingMap); err == nil {
+					var kb KeyBinding
+					if err := json.Unmarshal(bytes, &kb); err == nil {
+						kp.Bindings[i] = kb
+					}
+				}
 			}
 		}
 	}
@@ -147,6 +233,17 @@ func (m *KeyModel) Init() tea.Cmd {
 
 // View returns the string representation of the key
 func (m *KeyModel) View() string {
+	// Batch mode: render multiple bindings
+	if len(m.props.Bindings) > 0 {
+		return m.renderBatchBindings()
+	}
+
+	// Single key mode: render one binding
+	return m.renderSingleKey()
+}
+
+// renderSingleKey renders a single key binding (original behavior)
+func (m *KeyModel) renderSingleKey() string {
 	// Apply styles
 	style := lipgloss.NewStyle()
 	if m.props.Color != "" {
@@ -175,6 +272,46 @@ func (m *KeyModel) View() string {
 	}
 
 	return style.Render(display)
+}
+
+// renderBatchBindings renders multiple key bindings in batch mode
+func (m *KeyModel) renderBatchBindings() string {
+	// Create base style
+	baseStyle := lipgloss.NewStyle()
+	if m.props.Color != "" {
+		baseStyle = baseStyle.Foreground(lipgloss.Color(m.props.Color))
+	}
+	if m.props.Background != "" {
+		baseStyle = baseStyle.Background(lipgloss.Color(m.props.Background))
+	}
+	if m.props.Bold {
+		baseStyle = baseStyle.Bold(true)
+	}
+	if m.props.Italic {
+		baseStyle = baseStyle.Italic(true)
+	}
+	if m.props.Underline {
+		baseStyle = baseStyle.Underline(true)
+	}
+
+	// Determine spacing
+	spacing := m.props.Spacing
+	if spacing <= 0 {
+		spacing = 2 // Default spacing
+	}
+
+	// Render each binding
+	var bindings []string
+	for _, binding := range m.props.Bindings {
+		display := binding.Key
+		if m.props.ShowLabels && binding.Action != "" {
+			display += " - " + binding.Action
+		}
+		bindings = append(bindings, display)
+	}
+
+	// Join with newlines (vertical layout)
+	return baseStyle.Render(lipgloss.JoinVertical(lipgloss.Left, bindings...))
 }
 
 // GetID returns the unique identifier for this component instance

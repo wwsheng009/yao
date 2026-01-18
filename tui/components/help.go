@@ -10,10 +10,25 @@ import (
 	"github.com/yaoapp/yao/tui/core"
 )
 
+// HelpItem represents a single help item
+type HelpItem struct {
+	Key         string `json:"key"`
+	Description string `json:"description"`
+}
+
+// HelpSection represents a section of help items
+type HelpSection struct {
+	Title string     `json:"title"`
+	Items []HelpItem `json:"items"`
+}
+
 // HelpProps defines the properties for the Help component
 type HelpProps struct {
 	// KeyMap specifies the key bindings
 	KeyMap map[string]interface{} `json:"keyMap"`
+
+	// Sections specifies help sections with grouped items
+	Sections []HelpSection `json:"sections"`
 
 	// Width specifies the help width (0 for auto)
 	Width int `json:"width"`
@@ -24,7 +39,7 @@ type HelpProps struct {
 	// ShowAllKeys shows all keys or just common ones
 	ShowAllKeys bool `json:"showAllKeys"`
 
-	// Style specifies the help style: "full", "compact", "minimal"
+	// Style specifies the help style: "full", "compact", "minimal", "sections"
 	Style string `json:"style"`
 
 	// Color specifies the text color
@@ -41,6 +56,15 @@ type HelpProps struct {
 
 	// Padding specifies the padding
 	Padding []int `json:"padding"`
+
+	// SectionTitleColor specifies the color for section titles
+	SectionTitleColor string `json:"sectionTitleColor"`
+
+	// SectionSeparator specifies the separator between sections
+	SectionSeparator string `json:"sectionSeparator"`
+
+	// ItemSeparator specifies the separator between items
+	ItemSeparator string `json:"itemSeparator"`
 }
 
 // HelpModel wraps the help.Model to handle TUI integration
@@ -105,13 +129,20 @@ func RenderHelp(props HelpProps, width int) string {
 func ParseHelpProps(props map[string]interface{}) HelpProps {
 	// Set defaults
 	hp := HelpProps{
-		Style:       "compact",
-		ShowAllKeys: false,
+		Style:            "compact",
+		ShowAllKeys:      false,
+		SectionSeparator: "\n",
+		ItemSeparator:    "\n",
 	}
 
 	// Handle key map
 	if keyMap, ok := props["keyMap"].(map[string]interface{}); ok {
 		hp.KeyMap = keyMap
+	}
+
+	// Handle sections
+	if sections, ok := props["sections"].([]interface{}); ok {
+		hp.Sections = parseHelpSections(sections)
 	}
 
 	// Handle padding
@@ -132,6 +163,47 @@ func ParseHelpProps(props map[string]interface{}) HelpProps {
 	}
 
 	return hp
+}
+
+// parseHelpSections parses sections from interface array
+func parseHelpSections(sections []interface{}) []HelpSection {
+	result := make([]HelpSection, 0, len(sections))
+	for _, section := range sections {
+		if sectionMap, ok := section.(map[string]interface{}); ok {
+			hs := HelpSection{}
+
+			// Parse title
+			if title, ok := sectionMap["title"].(string); ok {
+				hs.Title = title
+			}
+
+			// Parse items
+			if items, ok := sectionMap["items"].([]interface{}); ok {
+				hs.Items = parseHelpItems(items)
+			}
+
+			result = append(result, hs)
+		}
+	}
+	return result
+}
+
+// parseHelpItems parses help items from interface array
+func parseHelpItems(items []interface{}) []HelpItem {
+	result := make([]HelpItem, 0, len(items))
+	for _, item := range items {
+		if itemMap, ok := item.(map[string]interface{}); ok {
+			hi := HelpItem{}
+			if key, ok := itemMap["key"].(string); ok {
+				hi.Key = key
+			}
+			if desc, ok := itemMap["description"].(string); ok {
+				hi.Description = desc
+			}
+			result = append(result, hi)
+		}
+	}
+	return result
 }
 
 // NewHelpModel creates a new HelpModel from HelpProps
@@ -197,8 +269,16 @@ func (m *HelpModel) View() string {
 	}
 
 	// Create help text based on style
+	// Auto-detect: if sections are provided, use sections style
+	effectiveStyle := m.props.Style
+	if effectiveStyle == "compact" && len(m.props.Sections) > 0 {
+		effectiveStyle = "sections"
+	}
+
 	var helpText string
-	switch m.props.Style {
+	switch effectiveStyle {
+	case "sections":
+		helpText = m.renderSections()
 	case "full":
 		helpText = "Navigation: ↑↓←→ • Select: Enter • Quit: Ctrl+C or Esc"
 	case "minimal":
@@ -208,6 +288,42 @@ func (m *HelpModel) View() string {
 	}
 
 	return style.Render(helpText)
+}
+
+// renderSections renders help in sections format
+func (m *HelpModel) renderSections() string {
+	if len(m.props.Sections) == 0 {
+		return "No help sections available"
+	}
+
+	var result string
+	separator := m.props.SectionSeparator
+	itemSeparator := m.props.ItemSeparator
+
+	for i, section := range m.props.Sections {
+		if i > 0 {
+			result += separator
+		}
+
+		// Render section title with style
+		titleStyle := lipgloss.NewStyle()
+		if m.props.SectionTitleColor != "" {
+			titleStyle = titleStyle.Foreground(lipgloss.Color(m.props.SectionTitleColor))
+		}
+		titleStyle = titleStyle.Bold(true)
+		result += titleStyle.Render(section.Title)
+		result += "\n"
+
+		// Render items
+		for j, item := range section.Items {
+			if j > 0 {
+				result += itemSeparator
+			}
+			result += fmt.Sprintf("  %-20s %s", item.Key, item.Description)
+		}
+	}
+
+	return result
 }
 
 // GetID returns the unique identifier for this component instance

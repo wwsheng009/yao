@@ -300,14 +300,20 @@ func NewProgressComponent(config core.RenderConfig, id string) *ProgressComponen
 	}
 	
 	// Use defaults if no data provided
-	if props.Percent == 0 && props.Width == 0 {
+	// Note: Don't override if props were provided, even if they match default values
+	if props.Width == 0 && props.Percent == 0 && props.Color == "" {
 		props = ProgressProps{
 			Percent:     0,
-			Width:       0,
+			Width:       40, // Default width to ensure visibility
 			Color:       "",
 			Background:  "",
 			EmptyColor:  "",
 		}
+	}
+	
+	// Ensure width is set (use default if not provided)
+	if props.Width == 0 {
+		props.Width = 40 // Default width
 	}
 	
 	model := NewProgressModel(props, id)
@@ -457,16 +463,16 @@ func NewFilePickerComponent(config core.RenderConfig, id string) *FilePickerComp
 // NewHelpComponent creates a new Help component wrapper
 func NewHelpComponent(config core.RenderConfig, id string) *HelpComponentWrapper {
 	var props HelpProps
-	
+
 	// Extract props from config
 	if config.Data != nil {
 		if dataMap, ok := config.Data.(map[string]interface{}); ok {
 			props = ParseHelpProps(dataMap)
 		}
 	}
-	
-	// Use defaults if no data provided
-	if len(props.KeyMap) == 0 {
+
+	// Use defaults if no data provided (check both KeyMap and Sections)
+	if len(props.KeyMap) == 0 && len(props.Sections) == 0 {
 		props = HelpProps{
 			KeyMap:      map[string]interface{}{},
 			Width:       0,
@@ -475,7 +481,7 @@ func NewHelpComponent(config core.RenderConfig, id string) *HelpComponentWrapper
 			Style:       "compact",
 		}
 	}
-	
+
 	model := NewHelpModel(props, id)
 	return &HelpComponentWrapper{
 		model: &model,
