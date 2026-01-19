@@ -25,15 +25,14 @@ func TestTableModel_FocusAndNavigation(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 初始状态：应该有焦点
-	if !tableModel.Model.Focused() {
+	if !wrapper.model.Focused() {
 		t.Error("Table should be focused initially")
 	}
 
 	// 初始光标应该在第一行 (index 0)
-	if cursor := tableModel.Model.Cursor(); cursor != 0 {
+	if cursor := wrapper.model.Cursor(); cursor != 0 {
 		t.Errorf("Expected cursor at row 0, got %d", cursor)
 	}
 
@@ -43,7 +42,7 @@ func TestTableModel_FocusAndNavigation(t *testing.T) {
 		t.Error("Down key should be handled when focused")
 	}
 
-	if cursor := tableModel.Model.Cursor(); cursor != 1 {
+	if cursor := wrapper.model.Cursor(); cursor != 1 {
 		t.Errorf("Expected cursor at row 1 after Down key, got %d", cursor)
 	}
 
@@ -53,7 +52,7 @@ func TestTableModel_FocusAndNavigation(t *testing.T) {
 		t.Error("Up key should be handled when focused")
 	}
 
-	if cursor := tableModel.Model.Cursor(); cursor != 0 {
+	if cursor := wrapper.model.Cursor(); cursor != 0 {
 		t.Errorf("Expected cursor at row 0 after Up key, got %d", cursor)
 	}
 }
@@ -76,10 +75,9 @@ func TestTableModel_FocusLost_IgnoresKeys(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 初始状态：不应该有焦点
-	if tableModel.Model.Focused() {
+	if wrapper.model.Focused() {
 		t.Error("Table should not be focused initially")
 	}
 
@@ -90,7 +88,7 @@ func TestTableModel_FocusLost_IgnoresKeys(t *testing.T) {
 	}
 
 	// 光标应该保持不变
-	if cursor := tableModel.Model.Cursor(); cursor != 0 {
+	if cursor := wrapper.model.Cursor(); cursor != 0 {
 		t.Errorf("Expected cursor to remain at row 0 when unfocused, got %d", cursor)
 	}
 }
@@ -111,10 +109,9 @@ func TestTableModel_SetFocus_Dynamic(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 初始状态：无焦点
-	if tableModel.Model.Focused() {
+	if wrapper.model.Focused() {
 		t.Error("Table should not be focused initially")
 	}
 
@@ -127,7 +124,7 @@ func TestTableModel_SetFocus_Dynamic(t *testing.T) {
 	// 设置焦点
 	wrapper.SetFocus(true)
 
-	if !tableModel.Model.Focused() {
+	if !wrapper.model.Focused() {
 		t.Error("Table should be focused after SetFocus(true)")
 	}
 
@@ -138,14 +135,14 @@ func TestTableModel_SetFocus_Dynamic(t *testing.T) {
 	}
 
 	// 光标应该移动
-	if cursor := tableModel.Model.Cursor(); cursor != 1 {
+	if cursor := wrapper.model.Cursor(); cursor != 1 {
 		t.Errorf("Expected cursor to move to row 1 when focused, got %d", cursor)
 	}
 
 	// 释放焦点
 	wrapper.SetFocus(false)
 
-	if tableModel.Model.Focused() {
+	if wrapper.model.Focused() {
 		t.Error("Table should not be focused after SetFocus(false)")
 	}
 
@@ -172,7 +169,6 @@ func TestTableModel_SelectionEvents(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 订阅事件
 	var receivedEvents []core.ActionMsg
@@ -203,7 +199,7 @@ func TestTableModel_SelectionEvents(t *testing.T) {
 	}
 
 	// 光标应该移动
-	if cursor := tableModel.Model.Cursor(); cursor != 1 {
+	if cursor := wrapper.model.Cursor(); cursor != 1 {
 		t.Errorf("Expected cursor at row 1, got %d", cursor)
 	}
 }
@@ -224,8 +220,6 @@ func TestTableModel_EnterKey(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
-
 	// 移动到第二行
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
 
@@ -241,7 +235,7 @@ func TestTableModel_EnterKey(t *testing.T) {
 	}
 
 	// 光标应该保持在第二行
-	if cursor := tableModel.Model.Cursor(); cursor != 1 {
+	if cursor := wrapper.model.Cursor(); cursor != 1 {
 		t.Errorf("Expected cursor to remain at row 1, got %d", cursor)
 	}
 }
@@ -264,10 +258,9 @@ func TestTableModel_Pagination(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 初始光标在第一行
-	if cursor := tableModel.Model.Cursor(); cursor != 0 {
+	if cursor := wrapper.model.Cursor(); cursor != 0 {
 		t.Errorf("Expected cursor at row 0, got %d", cursor)
 	}
 
@@ -278,7 +271,7 @@ func TestTableModel_Pagination(t *testing.T) {
 	}
 
 	// 光标应该向下移动（具体行数取决于表格实现）
-	newCursor := tableModel.Model.Cursor()
+	newCursor := wrapper.model.Cursor()
 	if newCursor <= 0 {
 		t.Errorf("Expected cursor to move after PgDown, got %d", newCursor)
 	}
@@ -290,7 +283,7 @@ func TestTableModel_Pagination(t *testing.T) {
 	}
 
 	// 光标应该向上移动
-	finalCursor := tableModel.Model.Cursor()
+	finalCursor := wrapper.model.Cursor()
 	if finalCursor >= newCursor {
 		t.Errorf("Expected cursor to move up after PgUp, got %d (from %d)", finalCursor, newCursor)
 	}
@@ -309,10 +302,9 @@ func TestTableModel_EmptyTable(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 光标应该在 0 或 -1（取决于表格实现）
-	cursor := tableModel.Model.Cursor()
+	cursor := wrapper.model.Cursor()
 	if cursor < -1 {
 		t.Errorf("Invalid cursor position: %d", cursor)
 	}
@@ -340,23 +332,22 @@ func TestTableModel_SingleRowTable(t *testing.T) {
 
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// 初始光标在第一行
-	if cursor := tableModel.Model.Cursor(); cursor != 0 {
+	if cursor := wrapper.model.Cursor(); cursor != 0 {
 		t.Errorf("Expected cursor at row 0, got %d", cursor)
 	}
 
 	// 按 Down 键应该保持或循环（取决于表格实现）
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
-	cursor := tableModel.Model.Cursor()
+	cursor := wrapper.model.Cursor()
 	if cursor < 0 {
 		t.Errorf("Cursor should not be negative: %d", cursor)
 	}
 
 	// 按 Up 键应该保持或循环
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyUp})
-	cursor = tableModel.Model.Cursor()
+	cursor = wrapper.model.Cursor()
 	if cursor < 0 {
 		t.Errorf("Cursor should not be negative: %d", cursor)
 	}

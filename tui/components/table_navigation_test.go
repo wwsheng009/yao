@@ -27,10 +27,9 @@ func TestTableComponentWrapper_UpdateMsg_KeyDown(t *testing.T) {
 	}
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// Test initial selection
-	initialCursor := tableModel.Model.Cursor()
+	initialCursor := wrapper.model.Cursor()
 	if initialCursor != 0 {
 		t.Errorf("Expected initial cursor at 0, got %d", initialCursor)
 	}
@@ -49,7 +48,7 @@ func TestTableComponentWrapper_UpdateMsg_KeyDown(t *testing.T) {
 	}
 
 	// Check cursor moved down
-	newCursor := tableModel.Model.Cursor()
+	newCursor := wrapper.model.Cursor()
 	if newCursor != 1 {
 		t.Errorf("Expected cursor at 1 after Down key, got %d", newCursor)
 	}
@@ -75,7 +74,6 @@ func TestTableComponentWrapper_UpdateMsg_NavigationKeys(t *testing.T) {
 	}
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	testCases := []struct {
 		name         string
@@ -97,7 +95,7 @@ func TestTableComponentWrapper_UpdateMsg_NavigationKeys(t *testing.T) {
 				t.Errorf("Expected Handled response, got %v", response)
 			}
 
-			cursor := tableModel.Model.Cursor()
+			cursor := wrapper.model.Cursor()
 			if cursor != tc.expectedRow {
 				t.Errorf("Expected cursor at %d, got %d", tc.expectedRow, cursor)
 			}
@@ -122,7 +120,6 @@ func TestTableComponentWrapper_UpdateMsg_EnterKey(t *testing.T) {
 	}
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// Move to second row
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
@@ -141,7 +138,7 @@ func TestTableComponentWrapper_UpdateMsg_EnterKey(t *testing.T) {
 	}
 
 	// Verify cursor is still at row 1
-	cursor := tableModel.Model.Cursor()
+	cursor := wrapper.model.Cursor()
 	if cursor != 1 {
 		t.Errorf("Expected cursor to remain at 1, got %d", cursor)
 	}
@@ -325,17 +322,16 @@ func TestTableComponentWrapper_SetFocus(t *testing.T) {
 	}
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// Set focus
 	wrapper.SetFocus(true)
-	if !tableModel.Model.Focused() {
+	if !wrapper.model.Focused() {
 		t.Error("Expected table to be focused")
 	}
 
 	// Remove focus
 	wrapper.SetFocus(false)
-	if tableModel.Model.Focused() {
+	if wrapper.model.Focused() {
 		t.Error("Expected table to be blurred")
 	}
 }
@@ -415,22 +411,21 @@ func TestTableComponentWrapper_BoundaryNavigation(t *testing.T) {
 	}
 	// 使用新的API
 	wrapper := NewTableComponentWrapper(props, "test-table")
-	tableModel := wrapper.model
 
 	// Move to last row
-	tableModel.Model.SetCursor(1)
+	wrapper.model.SetCursor(1)
 
 	// Try to move down (should stay at last row)
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
-	cursor := tableModel.Model.Cursor()
+	cursor := wrapper.model.Cursor()
 	if cursor != 1 {
 		t.Errorf("Expected cursor to stay at 1, got %d", cursor)
 	}
 
 	// Try to move up (should stay at first row)
-	tableModel.Model.SetCursor(0)
+	wrapper.model.SetCursor(0)
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyUp})
-	cursor = tableModel.Model.Cursor()
+	cursor = wrapper.model.Cursor()
 	if cursor != 0 {
 		t.Errorf("Expected cursor to stay at 0, got %d", cursor)
 	}

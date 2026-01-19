@@ -271,6 +271,102 @@ func formatCell(cell interface{}) string {
 	return fmt.Sprintf("%v", cell)
 }
 
+// createNativeTableModel creates a new native table.Model from TableProps
+func createNativeTableModel(props TableProps) table.Model {
+	// Validate input: ensure we have columns
+	if len(props.Columns) == 0 {
+		return table.New()
+	}
+
+	// Prepare columns
+	columns := make([]table.Column, len(props.Columns))
+	for i, col := range props.Columns {
+		colWidth := col.Width
+		if colWidth <= 0 {
+			// Calculate reasonable default width
+			colWidth = 10
+		}
+		columns[i] = table.Column{
+			Title: col.Title,
+			Width: colWidth,
+		}
+	}
+
+	// Prepare rows with validation and column-specific styling
+	rows := make([]table.Row, 0, len(props.Data))
+	for _, rowData := range props.Data {
+		// Skip rows that don't match column count
+		if len(rowData) != len(props.Columns) {
+			continue
+		}
+		row := make([]string, len(rowData))
+		for j, cell := range rowData {
+			// Apply column-specific style if defined, otherwise use default formatting
+			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
+			} else {
+				row[j] = formatCell(cell)
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	// Create table model
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(props.Focused),
+	)
+
+	// Apply styles
+	headerStyle := props.HeaderStyle.GetStyle()
+	cellStyle := props.CellStyle.GetStyle()
+	selectedStyle := props.SelectedStyle.GetStyle()
+
+	// Set default styles if not provided for better visibility
+	if headerStyle.String() == lipgloss.NewStyle().String() {
+		headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("214")) // Light orange
+	}
+	if cellStyle.String() == lipgloss.NewStyle().String() {
+		cellStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")) // Dark gray
+	}
+	if selectedStyle.String() == lipgloss.NewStyle().String() {
+		// High-contrast selected style for better visibility
+		selectedStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")). // Black
+			Background(lipgloss.Color("39")).  // Light blue background
+			Underline(true)
+	}
+
+	if props.ShowBorder {
+		t.SetStyles(table.Styles{
+			Header: headerStyle,
+			// Cell:     cellStyle,
+			Selected: selectedStyle,
+		})
+	} else {
+		s := table.DefaultStyles()
+		s.Header = headerStyle
+		s.Cell = cellStyle
+		s.Selected = selectedStyle
+		t.SetStyles(s)
+	}
+
+	// Set size if specified
+	if props.Width > 0 {
+		t.SetWidth(props.Width)
+	}
+	if props.Height > 0 {
+		t.SetHeight(props.Height)
+	}
+
+	return t
+}
+
 // HandleTableUpdate handles updates for table components
 // This is used when the table is interactive (selection, scrolling, etc.)
 func HandleTableUpdate(msg tea.Msg, tableModel *TableModel) (TableModel, tea.Cmd) {
@@ -508,36 +604,80 @@ func (h *TableStateHelper) DetectStateChanges(old, new map[string]interface{}) [
 	return cmds
 }
 
-// TableComponentWrapper wraps TableModel to implement ComponentInterface properly
+// TableComponentWrapper wraps the native table.Model to implement ComponentInterface properly
 type TableComponentWrapper struct {
-	model *TableModel
+	model    table.Model
+	props    TableProps
+	id       string
 	bindings []core.ComponentBinding
 	stateHelper *TableStateHelper
 }
 
 // NewTableComponentWrapper creates a wrapper that implements ComponentInterface
 func NewTableComponentWrapper(props TableProps, id string) *TableComponentWrapper {
-	// 内部创建 model
-	tableModel := NewTableModel(props, id)
-	tableModel.ID = id
-
-	// 完整初始化 wrapper（直接使用 model 而不需要适配器）
+	// 创建原生 table.Model
+	nativeModel := createNativeTableModel(props)
+	
+	// 初始化 wrapper，直接使用原生模型
 	wrapper := &TableComponentWrapper{
-		model:    &tableModel,
+		model:    nativeModel,
+		props:    props,
+		id:       id,
 		bindings: props.Bindings,
-		stateHelper: &TableStateHelper{
-			Indexer:     &tableModel,  // TableModel 实现了 Index() int 方法
-			Selector:    &tableModel, // TableModel 实现了 SelectedItem() interface{} 方法
-			Focuser:     &tableModel, // TableModel 实现了 Focused() bool 方法
-			ComponentID: id,
-		},
 	}
-
+	
+	// 初始化 stateHelper，使用 wrapper 自身
+	wrapper.stateHelper = &TableStateHelper{
+		Indexer:     wrapper, // wrapper 自己实现 Index() 方法
+		Selector:    wrapper, // wrapper 自己实现 SelectedItem() 方法
+		Focuser:     wrapper, // wrapper 自己实现 Focused() 方法
+		ComponentID: id,
+	}
+	
 	return wrapper
 }
 
 func (w *TableComponentWrapper) Init() tea.Cmd {
 	return nil
+}
+
+// Index returns the current cursor position
+func (w *TableComponentWrapper) Index() int {
+	return w.model.Cursor()
+}
+
+// SelectedItem returns the currently selected item
+func (w *TableComponentWrapper) SelectedItem() interface{} {
+	cursor := w.model.Cursor()
+	rows := w.model.Rows()
+	if cursor >= 0 && cursor < len(rows) {
+		return rows[cursor]
+	}
+	return nil
+}
+
+// Focused returns whether the table is focused
+func (w *TableComponentWrapper) Focused() bool {
+	return w.model.Focused()
+}
+
+// SetFocus sets or removes focus from table component
+func (w *TableComponentWrapper) SetFocus(focus bool) {
+	if focus {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
+	}
+}
+
+// GetValue returns the current value (for Valuer interface)
+func (w *TableComponentWrapper) GetValue() string {
+	item := w.SelectedItem()
+	if item != nil {
+		// Return a string representation of the selected item
+		return fmt.Sprintf("%v", item)
+	}
+	return ""
 }
 
 // GetModel returns the underlying model
@@ -547,7 +687,7 @@ func (w *TableComponentWrapper) GetModel() interface{} {
 
 // GetID returns the component ID
 func (w *TableComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 // View returns the view of the component
@@ -566,36 +706,13 @@ func (w *TableComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		return core.ExecuteActionMsg{
 			Action:    action,
-			SourceID:  w.model.id,
+			SourceID:  w.id,
 			Timestamp: time.Now(),
 		}
 	}
 }
 
-// tableComponentWrapperAdapter adapts TableComponentWrapper to implement core.ComponentWrapper interface
-type tableComponentWrapperAdapter struct {
-	*TableComponentWrapper
-}
 
-func (a *tableComponentWrapperAdapter) GetModel() interface{} {
-	return a.TableComponentWrapper.model
-}
-
-func (a *tableComponentWrapperAdapter) GetID() string {
-	return a.TableComponentWrapper.model.id
-}
-
-func (a *tableComponentWrapperAdapter) View() string {
-	return a.TableComponentWrapper.model.View()
-}
-
-func (a *tableComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
-	return core.PublishEvent(sourceID, eventName, payload)
-}
-
-func (a *tableComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
-	return a.TableComponentWrapper.ExecuteAction(action)
-}
 
 func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
@@ -617,15 +734,14 @@ func (w *TableComponentWrapper) getBindings() []core.ComponentBinding {
 }
 
 func (w *TableComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-	// 创建适配器来实现 ComponentWrapper 接口
-	wrapper := &tableComponentWrapperAdapter{w}
-	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	// 直接使用wrapper本身实现 ComponentWrapper 接口
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
 	return cmd, response, handled
 }
 
 func (w *TableComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 	return cmd
 }
 
@@ -640,7 +756,7 @@ func (w *TableComponentWrapper) DetectStateChanges(old, new map[string]interface
 
 // 实现 HasFocus 方法
 func (w *TableComponentWrapper) HasFocus() bool {
-	return w.model.Model.Focused()
+	return w.model.Focused()
 }
 
 // 实现 HandleSpecialKey 方法
@@ -651,23 +767,23 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 		return nil, core.Ignored, true
 	case tea.KeyEnter:
 		// Handle Enter key for row selection confirmation
-		currentSelectedRow := w.model.Model.Cursor()
+		currentSelectedRow := w.model.Cursor()
 		if currentSelectedRow >= 0 {
 			// Get row data if available
 			var rowData interface{}
-			rows := w.model.Model.Rows()
+			rows := w.model.Rows()
 			if currentSelectedRow < len(rows) {
 				rowData = rows[currentSelectedRow]
 			}
 
 			// Publish row double-click / enter pressed event
 			eventCmd := core.PublishEvent(
-				w.model.id,
+				w.id,
 				core.EventRowDoubleClicked,
 				map[string]interface{}{
 					"rowIndex": currentSelectedRow,
 					"rowData":  rowData,
-					"tableID":  w.model.id,
+					"tableID":  w.id,
 					"trigger":  "enter_key",
 				},
 			)
@@ -681,22 +797,81 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 	return nil, core.Ignored, false
 }
 
-// SetFocus sets or removes focus from table component
-func (w *TableComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
-}
+
 
 func (w *TableComponentWrapper) GetComponentType() string {
 	return "table"
 }
 
+// Render renders the table component
 func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Apply new configuration to the table model
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("TableComponentWrapper: invalid data type")
+	}
+	props := ParseTableProps(propsMap)
+	
+	// Update the model with new data
+	nativeModel := createNativeTableModel(props)
+	w.model = nativeModel
+	w.props = props
+	
+	// Return the view
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
 func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
-	return w.model.UpdateRenderConfig(config)
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TableComponentWrapper: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse table properties
+	props := ParseTableProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update table data if provided
+	if props.Data != nil {
+		r := make([]table.Row, 0, len(props.Data))
+		for _, rowData := range props.Data {
+			// Skip rows that don't match column count
+			if len(rowData) != len(props.Columns) {
+				continue
+			}
+			row := make([]string, len(rowData))
+			for j, cell := range rowData {
+				// Apply column-specific style if defined, otherwise use default formatting
+				if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+					row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
+				} else {
+					row[j] = formatCell(cell)
+				}
+			}
+			r = append(r, row)
+		}
+		w.model.SetRows(r)
+	}
+
+	// Update dimensions if changed
+	if w.props.Width > 0 {
+		w.model.SetWidth(w.props.Width)
+	}
+	if w.props.Height > 0 {
+		w.model.SetHeight(w.props.Height)
+	}
+
+	// Update focus if changed
+	if w.props.Focused {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
+	}
+
+	return nil
 }
 
 // Cleanup cleans up resources used by the table component
@@ -707,8 +882,8 @@ func (w *TableComponentWrapper) Cleanup() {
 
 // GetStateChanges returns the state changes from this component
 func (w *TableComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	selectedRow := w.model.Model.Cursor()
-	rows := w.model.Model.Rows()
+	selectedRow := w.model.Cursor()
+	rows := w.model.Rows()
 
 	rowData := interface{}(nil)
 	if selectedRow >= 0 && selectedRow < len(rows) {
