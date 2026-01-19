@@ -364,7 +364,7 @@ func (w *FormComponentWrapper) GetModel() interface{} {
 
 // GetID returns the component ID
 func (w *FormComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 // PublishEvent creates and returns a command to publish an event
@@ -386,9 +386,11 @@ func (w *FormComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 
 // FormComponentWrapper wraps FormModel to implement ComponentInterface properly
 type FormComponentWrapper struct {
-	model     *FormModel
+	model     FormModel
+	props     FormProps
 	bindings  []core.ComponentBinding
 	stateHelper *FormStateHelper
+	id        string
 }
 
 // NewFormComponentWrapper creates a wrapper that implements ComponentInterface
@@ -396,16 +398,22 @@ func NewFormComponentWrapper(props FormProps, id string) *FormComponentWrapper {
 	formModel := NewFormModel(props, id)
 	formModel.ID = id
 
-	return &FormComponentWrapper{
-		model: &formModel,
+	wrapper := &FormComponentWrapper{
+		model: formModel,
+		props: props,
 		bindings: props.Bindings,
-		stateHelper: &FormStateHelper{
-			Valuer:      &formModel,
-			Focuser:     &formModel,
-			ComponentID: id,
-		},
+		id: id,
 	}
+	
+	wrapper.stateHelper = &FormStateHelper{
+		Valuer:      wrapper,  // wrapper自己实现Valuer接口
+		Focuser:     wrapper, // wrapper自己实现Focuser接口  
+		ComponentID: id,
+	}
+	
+	return wrapper
 }
+
 
 func (w *FormComponentWrapper) Init() tea.Cmd {
 	return nil
@@ -502,7 +510,7 @@ func (w *FormComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 }
 
 func (w *FormComponentWrapper) View() string {
-	return w.model.View()
+	return RenderForm(w.props, w.props.Width)
 }
 
 // SetFocus sets or removes focus from form component
@@ -518,6 +526,16 @@ func (m *FormModel) SetFocus(focus bool) {
 
 func (w *FormComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+// GetValue returns the current value of the form component
+func (w *FormComponentWrapper) GetValue() string {
+	return w.model.GetValue()
+}
+
+// Focused returns whether the form is focused
+func (w *FormComponentWrapper) Focused() bool {
+	return w.model.Focused()
 }
 
 func (m *FormModel) GetComponentType() string {
@@ -580,12 +598,38 @@ func (m *FormModel) Render(config core.RenderConfig) (string, error) {
 }
 
 func (w *FormComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("FormComponentWrapper: invalid data type")
+	}
+
+	// Parse form properties
+	props := ParseFormProps(propsMap)
+
+	// Update component properties
+	w.props = props
+	w.model.props = props
+
+	// Return rendered view
+	return w.View(), nil
 }
 
 func (w *FormComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
-	// 委托给底层的 FormModel
-	return w.model.UpdateRenderConfig(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("FormComponentWrapper: invalid data type")
+	}
+
+	// Parse form properties
+	props := ParseFormProps(propsMap)
+
+	// Update component properties
+	w.props = props
+	w.model.props = props
+
+	return nil
 }
 
 func (w *FormComponentWrapper) Cleanup() {

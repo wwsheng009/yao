@@ -1,120 +1,296 @@
 package examples
 
 import (
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/yao/tui/core"
 )
 
 // 示例：如何使用统一消息处理工具重构 input 组件
 //
-// 使用统一消息处理工具重构后的 input 组件
-func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// 创建状态助手
-	stateHelper := &core.InputStateHelper{
-		Valuer:      w.model,
-		Focuser:     w.model,
-		ComponentID: w.model.id,
-	}
+// 使用直接实现模式重构后的 input 组件示例
+// (注意：这是示例代码，实际实现在 tui/components/input.go)
+type InputComponentWrapper struct {
+	model       textinput.Model // 直接使用原生组件
+	props       InputProps      // 组件属性
+	id          string          // 组件ID
+	bindings    []core.ComponentBinding
+	stateHelper *core.InputStateHelper
+}
 
-	// 使用通用模板
+// InputProps defines the properties for the Input component
+type InputProps struct {
+	Placeholder string `json:"placeholder"`
+	Value       string `json:"value"`
+	Prompt      string `json:"prompt"`
+	Color       string `json:"color"`
+	Background  string `json:"background"`
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	Disabled    bool   `json:"disabled"`
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
+}
+
+func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w, // 实现了 InteractiveBehavior 接口的组件
-		msg,
-		w.getBindings,           // 获取绑定（可选）
-		w.handleBinding,         // 处理绑定（可选）
-		w.delegateToBubbles,     // 委托给 bubbles 原组件
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
 }
 
+// 实现 InteractiveBehavior 接口的方法
 func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
-	return w.model.props.Bindings
+	return w.bindings
 }
 
 func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-	// 复用已有的绑定处理逻辑
-	cmd, response, handled := core.HandleBinding(keyMsg, binding, w.model.id)
+	// InputComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
 	return cmd, response, handled
 }
 
 func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
-	w.model.Model, cmd := w.model.Model.Update(msg)
-	return cmd
-}
+	var cmd tea.Cmd
 
-// 实现 InteractiveBehavior 接口的方法
-func (w *InputComponentWrapper) HasFocus() bool {
-	return w.model.Model.Focused()
-}
+	// 处理按键消息
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		// 跳过已在 HandleSpecialKey 中处理的键
+		switch keyMsg.Type {
+		case tea.KeyTab, tea.KeyEscape:
+			// 这些键已由 HandleSpecialKey 处理，跳过委托
+			return nil
+		case tea.KeyEnter:
+			// 特殊处理Enter键
+			w.model, cmd = w.model.Update(msg)
 
-func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	// 只处理特定的特殊按键，否则返回 false 表示未处理
-	switch keyMsg.Type {
-	case tea.KeyEnter:
-		// 发布输入提交事件
-		cmd := core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-			"value": w.model.Model.Value(),
-		})
-		return cmd, core.Handled, true
-	case tea.KeyEscape:
-		// 失焦处理
-		w.model.Model.Blur()
-		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
-		return cmd, core.Handled, true
+			// 发布Enter按下事件
+			enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
+				"value": w.model.Value(),
+			})
+
+			// 合并命令（如果有的话）
+			if cmd != nil {
+				return tea.Batch(enterCmd, cmd)
+			}
+			return enterCmd
+		default:
+			// 处理其他按键（包括字符输入）
+			w.model, cmd = w.model.Update(msg)
+			return cmd // 可能为 nil
+		}
 	}
-	
-	// 其他按键不由这个函数处理
-	return nil, core.Ignored, false
+
+	// 处理非按键消息
+	w.model, cmd = w.model.Update(msg)
+	return cmd // 可能为 nil
 }
 
 // 实现 StateCapturable 接口
 func (w *InputComponentWrapper) CaptureState() map[string]interface{} {
-	return map[string]interface{}{
-		"value":   w.model.Model.Value(),
-		"focused": w.model.Model.Focused(),
-	}
+	return w.stateHelper.CaptureState()
 }
 
 func (w *InputComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
-	var cmds []tea.Cmd
+	return w.stateHelper.DetectStateChanges(old, new)
+}
 
-	if old["value"] != new["value"] {
-		cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
-			"oldValue": old["value"],
-			"newValue": new["value"],
-		}))
+// 实现 HandleSpecialKey 方法
+func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEscape:
+		// 失焦处理
+		w.model.Blur()
+		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
+		return cmd, core.Ignored, true
 	}
 
-	if old["focused"] != new["focused"] {
-		cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
-			"focused": new["focused"],
-		}))
-	}
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
 
-	return cmds
+// 实现 HasFocus 方法
+func (w *InputComponentWrapper) HasFocus() bool {
+	return w.model.Focused()
+}
+
+// 以下是 InputComponentWrapper 实现 ComponentInterface 和其他接口所需的方法
+func (w *InputComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+func (w *InputComponentWrapper) View() string {
+	return w.model.View()
+}
+
+func (w *InputComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+func (w *InputComponentWrapper) GetID() string {
+	return w.id
+}
+
+func (w *InputComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// 示例实现
+	return nil
+}
+
+func (w *InputComponentWrapper) GetComponentType() string {
+	return "input"
+}
+
+func (w *InputComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return w.model.View(), nil
+}
+
+func (w *InputComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	return nil
+}
+
+func (w *InputComponentWrapper) Cleanup() {
+	// 示例实现
+}
+
+func (w *InputComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	return nil, false
+}
+
+func (w *InputComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{"tea.KeyMsg", "core.TargetedMsg"}
+}
+
+func (w *InputComponentWrapper) SetFocus(focus bool) {
+	if focus {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
+	}
+}
+
+func (w *InputComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ListComponentWrapper 模拟类型定义
+// (注意：这是示例代码，实际实现在 tui/components/list.go)
+type ListComponentWrapper struct {
+	// 模拟 List 组件的字段
 }
 
 // 使用统一消息处理工具重构后的 list 组件示例
+// (注意：这是示例代码，实际实现在 tui/components/list.go)
 func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// 创建状态助手
-	stateHelper := &core.ListStateHelper{
-		Indexer:     w.model,
-		Selector:    w.model,
-		Focused:     w.model.IsFocused(),
-		ComponentID: w.model.id,
-	}
-
-	// 使用通用模板
+	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w, // 实现了 InteractiveBehavior 接口的组件
+		w,                   // 实现了 InteractiveBehavior 接口的组件
 		msg,
-		w.getBindings,           // 获取绑定（可选）
-		w.handleBinding,         // 处理绑定（可选）
-		w.delegateToBubbles,     // 委托给 bubbles 原组件
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
+}
+
+// 为 ListComponentWrapper 实现必要的方法
+func (w *ListComponentWrapper) getBindings() []core.ComponentBinding {
+	// 示例实现
+	return nil
+}
+
+func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// 示例实现
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
+
+func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+	// 示例实现
+	return nil
+}
+
+// ListComponentWrapper 实现所需接口的方法
+func (w *ListComponentWrapper) CaptureState() map[string]interface{} {
+	// 示例实现
+	return nil
+}
+
+func (w *ListComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	// 示例实现
+	return nil
+}
+
+func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	// 示例实现
+	return nil, core.Ignored, false
+}
+
+func (w *ListComponentWrapper) HasFocus() bool {
+	// 示例实现
+	return false
+}
+
+// ComponentInterface 实现
+func (w *ListComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+func (w *ListComponentWrapper) View() string {
+	return "list view"
+}
+
+func (w *ListComponentWrapper) GetModel() interface{} {
+	return nil
+}
+
+func (w *ListComponentWrapper) GetID() string {
+	return "list"
+}
+
+func (w *ListComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	return nil
+}
+
+func (w *ListComponentWrapper) GetComponentType() string {
+	return "list"
+}
+
+func (w *ListComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	return "list view", nil
+}
+
+func (w *ListComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	return nil
+}
+
+func (w *ListComponentWrapper) Cleanup() {
+	// 示例实现
+}
+
+func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	return nil, false
+}
+
+func (w *ListComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{"tea.KeyMsg", "core.TargetedMsg"}
+}
+
+func (w *ListComponentWrapper) SetFocus(focus bool) {
+	// 示例实现
+}
+
+func (w *ListComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
 }
 
 // 重构前 vs 重构后对比

@@ -141,7 +141,19 @@ func (m *HeaderModel) SetFocus(focus bool) {
 
 // HeaderComponentWrapper wraps HeaderModel to implement ComponentInterface properly
 type HeaderComponentWrapper struct {
-	model *HeaderModel
+	model HeaderModel
+	props HeaderProps
+	id    string
+}
+
+// NewHeaderComponentWrapper creates a wrapper that implements ComponentInterface
+func NewHeaderComponentWrapper(props HeaderProps, id string) *HeaderComponentWrapper {
+	model := NewHeaderModel(props, id)
+	return &HeaderComponentWrapper{
+		model: model,
+		props: props,
+		id:    id,
+	}
 }
 
 // NewHeaderComponent creates a new Header component wrapper
@@ -165,10 +177,8 @@ func NewHeaderComponent(config core.RenderConfig, id string) *HeaderComponentWra
 		}
 	}
 	
-	model := NewHeaderModel(props, id)
-	return &HeaderComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewHeaderComponentWrapper(props, id)
 }
 
 func (w *HeaderComponentWrapper) Init() tea.Cmd {
@@ -180,7 +190,7 @@ func (w *HeaderComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -191,11 +201,11 @@ func (w *HeaderComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 }
 
 func (w *HeaderComponentWrapper) View() string {
-	return w.model.View()
+	return RenderHeader(w.props, w.props.Width)
 }
 
 func (w *HeaderComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *HeaderComponentWrapper) SetFocus(focus bool) {
@@ -229,7 +239,21 @@ func (m *HeaderModel) Render(config core.RenderConfig) (string, error) {
 }
 
 func (w *HeaderComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// 解析配置数据
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("HeaderComponentWrapper: invalid data type")
+	}
+
+	// 解析属性
+	props := ParseHeaderProps(propsMap)
+
+	// 更新组件属性
+	w.props = props
+	w.model.props = props
+
+	// 返回渲染结果
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -243,6 +267,7 @@ func (w *HeaderComponentWrapper) UpdateRenderConfig(config core.RenderConfig) er
 	props := ParseHeaderProps(propsMap)
 
 	// Update component properties
+	w.props = props
 	w.model.props = props
 
 	return nil

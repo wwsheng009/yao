@@ -171,7 +171,7 @@ func NewTextComponent(config core.RenderConfig, id string) *TextComponentWrapper
 	}
 	
 	return &TextComponentWrapper{
-		model: model,
+		model: *model,
 	}
 }
 
@@ -266,16 +266,26 @@ func (m *TextModel) GetSubscribedMessageTypes() []string {
 
 // TextComponentWrapper wraps TextModel to implement ComponentInterface properly
 type TextComponentWrapper struct {
-
-	model *TextModel
+	model TextModel
+	props TextProps
+	id    string
 }
 
 // NewTextComponentWrapper creates a wrapper that implements ComponentInterface
-func NewTextComponentWrapper(textModel *TextModel) *TextComponentWrapper {
+func NewTextComponentWrapper(props TextProps, id string) *TextComponentWrapper {
+	model := TextModel{
+		Props: props,
+		Width: props.Width,
+		id:    id,
+	}
 	return &TextComponentWrapper{
-		model: textModel,
+		model: model,
+		props: props,
+		id:    id,
 	}
 }
+
+
 
 func (w *TextComponentWrapper) Init() tea.Cmd {
 	return w.model.Init()
@@ -286,7 +296,7 @@ func (w *TextComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w, nil, core.Handled
 		}
 		return w, nil, core.Ignored
@@ -297,11 +307,11 @@ func (w *TextComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 }
 
 func (w *TextComponentWrapper) View() string {
-	return w.model.View()
+	return RenderText(w.props, w.props.Width)
 }
 
 func (w *TextComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *TextComponentWrapper) SetFocus(focus bool) {
@@ -313,7 +323,22 @@ func (w *TextComponentWrapper) GetComponentType() string {
 }
 
 func (w *TextComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// 解析配置数据
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("TextComponentWrapper: invalid data type")
+	}
+
+	// 解析属性
+	props := ParseTextProps(propsMap)
+
+	// 更新组件属性
+	w.props = props
+	w.model.Props = props
+	w.model.Width = config.Width
+
+	// 返回渲染结果
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -327,6 +352,7 @@ func (w *TextComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 	props := ParseTextProps(propsMap)
 
 	// Update component properties
+	w.props = props
 	w.model.Props = props
 	w.model.Width = config.Width
 

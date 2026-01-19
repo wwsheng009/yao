@@ -697,7 +697,7 @@ func (h *MenuStateHelper) DetectStateChanges(old, new map[string]interface{}) []
 
 // MenuComponentWrapper wraps MenuInteractiveModel to implement ComponentInterface properly
 type MenuComponentWrapper struct {
-	model       *MenuInteractiveModel
+	model       MenuInteractiveModel
 	bindings    []core.ComponentBinding
 	stateHelper *MenuStateHelper
 }
@@ -711,15 +711,15 @@ func NewMenuComponentWrapper(props MenuProps, id string) *MenuComponentWrapper {
 	menuModel.ID = id
 
 	wrapper := &MenuComponentWrapper{
-		model:    &menuModel,
+		model:    menuModel,
 		bindings: props.Bindings,
 	}
 	
 	// MenuInteractiveModel 已经实现了所需接口，直接使用
 	wrapper.stateHelper = &MenuStateHelper{
-		Indexer:     &menuModel,
-		Selector:    &menuModel,
-		Focuser:     &menuModel,
+		Indexer:     wrapper,  // wrapper自己实现Indexer接口
+		Selector:    wrapper, // wrapper自己实现Selector接口
+		Focuser:     wrapper, // wrapper自己实现Focuser接口
 		ComponentID: id,
 	}
 	return wrapper
@@ -788,8 +788,10 @@ func (w *MenuComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Com
 
 func (w *MenuComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	updatedModel, menuCmd := HandleMenuUpdate(msg, w.model)
-	w.model = &updatedModel
+	// 由于HandleMenuUpdate函数期望*MenuInteractiveModel，我们需要创建一个临时指针
+	tempModel := w.model
+	updatedModel, menuCmd := HandleMenuUpdate(msg, &tempModel)
+	w.model = updatedModel
 	if cmd == nil {
 		cmd = menuCmd
 	}
@@ -882,6 +884,21 @@ func (m *MenuInteractiveModel) SetFocus(focus bool) {
 
 func (w *MenuComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+// Index returns the current cursor position
+func (w *MenuComponentWrapper) Index() int {
+	return w.model.Index()
+}
+
+// SelectedItem returns the currently selected item
+func (w *MenuComponentWrapper) SelectedItem() interface{} {
+	return w.model.SelectedItem()
+}
+
+// Focused returns whether the menu is focused
+func (w *MenuComponentWrapper) Focused() bool {
+	return w.model.Focused()
 }
 
 func (w *MenuComponentWrapper) GetComponentType() string {
