@@ -225,39 +225,35 @@ type InputComponentWrapper struct {
 	stateHelper *core.InputStateHelper
 }
 
-// inputValuerAdapter adapts InputModel to satisfy interface{GetValue() string}
-type inputValuerAdapter struct {
-	*InputModel
+// InputModel directly implements the required interfaces by embedding textinput.Model
+// GetValue returns the current value of the input
+func (m *InputModel) GetValue() string {
+	return m.Model.Value()
 }
 
-func (a *inputValuerAdapter) GetValue() string {
-	return a.Model.Value()
-}
-
-// inputFocuserAdapter adapts InputModel to satisfy interface{Focused() bool}
-type inputFocuserAdapter struct {
-	*InputModel
-}
-
-func (a *inputFocuserAdapter) Focused() bool {
-	return a.Model.Focused()
+// Focused returns whether the input currently has focus
+func (m *InputModel) Focused() bool {
+	return m.Model.Focused()
 }
 
 // NewInputComponentWrapper creates a wrapper that implements ComponentInterface
-func NewInputComponentWrapper(inputModel *InputModel) *InputComponentWrapper {
+// This is the unified entry point that accepts props and id, creating the model internally
+func NewInputComponentWrapper(props InputProps, id string) *InputComponentWrapper {
+	// Internal creation of InputModel
+	inputModel := NewInputModel(props, id)
+	inputModel.id = id  // Ensure ID is correctly set
+	
+	// Complete initialization of wrapper
 	wrapper := &InputComponentWrapper{
-		model: inputModel,
-		bindings: inputModel.props.Bindings,
+		model:    &inputModel,
+		bindings: props.Bindings,
+		stateHelper: &core.InputStateHelper{
+			Valuer:      &inputModel,  // Direct reference to model (implements required interface)
+			Focuser:     &inputModel,
+			ComponentID: id,
+		},
 	}
-
-	// 创建一个适配器来满足接口要求
-	valuerAdapter := &inputValuerAdapter{inputModel}
-	focuserAdapter := &inputFocuserAdapter{inputModel}
-	wrapper.stateHelper = &core.InputStateHelper{
-		Valuer:      valuerAdapter,
-		Focuser:     focuserAdapter,
-		ComponentID: inputModel.id,
-	}
+	
 	return wrapper
 }
 

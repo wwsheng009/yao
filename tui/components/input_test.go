@@ -163,8 +163,7 @@ func TestInputComponentWrapper(t *testing.T) {
 		Value: "initial value",
 	}
 
-	model := NewInputModel(props, "test-id")
-	wrapper := NewInputComponentWrapper(&model)
+	wrapper := NewInputComponentWrapper(props, "test-id")
 
 	// Test Init
 	cmd := wrapper.Init()
@@ -210,8 +209,10 @@ func TestInputComponentWrapperUpdateMsg(t *testing.T) {
 		Value: "initial value",
 	}
 
-	model := NewInputModel(props, "test-id")
-	wrapper := NewInputComponentWrapper(&model)
+	wrapper := NewInputComponentWrapper(props, "test-id")
+	
+	// Ensure the component has focus for testing
+	wrapper.SetFocus(true)
 
 	// Test ESC key
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -225,7 +226,7 @@ func TestInputComponentWrapperUpdateMsg(t *testing.T) {
 	updatedWrapper, cmd, response = wrapper.UpdateMsg(enterMsg)
 	assert.NotNil(t, updatedWrapper)
 	assert.NotNil(t, cmd)
-	assert.Equal(t, core.Ignored, response)
+	assert.Equal(t, core.Handled, response)
 
 	// Test Tab key
 	tabMsg := tea.KeyMsg{Type: tea.KeyTab}
@@ -268,8 +269,7 @@ func TestInputComponentWrapperUpdateRenderConfig(t *testing.T) {
 		Placeholder: "Enter text",
 	}
 
-	model := NewInputModel(props, "test-id")
-	wrapper := NewInputComponentWrapper(&model)
+	wrapper := NewInputComponentWrapper(props, "test-id")
 
 	// Test valid config update
 	newProps := map[string]interface{}{

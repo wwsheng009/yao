@@ -55,10 +55,8 @@ func NewInputComponent(config core.RenderConfig, id string) *InputComponentWrapp
 		}
 	}
 	
-	model := NewInputModel(props, id)
-	return &InputComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewInputComponentWrapper(props, id)
 }
 
 // NewTextareaComponent creates a new Textarea component wrapper
