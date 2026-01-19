@@ -798,6 +798,25 @@ func (m *Model) RenderComponent(comp *Component) string {
 		return m.renderErrorComponent(comp.ID, comp.Type, fmt.Errorf("component instance not initialized"))
 	}
 
+	// Auto-focus first focusable component if no focus is set
+	if m.CurrentFocus == "" {
+		// For backward compatibility, prioritize input components
+		// but also consider other focusable types
+		focusableTypes := map[string]bool{
+			"input":  true,
+			"table":  true,
+			"menu":   true,
+			"form":   true,
+			"chat":   true,
+			"crud":   true,
+			"cursor": true,
+		}
+		if focusableTypes[comp.Type] {
+			m.CurrentFocus = comp.ID
+			log.Trace("RenderComponent: Auto-focused component %s (type: %s)", comp.ID, comp.Type)
+		}
+	}
+
 	// Update focus state for interactive components
 	if comp.ID != "" && isInteractiveComponent(comp.Type) {
 		// Only update focus state when it actually changes to avoid
