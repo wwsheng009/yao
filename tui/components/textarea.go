@@ -274,87 +274,146 @@ func (w *TextareaComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *TextareaComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
+	// Layer 1: Handle targeted messages first
+	// 定向消息优先处理，确保消息能正确路由到目标组件
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
-		// Check if this message is targeted to this component
 		if msg.TargetID == w.model.id {
+			// 递归处理内部消息
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
+	}
 
-	case tea.KeyMsg:
-		// If textarea doesn't have focus, ignore all key messages
-		// This allows global bindings (like 'q' for quit) to work
+	// Layer 2: For KeyMsg, implement layered interception strategy
+	// 按键消息采用分层拦截策略
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		// Layer 2.1: Focus check (MUST keep)
+		// 焦点检查：没有焦点的组件不处理按键，让全局绑定生效
 		if !w.model.Focused() {
 			return w, nil, core.Ignored
 		}
 
-		oldValue := w.model.Value()
-		var cmds []tea.Cmd
-
-		switch msg.Type {
+		// Layer 2.2: Handle intercepted keys (ESC, Tab, Enter)
+		// 处理需要拦截的特殊按键
+		switch keyMsg.Type {
 		case tea.KeyEsc:
+			// ESC: 拦截用于失焦（原始 textarea 不处理 ESC）
+			// 失焦并发布焦点变化事件
+			oldFocus := w.model.Focused()
 			w.model.Blur()
-			// Publish focus changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
-				"focused": false,
-			}))
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Ignored
+			newFocus := w.model.Focused()
+
+			// 如果焦点确实改变了，发布事件
+			if oldFocus != newFocus {
+				eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+					"focused": newFocus,
+				})
+				return w, eventCmd, core.Handled
 			}
-			return w, nil, core.Ignored
-		case tea.KeyEnter:
-			// Publish enter pressed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-				"value": w.model.Value(),
-			}))
-			// Let bubble to handleKeyPress for form submission
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Ignored
-			}
-			return w, nil, core.Ignored
+			return w, nil, core.Handled
+
 		case tea.KeyTab:
-			// Let bubble to handleKeyPress for navigation
+			// Tab: 拦截用于导航（原始 textarea 不处理 Tab）
+			// 返回 Ignored 让上层处理 Tab 导航
 			return w, nil, core.Ignored
-		}
 
-		// For other key messages, update the model
-		var cmd tea.Cmd
-		w.model.Model, cmd = w.model.Model.Update(msg)
+		case tea.KeyEnter:
+			// Enter: 条件拦截用于表单提交
+			// 只有当 EnterSubmits=true 时才拦截 Enter，否则让原始 textarea 插入换行
+			if w.model.props.EnterSubmits {
+				// 发布 Enter 按下事件，返回 Ignored 让上层处理表单提交
+				eventCmd := core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
+					"value": w.model.Value(),
+				})
+				return w, eventCmd, core.Ignored
+			}
+			// EnterSubmits=false，fallthrough 让原始 textarea 处理（插入换行）
+			fallthrough
 
-		// Check if value changed
-		newValue := w.model.Value()
-		if oldValue != newValue {
-			cmds = append(cmds, cmd)
-			// Publish value changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
-				"oldValue": oldValue,
-				"newValue": newValue,
-			}))
-			return w, tea.Batch(cmds...), core.Handled
+		default:
+			// Layer 2.3: All other keys - delegate to original textarea
+			// 其他所有按键：完全委托给原始 textarea 处理
+			// 这保留了所有原生功能：光标移动、文本编辑、复制粘贴等
+			oldValue := w.model.Value()
+			oldFocus := w.model.Focused()
+
+			// 让原始 textarea 处理这个按键
+			var cmd tea.Cmd
+			w.model.Model, cmd = w.model.Model.Update(keyMsg)
+
+			// 检测状态变化并发布事件
+			newValue := w.model.Value()
+			newFocus := w.model.Focused()
+
+			var eventCmds []tea.Cmd
+
+			// 值变化事件
+			if oldValue != newValue {
+				eventCmds = append(eventCmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+					"oldValue": oldValue,
+					"newValue": newValue,
+				}))
+			}
+
+			// 焦点变化事件（虽然原始 textarea 通常不会自动改变焦点，但保持一致性）
+			if oldFocus != newFocus {
+				eventCmds = append(eventCmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+					"focused": newFocus,
+				}))
+			}
+
+			// 如果有事件需要发布，批量返回
+			if len(eventCmds) > 0 {
+				if cmd != nil {
+					eventCmds = append([]tea.Cmd{cmd}, eventCmds...)
+				}
+				return w, tea.Batch(eventCmds...), core.Handled
+			}
+
+			// 没有事件，只返回原始命令
+			return w, cmd, core.Handled
 		}
-		return w, cmd, core.Handled
 	}
 
-	// For other messages, update using the underlying model
+	// Layer 3: Non-key messages - delegate to original textarea
+	// 非按键消息：完全委托给原始 textarea 处理
 	oldValue := w.model.Value()
+	oldFocus := w.model.Focused()
+
+	// 让原始 textarea 处理所有其他消息
 	var cmd tea.Cmd
 	w.model.Model, cmd = w.model.Model.Update(msg)
 
-	// Check if value changed
+	// 检测状态变化并发布事件
 	newValue := w.model.Value()
+	newFocus := w.model.Focused()
+
+	var eventCmds []tea.Cmd
+
+	// 值变化事件
 	if oldValue != newValue {
-		// Publish value changed event
-		eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+		eventCmds = append(eventCmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
 			"oldValue": oldValue,
 			"newValue": newValue,
-		})
-		if cmd != nil {
-			return w, tea.Batch(cmd, eventCmd), core.Handled
-		}
-		return w, eventCmd, core.Handled
+		}))
 	}
+
+	// 焦点变化事件
+	if oldFocus != newFocus {
+		eventCmds = append(eventCmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+			"focused": newFocus,
+		}))
+	}
+
+	// 批量返回命令
+	if len(eventCmds) > 0 {
+		if cmd != nil {
+			eventCmds = append([]tea.Cmd{cmd}, eventCmds...)
+		}
+		return w, tea.Batch(eventCmds...), core.Handled
+	}
+
 	return w, cmd, core.Handled
 }
 

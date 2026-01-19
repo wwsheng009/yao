@@ -642,8 +642,124 @@ func (m *Model) renderLayoutNode(layout *Layout, width, height int, depth int) s
 	return result
 }
 
+// InitializeComponents initializes all component instances before rendering.
+// This should be called once during model initialization.
+// Component instances are created and registered, ready for rendering.
+func (m *Model) InitializeComponents() error {
+	log.Trace("InitializeComponents: Starting component initialization")
+
+	// Ensure component registry is initialized
+	if m.ComponentInstanceRegistry == nil {
+		m.ComponentInstanceRegistry = NewComponentInstanceRegistry()
+	}
+
+	// Get component factory from global registry
+	registry := GetGlobalRegistry()
+
+	// Recursively initialize all components in the layout
+	return m.initializeLayoutNode(&m.Config.Layout, m.Width, m.Height, registry, 0)
+}
+
+// initializeLayoutNode recursively initializes components in a layout node
+func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry *ComponentRegistry, depth int) error {
+	// Check maximum layout depth to prevent stack overflow
+	if depth > maxLayoutDepth {
+		return fmt.Errorf("layout depth exceeded maximum limit: %d (max: %d)", depth, maxLayoutDepth)
+	}
+
+	if len(layout.Children) == 0 {
+		return nil
+	}
+
+	// Initialize each child component
+	for _, child := range layout.Children {
+		// If child is a layout component, initialize it recursively
+		if child.Type == "layout" {
+			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
+				if err := m.initializeLayoutNode(nestedLayout, width, height, registry, depth+1); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+
+		// Initialize individual component
+		if err := m.initializeComponent(&child, registry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// initializeComponent creates and registers a component instance
+func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry) error {
+	if comp == nil || comp.Type == "" {
+		return fmt.Errorf("component is nil or has empty type")
+	}
+
+	// Get component factory
+	factory, exists := registry.GetComponentFactory(ComponentType(comp.Type))
+	if !exists || factory == nil {
+		return fmt.Errorf("unknown component type: %s", comp.Type)
+	}
+
+	// Apply state binding to props for initialization
+	props := m.resolveProps(comp)
+
+	// Create render config for initialization
+	renderConfig := core.RenderConfig{
+		Data:  props,
+		Width: m.Width,
+	}
+
+	// Get or create component instance
+	componentInstance, isNew := m.ComponentInstanceRegistry.GetOrCreate(
+		comp.ID,
+		comp.Type,
+		factory,
+		renderConfig,
+	)
+
+	// For interactive components with ID, register in Components map and set up subscriptions
+	if comp.ID != "" && isInteractiveComponent(comp.Type) {
+		if m.Components == nil {
+			m.Components = make(map[string]*core.ComponentInstance)
+		}
+
+		// Always register in Components map (even if existing instance)
+		m.Components[comp.ID] = componentInstance
+
+		if isNew {
+			log.Trace("InitializeComponents: Created new component instance %s (type: %s)", comp.ID, comp.Type)
+
+			// Register message subscriptions if component implements GetSubscribedMessageTypes
+			if subscriber, ok := componentInstance.Instance.(interface{ GetSubscribedMessageTypes() []string }); ok {
+				messageTypes := subscriber.GetSubscribedMessageTypes()
+				if len(messageTypes) > 0 {
+					m.MessageSubscriptionManager.Subscribe(comp.ID, messageTypes)
+					log.Trace("InitializeComponents: Registered message subscriptions for %s: %v", comp.ID, messageTypes)
+				}
+			}
+		}
+
+		// Call Init() method on the component instance
+		if initCmd := componentInstance.Instance.Init(); initCmd != nil {
+			// If component returns a command, send it to the program
+			if m.Program != nil {
+				m.Program.Send(initCmd())
+			}
+		}
+	} else {
+		log.Trace("InitializeComponents: Reusing existing component instance %s (type: %s)", comp.ID, comp.Type)
+	}
+
+	return nil
+}
+
 // RenderComponent renders a single component based on its type using the new Render() method.
 // It delegates rendering to the component's Render() method with the new render configuration.
+// Component instances must already be initialized via InitializeComponents().
 func (m *Model) RenderComponent(comp *Component) string {
 	if comp == nil || comp.Type == "" {
 		return ""
@@ -670,47 +786,15 @@ func (m *Model) RenderComponent(comp *Component) string {
 		Width: m.Width,
 	}
 
-	// Get component factory from global registry
-	registry := GetGlobalRegistry()
-	factory, exists := registry.GetComponentFactory(ComponentType(comp.Type))
-	if !exists || factory == nil {
-		log.Warn("Unknown component type: %s", comp.Type)
-		return m.renderUnknownComponent(comp.Type)
+	// Get component instance from registry (should already exist)
+	componentInstance, exists := m.ComponentInstanceRegistry.Get(comp.ID)
+	if !exists {
+		log.Error("RenderComponent: Component instance %s not found, was InitializeComponents() called?", comp.ID)
+		return m.renderErrorComponent(comp.ID, comp.Type, fmt.Errorf("component instance not initialized"))
 	}
 
-	// Ensure component registry is initialized
-	if m.ComponentInstanceRegistry == nil {
-		m.ComponentInstanceRegistry = NewComponentInstanceRegistry()
-	}
-
-	// Get or create component instance using registry (P0 fix: reuse instances)
-	componentInstance, isNew := m.ComponentInstanceRegistry.GetOrCreate(
-		comp.ID,
-		comp.Type,
-		factory,
-		renderConfig,
-	)
-
-	// For interactive components with ID, manage message handling and focus (P0 fix)
+	// Update focus state for interactive components
 	if comp.ID != "" && isInteractiveComponent(comp.Type) {
-		// Register in Components map only for new instances
-		if isNew {
-			if m.Components == nil {
-				m.Components = make(map[string]*core.ComponentInstance)
-			}
-			m.Components[comp.ID] = componentInstance
-			log.Trace("RenderComponent: Registered new component instance %s (type: %s)", comp.ID, comp.Type)
-
-			// Register message subscriptions if component implements GetSubscribedMessageTypes
-			if subscriber, ok := componentInstance.Instance.(interface{ GetSubscribedMessageTypes() []string }); ok {
-				messageTypes := subscriber.GetSubscribedMessageTypes()
-				if len(messageTypes) > 0 {
-					m.MessageSubscriptionManager.Subscribe(comp.ID, messageTypes)
-					log.Trace("RenderComponent: Registered message subscriptions for %s: %v", comp.ID, messageTypes)
-				}
-			}
-		}
-
 		// Always update focus state for this component
 		shouldFocus := (m.CurrentFocus == comp.ID)
 		componentInstance.Instance.SetFocus(shouldFocus)
@@ -732,6 +816,26 @@ func (m *Model) RenderComponent(comp *Component) string {
 				m.CurrentFocus = comp.ID
 				componentInstance.Instance.SetFocus(true)
 				log.Trace("RenderComponent: Auto-focused component %s (type: %s)", comp.ID, comp.Type)
+			}
+		}
+
+		// Update render config if props changed
+		if updater, ok := componentInstance.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
+			// Check if config has changed before updating
+			if !isRenderConfigChanged(componentInstance.LastConfig, renderConfig) {
+				log.Trace("RenderComponent: config unchanged for %s, skipping update", comp.ID)
+			} else {
+				// Validate config before updating
+				if validator, ok := componentInstance.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
+					if err := validator.ValidateConfig(renderConfig); err != nil {
+						log.Warn("Config validation failed for %s: %v", comp.ID, err)
+					}
+				}
+				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
+					log.Warn("Failed to update render config for component %s: %v", comp.ID, err)
+				}
+				// Store the new config for future comparison
+				componentInstance.LastConfig = renderConfig
 			}
 		}
 	}

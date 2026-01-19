@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -264,6 +265,15 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 // This is called once when the program starts.
 func (m *Model) Init() tea.Cmd {
 	log.Trace("TUI Init: %s", m.Config.Name)
+
+	// Initialize all component instances (separate initialization from rendering)
+	if err := m.InitializeComponents(); err != nil {
+		log.Error("Failed to initialize components: %v", err)
+		// Store error in state for display
+		m.StateMu.Lock()
+		m.State["__error"] = fmt.Sprintf("Component initialization failed: %v", err)
+		m.StateMu.Unlock()
+	}
 
 	// Build a list of commands to execute
 	var cmds []tea.Cmd
