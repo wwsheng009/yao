@@ -3,7 +3,6 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/yaoapp/yao/tui/components"
 )
@@ -114,28 +113,5 @@ func TestInputNavigation(t *testing.T) {
 	assert.Equal(t, "first-input", model.CurrentFocus)
 }
 
-func TestHandleInputUpdate(t *testing.T) {
-	props := components.InputProps{
-		Placeholder: "Test input",
-		Prompt:      "> ",
-	}
-
-	inputModel := components.NewInputModel(props, "test-input")
-	// Test typing 'hello'
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}
-	updatedModel, _ := components.HandleInputUpdate(msg, &inputModel)
-
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}
-	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}
-	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}
-	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}}
-	updatedModel, _ = components.HandleInputUpdate(msg, &updatedModel)
-
-	assert.Equal(t, "hello", updatedModel.Value())
-}
+// TestHandleInputUpdate has been removed as InputModel and HandleInputUpdate are deprecated
+// Use TestInputComponentWrapperUpdateBehavior instead

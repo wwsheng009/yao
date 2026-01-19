@@ -484,10 +484,9 @@ func TestTargetedMsgRouting(t *testing.T) {
 		Value:       "",
 	}
 
-	input1Model := components.NewInputModel(input1Props, "input1")
-	input1Wrapper := components.NewInputComponentWrapper(&input1Model)
-	input2Model := components.NewInputModel(input2Props, "input2")
-	input2Wrapper := components.NewInputComponentWrapper(&input2Model)
+	// Use direct component creation instead of InputModel
+	input1Wrapper := components.NewInputComponentWrapper(input1Props, "input1")
+	input2Wrapper := components.NewInputComponentWrapper(input2Props, "input2")
 
 	if model.Components == nil {
 		model.Components = make(map[string]*core.ComponentInstance)
@@ -501,8 +500,8 @@ func TestTargetedMsgRouting(t *testing.T) {
 
 	// Set focus to input1
 	model.CurrentFocus = "input1"
-	input1Model.SetFocus(true)
-	input2Model.SetFocus(false)
+	input1Wrapper.SetFocus(true)
+	input2Wrapper.SetFocus(false)
 
 	// Send a targeted message to input2 (should bypass focus)
 	targetedMsg := core.TargetedMsg{

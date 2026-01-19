@@ -36,17 +36,12 @@ type InputProps struct {
 
 	// Disabled determines if the input is disabled
 	Disabled bool `json:"disabled"`
-	
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
-// InputModel wraps the textinput.Model to handle TUI integration
-type InputModel struct {
-	textinput.Model
-	props InputProps
-	id    string // Unique identifier for this instance
-}
+
 
 // RenderInput renders an input component
 func RenderInput(props InputProps, width int) string {
@@ -117,10 +112,8 @@ func ParseInputProps(props map[string]interface{}) InputProps {
 	return ip
 }
 
-// NewInputModel creates a new InputModel from InputProps
-func NewInputModel(props InputProps, id string) InputModel {
-	input := textinput.New()
-
+// applyTextInputConfig applies InputProps configuration to textinput.Model
+func applyTextInputConfig(input *textinput.Model, props InputProps) {
 	// Set placeholder
 	if props.Placeholder != "" {
 		input.Placeholder = props.Placeholder
@@ -160,101 +153,60 @@ func NewInputModel(props InputProps, id string) InputModel {
 	} else {
 		input.Focus()
 	}
-
-	return InputModel{
-		Model: input,
-		props: props,
-		id:    id,
-	}
 }
 
-// HandleInputUpdate handles updates for input components
-// This is used when the input is interactive
-func HandleInputUpdate(msg tea.Msg, inputModel *InputModel) (InputModel, tea.Cmd) {
-	if inputModel == nil {
-		return InputModel{}, nil
-	}
-
-	// Check for key press events
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEsc:
-			// Blur the input when ESC is pressed
-			inputModel.Blur()
-			// Return the updated model and a command to refresh the view
-			return *inputModel, nil
-		}
-	}
-
-	var cmd tea.Cmd
-	inputModel.Model, cmd = inputModel.Model.Update(msg)
-	return *inputModel, cmd
-}
-
-// Init initializes the input model
-func (m *InputModel) Init() tea.Cmd {
-	return nil
-}
-
-// View returns the string representation of the input
-func (m *InputModel) View() string {
-	return m.Model.View()
-}
-
-// GetID returns the unique identifier for this component instance
-func (m *InputModel) GetID() string {
-	return m.id
-}
-
-// GetComponentType returns the component type
-func (m *InputModel) GetComponentType() string {
-	return "input"
-}
-
-func (m *InputModel) Render(config core.RenderConfig) (string, error) {
-	// Render should be a pure function - it should not modify internal state
-	// All state updates should happen in UpdateRenderConfig
-	return m.View(), nil
-}
-
-// InputComponentWrapper wraps InputModel to implement ComponentInterface properly
+// InputComponentWrapper directly implements ComponentInterface by wrapping textinput.Model
 type InputComponentWrapper struct {
-	model *InputModel
-	bindings []core.ComponentBinding
+	model       textinput.Model // 直接使用原生组件
+	props       InputProps      // 组件属性
+	id          string          // 组件ID
+	bindings    []core.ComponentBinding
 	stateHelper *core.InputStateHelper
-}
-
-// InputModel directly implements the required interfaces by embedding textinput.Model
-// GetValue returns the current value of the input
-func (m *InputModel) GetValue() string {
-	return m.Model.Value()
-}
-
-// Focused returns whether the input currently has focus
-func (m *InputModel) Focused() bool {
-	return m.Model.Focused()
 }
 
 // NewInputComponentWrapper creates a wrapper that implements ComponentInterface
 // This is the unified entry point that accepts props and id, creating the model internally
 func NewInputComponentWrapper(props InputProps, id string) *InputComponentWrapper {
-	// Internal creation of InputModel
-	inputModel := NewInputModel(props, id)
-	inputModel.id = id  // Ensure ID is correctly set
-	
-	// Complete initialization of wrapper
+	// Directly create textinput.Model
+	input := textinput.New()
+
+	// Apply configuration directly to the native component
+	applyTextInputConfig(&input, props)
+
+	// Create wrapper that directly implements all interfaces
 	wrapper := &InputComponentWrapper{
-		model:    &inputModel,
+		model:    input,
+		props:    props,
+		id:       id,
 		bindings: props.Bindings,
-		stateHelper: &core.InputStateHelper{
-			Valuer:      &inputModel,  // Direct reference to model (implements required interface)
-			Focuser:     &inputModel,
-			ComponentID: id,
-		},
 	}
-	
+
+	// stateHelper uses wrapper itself as the implementation
+	wrapper.stateHelper = &core.InputStateHelper{
+		Valuer:      wrapper, // wrapper implements Valuer interface
+		Focuser:     wrapper, // wrapper implements Focuser interface
+		ComponentID: id,
+	}
+
 	return wrapper
+}
+
+// InputComponentWrapper directly implements core.Valuer interface
+func (w *InputComponentWrapper) GetValue() string {
+	return w.model.Value()
+}
+
+// InputComponentWrapper directly implements core.Focuser interface
+func (w *InputComponentWrapper) Focused() bool {
+	return w.model.Focused()
+}
+
+func (w *InputComponentWrapper) SetFocus(focus bool) {
+	if focus {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
+	}
 }
 
 func (w *InputComponentWrapper) Init() tea.Cmd {
@@ -268,7 +220,7 @@ func (w *InputComponentWrapper) GetModel() interface{} {
 
 // GetID returns the component ID
 func (w *InputComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 // PublishEvent creates and returns a command to publish an event
@@ -282,42 +234,20 @@ func (w *InputComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		return core.ExecuteActionMsg{
 			Action:    action,
-			SourceID:  w.model.id,
+			SourceID:  w.id,
 			Timestamp: time.Now(),
 		}
 	}
 }
 
-// inputComponentWrapperAdapter adapts InputComponentWrapper to implement core.ComponentWrapper interface
-type inputComponentWrapperAdapter struct {
-	*InputComponentWrapper
-}
-
-func (a *inputComponentWrapperAdapter) GetModel() interface{} {
-	return a.InputComponentWrapper.model
-}
-
-func (a *inputComponentWrapperAdapter) GetID() string {
-	return a.InputComponentWrapper.model.id
-}
-
-func (a *inputComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
-	return core.PublishEvent(sourceID, eventName, payload)
-}
-
-func (a *inputComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
-	return a.InputComponentWrapper.ExecuteAction(action)
-}
-
-
 func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -330,33 +260,45 @@ func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
 }
 
 func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-	// 使用通用绑定处理函数
-	wrapper := &inputComponentWrapperAdapter{w}
-	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	// InputComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
 	return cmd, response, handled
 }
 
 func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	
-	// 如果是Enter键，处理后发布事件
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter {
-		w.model.Model, cmd = w.model.Model.Update(msg)
-		
-		// 发布Enter按下事件
-		enterCmd := core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-			"value": w.model.Model.Value(),
-		})
-		
-		// 如果原始命令存在，批处理两个命令
-		if cmd != nil {
-			return tea.Batch(enterCmd, cmd)
+
+	// 处理按键消息
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		// 跳过已在 HandleSpecialKey 中处理的键
+		switch keyMsg.Type {
+		case tea.KeyTab, tea.KeyEscape:
+			// 这些键已由 HandleSpecialKey 处理，跳过委托
+			return nil
+		case tea.KeyEnter:
+			// 特殊处理Enter键
+			w.model, cmd = w.model.Update(msg)
+
+			// 发布Enter按下事件
+			enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
+				"value": w.model.Value(),
+			})
+
+			// 合并命令（如果有的话）
+			if cmd != nil {
+				return tea.Batch(enterCmd, cmd)
+			}
+			return enterCmd
+		default:
+			// 处理其他按键（包括字符输入）
+			w.model, cmd = w.model.Update(msg)
+			return cmd // 可能为 nil
 		}
-		return enterCmd
 	}
-	
-	w.model.Model, cmd = w.model.Model.Update(msg)
-	return cmd
+
+	// 处理非按键消息
+	w.model, cmd = w.model.Update(msg)
+	return cmd // 可能为 nil
 }
 
 // 实现 StateCapturable 接口
@@ -376,8 +318,8 @@ func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 		return nil, core.Ignored, true
 	case tea.KeyEscape:
 		// 失焦处理
-		w.model.Model.Blur()
-		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
+		w.model.Blur()
+		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
 		return cmd, core.Ignored, true
 	}
 
@@ -389,34 +331,14 @@ func (w *InputComponentWrapper) View() string {
 	return w.model.View()
 }
 
-// GetValue returns the current value of the input component
-func (w *InputComponentWrapper) GetValue() string {
-	return w.model.Value()
-}
-
 // SetValue sets the value of the input component
 func (w *InputComponentWrapper) SetValue(value string) {
 	w.model.SetValue(value)
 }
 
-// SetFocus sets or removes focus from input component
-func (m *InputModel) SetFocus(focus bool) {
-	if focus {
-		m.Model.Focus()
-	} else {
-		m.Model.Blur()
-	}
-}
-
-func (w *InputComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
-	// Note: We don't publish event here since it would require changing the interface.
-	// Events for focus changes are published in the UpdateMsg method for ESC key.
-}
-
 // HasFocus returns whether the input component currently has focus
 func (w *InputComponentWrapper) HasFocus() bool {
-	return w.model.Model.Focused()
+	return w.model.Focused()
 }
 
 func (w *InputComponentWrapper) GetComponentType() string {
@@ -424,7 +346,7 @@ func (w *InputComponentWrapper) GetComponentType() string {
 }
 
 func (w *InputComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.model.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -438,7 +360,10 @@ func (w *InputComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	props := ParseInputProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
+
+	// Apply configuration to the model
+	applyTextInputConfig(&w.model, props)
 
 	// Update underlying model if value changed
 	if props.Value != "" && w.model.Value() != props.Value {
