@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -266,17 +265,14 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 func (m *Model) Init() tea.Cmd {
 	log.Trace("TUI Init: %s", m.Config.Name)
 
-	// Initialize all component instances (separate initialization from rendering)
-	if err := m.InitializeComponents(); err != nil {
-		log.Error("Failed to initialize components: %v", err)
-		// Store error in state for display
-		m.StateMu.Lock()
-		m.State["__error"] = fmt.Sprintf("Component initialization failed: %v", err)
-		m.StateMu.Unlock()
-	}
+	// Collect all component Init commands
+	componentCmds := m.InitializeComponents()
 
 	// Build a list of commands to execute
 	var cmds []tea.Cmd
+
+	// Add component Init commands first
+	cmds = append(cmds, componentCmds...)
 
 	// Execute onLoad action if specified
 	if m.Config.OnLoad != nil {
@@ -347,9 +343,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handler(m, msg)
 	}
 
-	log.Trace("TUI Update: No handler found for message type %s, using default behavior", msgType)
-	// Fallback to default behavior for unhandled message types
-	return m, nil
+	log.Trace("TUI Update: No handler found for message type %s, broadcasting to all components", msgType)
+	// Fallback: Broadcast unhandled messages to all components
+	// This ensures messages like cursor.BlinkMsg reach components that need them
+	return m.dispatchMessageToAllComponents(msg)
 }
 
 // getMsgTypeName returns a string representation of the message type for routing
@@ -609,14 +606,50 @@ func (m *Model) convertMenuActionToAction(menuAction map[string]interface{}) *co
 }
 
 // updateInputFocusStates updates the focus states of all components
+// Only calls SetFocus when the focus state actually changes
+// Uses GetFocus() to verify the component's actual focus state
+// Ensures GLOBAL FOCUS EXCLUSION: only CurrentFocus component should have focus
 func (m *Model) updateInputFocusStates() {
 	for id, compInstance := range m.Components {
-		if id == m.CurrentFocus {
-			compInstance.Instance.SetFocus(true)
-		} else {
+		shouldFocus := (id == m.CurrentFocus)
+		// Check both LastFocusState and actual focus state using GetFocus()
+		actualFocus := compInstance.Instance.GetFocus()
+		// Only update if the tracked state differs from the target state
+		// OR if the actual focus state differs from the target state
+		if shouldFocus != compInstance.LastFocusState || actualFocus != shouldFocus {
+			compInstance.Instance.SetFocus(shouldFocus)
+			compInstance.LastFocusState = shouldFocus
+		}
+		// Sanity check: if component has focus but shouldn't, force clear it
+		// This ensures global focus exclusion even if state got out of sync
+		if !shouldFocus && compInstance.Instance.GetFocus() {
 			compInstance.Instance.SetFocus(false)
+			compInstance.LastFocusState = false
 		}
 	}
+}
+
+// validateAndCorrectFocusState validates the global focus state and corrects any inconsistencies
+// This ensures that only CurrentFocus component has focus across all components
+// Returns the number of components that had their focus corrected
+func (m *Model) validateAndCorrectFocusState() int {
+	corrections := 0
+
+	for id, comp := range m.Components {
+		shouldFocus := (id == m.CurrentFocus)
+		actualFocus := comp.Instance.GetFocus()
+
+		if shouldFocus != actualFocus {
+			// Correct the focus state
+			comp.Instance.SetFocus(shouldFocus)
+			comp.LastFocusState = shouldFocus
+			corrections++
+			log.Trace("validateAndCorrectFocusState: Corrected focus for %s (shouldFocus=%v, actualFocus=%v)",
+				id, shouldFocus, actualFocus)
+		}
+	}
+
+	return corrections
 }
 
 // isMenuFocused checks if the current focus is on a menu component
@@ -1006,18 +1039,33 @@ func (m *Model) focusPrevInput() {
 }
 
 // setFocus sets focus to a specific component
+// This is the ONLY method that should be used to set focus
+// It ensures GLOBAL FOCUS EXCLUSION: only one component can have focus at any time
 func (m *Model) setFocus(componentID string) {
 	if componentID == m.CurrentFocus {
 		return // Already focused
 	}
 
-	// Clear focus from current component
-	m.clearFocus()
+	// Step 1: Clear focus from ALL components to ensure global focus exclusion
+	// This prevents any component from having focus if it shouldn't
+	for id, comp := range m.Components {
+		if id != componentID && comp.Instance.GetFocus() {
+			// Only call SetFocus if the component actually has focus
+			comp.Instance.SetFocus(false)
+			comp.LastFocusState = false
+		}
+	}
 
-	// Set new focus
+	// Step 2: Set new focus to the target component
 	m.CurrentFocus = componentID
 	if comp, exists := m.Components[componentID]; exists {
-		comp.Instance.SetFocus(true)
+		// Only call SetFocus if the component's actual focus state is false
+		// Use GetFocus() to check the component's current state
+		if !comp.Instance.GetFocus() {
+			comp.Instance.SetFocus(true)
+		}
+		// Update LastFocusState to track this change
+		comp.LastFocusState = true
 	}
 
 	// Publish focus changed event
@@ -1027,21 +1075,29 @@ func (m *Model) setFocus(componentID string) {
 		Data:   map[string]interface{}{"focused": true},
 	})
 
-	log.Trace("TUI Focus: Focus set to %s", componentID)
+	log.Trace("TUI Focus: Focus set to %s (global focus exclusion applied)", componentID)
 }
 
 // clearFocus clears focus from current component
+// This is the ONLY method that should be used to clear focus
+// It ensures GLOBAL FOCUS EXCLUSION: clears focus from ALL components
 func (m *Model) clearFocus() {
 	if m.CurrentFocus == "" {
 		return
 	}
 
-	// Clear focus from component
-	if comp, exists := m.Components[m.CurrentFocus]; exists {
-		comp.Instance.SetFocus(false)
+	oldFocus := m.CurrentFocus
+
+	// Clear focus from ALL components to ensure global focus exclusion
+	// This prevents any component from retaining focus incorrectly
+	for _, comp := range m.Components {
+		if comp.Instance.GetFocus() {
+			// Only call SetFocus if the component actually has focus
+			comp.Instance.SetFocus(false)
+			comp.LastFocusState = false
+		}
 	}
 
-	oldFocus := m.CurrentFocus
 	m.CurrentFocus = ""
 
 	// Publish focus changed event
@@ -1051,7 +1107,7 @@ func (m *Model) clearFocus() {
 		Data:   map[string]interface{}{"focused": false},
 	})
 
-	log.Trace("TUI Focus: Focus cleared from %s", oldFocus)
+	log.Trace("TUI Focus: Focus cleared from %s (global focus exclusion applied)", oldFocus)
 }
 
 // focusNextComponent moves focus to the next focusable component

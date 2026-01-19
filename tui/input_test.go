@@ -39,6 +39,9 @@ func TestInputComponent(t *testing.T) {
 
 	model := NewModel(cfg, nil)
 
+	// Initialize components first
+	model.InitializeComponents()
+
 	// Test that input models are created when components are rendered
 	view1 := model.RenderComponent(&cfg.Layout.Children[0])
 	view2 := model.RenderComponent(&cfg.Layout.Children[1])
@@ -95,6 +98,9 @@ func TestInputNavigation(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+
+	// Initialize components first
+	model.InitializeComponents()
 
 	// Manually render the components to initialize input models
 	for i := range cfg.Layout.Children {

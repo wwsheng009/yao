@@ -230,6 +230,45 @@ func (c *CRUDComponent) SetFocus(focus bool) {
 	}
 }
 
+func (c *CRUDComponent) GetFocus() bool {
+	// Delegate focus check to the current active sub-component
+	switch c.State {
+	case StateList:
+		if c.Table != nil {
+			// If the table implements GetFocus(), call it; otherwise return true as default
+			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
+				return focusGetter.GetFocus()
+			}
+			return true // Default to true if the interface doesn't support GetFocus
+		}
+	case StateEditing, StateCreating:
+		if c.Form != nil {
+			// If the form implements GetFocus(), call it; otherwise return true as default
+			if focusGetter, ok := c.Form.(interface{ GetFocus() bool }); ok {
+				return focusGetter.GetFocus()
+			}
+			return true // Default to true if the interface doesn't support GetFocus
+		}
+	case StateFiltering:
+		if c.Table != nil {
+			// If the table implements GetFocus(), call it; otherwise return true as default
+			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
+				return focusGetter.GetFocus()
+			}
+			return true // Default to true if the interface doesn't support GetFocus
+		}
+	case StateDeleting:
+		if c.Table != nil {
+			// If the table implements GetFocus(), call it; otherwise return true as default
+			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
+				return focusGetter.GetFocus()
+			}
+			return true // Default to true if the interface doesn't support GetFocus
+		}
+	}
+	return false // Default to false if no active sub-component
+}
+
 func (c *CRUDComponent) GetComponentType() string {
 	return "crud"
 }
@@ -287,6 +326,10 @@ func (w *CRUDComponentWrapper) GetID() string {
 
 func (w *CRUDComponentWrapper) SetFocus(focus bool) {
 	w.component.SetFocus(focus)
+}
+
+func (w *CRUDComponentWrapper) GetFocus() bool {
+	return w.component.GetFocus()
 }
 
 func (w *CRUDComponentWrapper) GetComponentType() string {

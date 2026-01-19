@@ -212,6 +212,7 @@ type TimerComponentWrapper struct {
 	model timer.Model
 	props TimerProps
 	id    string
+	focus bool
 }
 
 // NewTimerComponentWrapper creates a wrapper that implements ComponentInterface
@@ -303,7 +304,11 @@ func (w *TimerComponentWrapper) GetID() string {
 }
 
 func (w *TimerComponentWrapper) SetFocus(focus bool) {
-	// Timer doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *TimerComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *TimerComponentWrapper) GetComponentType() string {

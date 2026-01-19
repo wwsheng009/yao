@@ -882,8 +882,16 @@ func (m *MenuInteractiveModel) SetFocus(focus bool) {
 	// For now, just track the focus state internally
 }
 
+func (m *MenuInteractiveModel) GetFocus() bool {
+	return m.focused
+}
+
 func (w *MenuComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+func (w *MenuComponentWrapper) GetFocus() bool {
+	return w.model.focused
 }
 
 // Index returns the current cursor position

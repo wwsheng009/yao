@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 
@@ -214,7 +215,7 @@ func (m *Model) evaluateValue(value interface{}) interface{} {
 			if len(matches) == 0 {
 				return v
 			}
-			
+
 			// Process expressions in the string
 			// If there's only one match and it's the entire string (like "{{variable}}"), return the evaluated value directly
 			if len(matches) == 1 && matches[0][0] == 0 && matches[0][1] == len(v) {
@@ -645,7 +646,7 @@ func (m *Model) renderLayoutNode(layout *Layout, width, height int, depth int) s
 // InitializeComponents initializes all component instances before rendering.
 // This should be called once during model initialization.
 // Component instances are created and registered, ready for rendering.
-func (m *Model) InitializeComponents() error {
+func (m *Model) InitializeComponents() []tea.Cmd {
 	log.Trace("InitializeComponents: Starting component initialization")
 
 	// Ensure component registry is initialized
@@ -656,12 +657,18 @@ func (m *Model) InitializeComponents() error {
 	// Get component factory from global registry
 	registry := GetGlobalRegistry()
 
+	var allCmds []tea.Cmd
 	// Recursively initialize all components in the layout
-	return m.initializeLayoutNode(&m.Config.Layout, m.Width, m.Height, registry, 0)
+	if err := m.initializeLayoutNode(&m.Config.Layout, m.Width, m.Height, registry, 0, &allCmds); err != nil {
+		log.Error("InitializeComponents error: %v", err)
+		// Continue initialization even if some components fail
+	}
+
+	return allCmds
 }
 
 // initializeLayoutNode recursively initializes components in a layout node
-func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry *ComponentRegistry, depth int) error {
+func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry *ComponentRegistry, depth int, cmds *[]tea.Cmd) error {
 	// Check maximum layout depth to prevent stack overflow
 	if depth > maxLayoutDepth {
 		return fmt.Errorf("layout depth exceeded maximum limit: %d (max: %d)", depth, maxLayoutDepth)
@@ -676,7 +683,7 @@ func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry
 		// If child is a layout component, initialize it recursively
 		if child.Type == "layout" {
 			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
-				if err := m.initializeLayoutNode(nestedLayout, width, height, registry, depth+1); err != nil {
+				if err := m.initializeLayoutNode(nestedLayout, width, height, registry, depth+1, cmds); err != nil {
 					return err
 				}
 				continue
@@ -684,7 +691,7 @@ func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry
 		}
 
 		// Initialize individual component
-		if err := m.initializeComponent(&child, registry); err != nil {
+		if err := m.initializeComponent(&child, registry, cmds); err != nil {
 			return err
 		}
 	}
@@ -693,7 +700,7 @@ func (m *Model) initializeLayoutNode(layout *Layout, width, height int, registry
 }
 
 // initializeComponent creates and registers a component instance
-func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry) error {
+func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry, cmds *[]tea.Cmd) error {
 	if comp == nil || comp.Type == "" {
 		return fmt.Errorf("component is nil or has empty type")
 	}
@@ -745,10 +752,8 @@ func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry
 
 		// Call Init() method on the component instance
 		if initCmd := componentInstance.Instance.Init(); initCmd != nil {
-			// If component returns a command, send it to the program
-			if m.Program != nil {
-				m.Program.Send(initCmd())
-			}
+			// Collect the command instead of sending it directly
+			*cmds = append(*cmds, initCmd)
 		}
 	} else {
 		log.Trace("InitializeComponents: Reusing existing component instance %s (type: %s)", comp.ID, comp.Type)
@@ -795,48 +800,36 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	// Update focus state for interactive components
 	if comp.ID != "" && isInteractiveComponent(comp.Type) {
-		// Always update focus state for this component
+		// Only update focus state when it actually changes to avoid
+		// resetting cursor blink timers unnecessarily
 		shouldFocus := (m.CurrentFocus == comp.ID)
-		componentInstance.Instance.SetFocus(shouldFocus)
-
-		// Auto-focus first focusable component if no focus is set
-		if m.CurrentFocus == "" {
-			// For backward compatibility, prioritize input components
-			// but also consider other focusable types
-			focusableTypes := map[string]bool{
-				"input":  true,
-				"table":  true,
-				"menu":   true,
-				"form":   true,
-				"chat":   true,
-				"crud":   true,
-				"cursor": true,
-			}
-			if focusableTypes[comp.Type] {
-				m.CurrentFocus = comp.ID
-				componentInstance.Instance.SetFocus(true)
-				log.Trace("RenderComponent: Auto-focused component %s (type: %s)", comp.ID, comp.Type)
-			}
+		// Check both LastFocusState and actual focus state using GetFocus()
+		actualFocus := componentInstance.Instance.GetFocus()
+		// Only update if the tracked state differs from the target state
+		// OR if the actual focus state differs from the target state
+		if shouldFocus != componentInstance.LastFocusState || actualFocus != shouldFocus {
+			componentInstance.Instance.SetFocus(shouldFocus)
+			componentInstance.LastFocusState = shouldFocus
 		}
+	}
 
-		// Update render config if props changed
-		if updater, ok := componentInstance.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
-			// Check if config has changed before updating
-			if !isRenderConfigChanged(componentInstance.LastConfig, renderConfig) {
-				log.Trace("RenderComponent: config unchanged for %s, skipping update", comp.ID)
-			} else {
-				// Validate config before updating
-				if validator, ok := componentInstance.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
-					if err := validator.ValidateConfig(renderConfig); err != nil {
-						log.Warn("Config validation failed for %s: %v", comp.ID, err)
-					}
+	// Update render config if props changed
+	if updater, ok := componentInstance.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
+		// Check if config has changed before updating
+		if !isRenderConfigChanged(componentInstance.LastConfig, renderConfig) {
+			log.Trace("RenderComponent: config unchanged for %s, skipping update", comp.ID)
+		} else {
+			// Validate config before updating
+			if validator, ok := componentInstance.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
+				if err := validator.ValidateConfig(renderConfig); err != nil {
+					log.Warn("Config validation failed for %s: %v", comp.ID, err)
 				}
-				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
-					log.Warn("Failed to update render config for component %s: %v", comp.ID, err)
-				}
-				// Store the new config for future comparison
-				componentInstance.LastConfig = renderConfig
 			}
+			if err := updater.UpdateRenderConfig(renderConfig); err != nil {
+				log.Warn("Failed to update render config for component %s: %v", comp.ID, err)
+			}
+			// Store the new config for future comparison
+			componentInstance.LastConfig = renderConfig
 		}
 	}
 

@@ -341,6 +341,7 @@ type HelpComponentWrapper struct {
 	model help.Model
 	props HelpProps
 	id    string
+	focus bool
 }
 
 // NewHelpComponentWrapper creates a wrapper that implements ComponentInterface
@@ -437,7 +438,11 @@ func (w *HelpComponentWrapper) GetID() string {
 }
 
 func (w *HelpComponentWrapper) SetFocus(focus bool) {
-	// Help doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *HelpComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *HelpComponentWrapper) GetComponentType() string {

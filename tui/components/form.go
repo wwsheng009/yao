@@ -82,6 +82,12 @@ type FormProps struct {
 	// ButtonStyle is the style for buttons
 	ButtonStyle lipglossStyleWrapper `json:"buttonStyle"`
 
+	// CursorMode specifies the cursor mode for all input fields
+	CursorMode string `json:"cursorMode"`
+
+	// CursorChar specifies the cursor character for all input fields
+	CursorChar string `json:"cursorChar"`
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
@@ -386,11 +392,12 @@ func (w *FormComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 
 // FormComponentWrapper wraps FormModel to implement ComponentInterface properly
 type FormComponentWrapper struct {
-	model     FormModel
-	props     FormProps
-	bindings  []core.ComponentBinding
+	model       FormModel
+	inputFields map[string]*InputComponentWrapper
+	props       FormProps
+	bindings    []core.ComponentBinding
 	stateHelper *FormStateHelper
-	id        string
+	id          string
 }
 
 // NewFormComponentWrapper creates a wrapper that implements ComponentInterface
@@ -399,34 +406,49 @@ func NewFormComponentWrapper(props FormProps, id string) *FormComponentWrapper {
 	formModel.ID = id
 
 	wrapper := &FormComponentWrapper{
-		model: formModel,
-		props: props,
-		bindings: props.Bindings,
-		id: id,
+		model:       formModel,
+		inputFields: make(map[string]*InputComponentWrapper),
+		props:       props,
+		bindings:    props.Bindings,
+		id:          id,
 	}
-	
+
 	wrapper.stateHelper = &FormStateHelper{
-		Valuer:      wrapper,  // wrapper自己实现Valuer接口
-		Focuser:     wrapper, // wrapper自己实现Focuser接口  
+		Valuer:      wrapper,
+		Focuser:     wrapper,
 		ComponentID: id,
 	}
-	
+
 	return wrapper
 }
 
-
 func (w *FormComponentWrapper) Init() tea.Cmd {
-	return nil
+	var cmds []tea.Cmd
+
+	// Collect Init Cmds from all child input fields
+	for _, field := range w.inputFields {
+		if field != nil {
+			if cmd := field.Init(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -524,8 +546,16 @@ func (m *FormModel) SetFocus(focus bool) {
 	}
 }
 
+func (m *FormModel) GetFocus() bool {
+	return m.focused
+}
+
 func (w *FormComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
+}
+
+func (w *FormComponentWrapper) GetFocus() bool {
+	return w.model.focused
 }
 
 // GetValue returns the current value of the form component
@@ -665,4 +695,42 @@ func (m *FormModel) GetValue() string {
 // Focused returns whether the form is focused
 func (m *FormModel) Focused() bool {
 	return m.focused
+}
+
+// SetCursorMode sets the cursor mode for all input fields in the form
+func (w *FormComponentWrapper) SetCursorMode(mode string) {
+	w.props.CursorMode = mode
+	for _, field := range w.inputFields {
+		if field != nil {
+			field.SetCursorMode(mode)
+		}
+	}
+}
+
+// SetCursorChar sets the cursor character for all input fields in the form
+func (w *FormComponentWrapper) SetCursorChar(char string) {
+	w.props.CursorChar = char
+	for _, field := range w.inputFields {
+		if field != nil {
+			field.SetCursorChar(char)
+		}
+	}
+}
+
+// RegisterInputField registers an input field with the form wrapper
+func (w *FormComponentWrapper) RegisterInputField(name string, field *InputComponentWrapper) {
+	w.inputFields[name] = field
+
+	if w.props.CursorMode != "" {
+		field.SetCursorMode(w.props.CursorMode)
+	}
+	if w.props.CursorChar != "" {
+		field.SetCursorChar(w.props.CursorChar)
+	}
+}
+
+// GetInputField returns an input field by name
+func (w *FormComponentWrapper) GetInputField(name string) (*InputComponentWrapper, bool) {
+	field, ok := w.inputFields[name]
+	return field, ok
 }

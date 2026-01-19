@@ -144,6 +144,7 @@ type HeaderComponentWrapper struct {
 	model HeaderModel
 	props HeaderProps
 	id    string
+	focus bool
 }
 
 // NewHeaderComponentWrapper creates a wrapper that implements ComponentInterface
@@ -209,7 +210,11 @@ func (w *HeaderComponentWrapper) GetID() string {
 }
 
 func (w *HeaderComponentWrapper) SetFocus(focus bool) {
-	// Header doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *HeaderComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *HeaderComponentWrapper) GetComponentType() string {

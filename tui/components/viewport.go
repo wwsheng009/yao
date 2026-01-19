@@ -463,6 +463,11 @@ func (w *ViewportComponentWrapper) SetFocus(focus bool) {
 	// No action needed for viewport as it handles scroll keys globally
 }
 
+func (w *ViewportComponentWrapper) GetFocus() bool {
+	// Viewport doesn't have a traditional focus state, return false
+	return false
+}
+
 func (m *ViewportModel) GetComponentType() string {
 	return "viewport"
 }

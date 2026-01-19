@@ -78,7 +78,14 @@ func HandleStateChanges(c StateCapturable, updateCmd tea.Cmd) tea.Cmd {
 			return updateMsg
 		}
 
-		return tea.Batch(append([]tea.Cmd{updateCmd}, eventCmds...)...)()
+		// 如果 updateMsg 为 nil，只执行 eventCmds
+		if updateMsg == nil {
+			return tea.Batch(eventCmds...)()
+		}
+
+		// 将 updateMsg 转换为返回该消息的命令，然后与 eventCmds 一起批量执行
+		updateCmdWrapper := func() tea.Msg { return updateMsg }
+		return tea.Batch(append([]tea.Cmd{updateCmdWrapper}, eventCmds...)...)()
 	}
 }
 

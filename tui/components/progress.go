@@ -205,6 +205,7 @@ type ProgressComponentWrapper struct {
 	model progress.Model
 	props ProgressProps
 	id    string
+	focus bool
 }
 
 // NewProgressComponentWrapper creates a wrapper that implements ComponentInterface
@@ -291,7 +292,11 @@ func (w *ProgressComponentWrapper) GetID() string {
 }
 
 func (w *ProgressComponentWrapper) SetFocus(focus bool) {
-	// Progress doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *ProgressComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 // GetPercent returns the current progress percentage

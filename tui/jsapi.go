@@ -605,29 +605,9 @@ func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemp
 
 		if targetID != "" {
 			// Focus specific component
-			if comp, exists := model.Components[targetID]; exists {
-				// Clear current focus
-				if model.CurrentFocus != "" {
-					if currentComp, exists := model.Components[model.CurrentFocus]; exists {
-						currentComp.Instance.SetFocus(false)
-					}
-				}
-
-				// Set new focus
-				model.CurrentFocus = targetID
-				comp.Instance.SetFocus(true)
-
-				// Update focus states
-				model.updateInputFocusStates()
-
-				// Publish focus change event
-				if model.EventBus != nil {
-					model.EventBus.Publish(core.ActionMsg{
-						ID:     targetID,
-						Action: core.EventFocusChanged,
-						Data:   map[string]interface{}{"focused": true},
-					})
-				}
+			if _, exists := model.Components[targetID]; exists {
+				// Use the model's setFocus() method to ensure consistent focus management
+				model.setFocus(targetID)
 			}
 		} else {
 			// Original logic: cycle through inputs
@@ -804,31 +784,12 @@ func tuiSetFocusMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
 
 		targetID := args[0].String()
 
-		// Clear current focus
-		if model.CurrentFocus != "" {
-			if currentComp, exists := model.Components[model.CurrentFocus]; exists {
-				currentComp.Instance.SetFocus(false)
-			}
-		}
-
-		// Set new focus
-		if comp, exists := model.Components[targetID]; exists {
-			model.CurrentFocus = targetID
-			comp.Instance.SetFocus(true)
-
-			// Update focus states
-			model.updateInputFocusStates()
-
-			// Publish focus change event
-			if model.EventBus != nil {
-				model.EventBus.Publish(core.ActionMsg{
-					ID:     targetID,
-					Action: core.EventFocusChanged,
-					Data:   map[string]interface{}{"focused": true},
-				})
-			}
+		// Use the model's setFocus() method to ensure consistent focus management
+		if _, exists := model.Components[targetID]; exists {
+			model.setFocus(targetID)
 		} else {
-			model.CurrentFocus = ""
+			// If component doesn't exist, clear all focus
+			model.clearFocus()
 		}
 
 		return v8go.Undefined(iso)

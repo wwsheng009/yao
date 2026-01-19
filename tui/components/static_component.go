@@ -55,6 +55,11 @@ func (c *StaticComponent) SetFocus(focus bool) {
 	// 静态组件不支持焦点
 }
 
+func (c *StaticComponent) GetFocus() bool {
+	// 静态组件始终没有焦点
+	return false
+}
+
 func (c *StaticComponent) GetComponentType() string {
 	return c.Type
 }

@@ -229,6 +229,10 @@ func (m *ListModel) SetFocus(focus bool) {
 	m.props.Focused = focus
 }
 
+func (m *ListModel) GetFocus() bool {
+	return m.props.Focused
+}
+
 // ListComponentWrapper wraps the native list.Model to implement ComponentInterface properly
 type ListComponentWrapper struct {
 	model    list.Model  // Directly use the native model
@@ -414,6 +418,10 @@ func (w *ListComponentWrapper) View() string {
 func (w *ListComponentWrapper) SetFocus(focus bool) {
 	// Update the focused property
 	w.props.Focused = focus
+}
+
+func (w *ListComponentWrapper) GetFocus() bool {
+	return w.props.Focused
 }
 
 // GetSelectedItem returns the currently selected item

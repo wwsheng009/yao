@@ -223,10 +223,17 @@ func ProcessSuspendAction(model *Model, action *core.Action) (interface{}, error
 func ProcessInputEscapeAction(model *Model, action *core.Action, inputID string) (interface{}, error) {
 	// Blur the specified input component to exit edit mode
 	if comp, exists := model.Components[inputID]; exists && comp.Type == "input" {
-		comp.Instance.SetFocus(false)
-		// Update the model's focus if this was the focused input
+		// Use the model's clearFocus() method to ensure consistent focus management
+		// Only clear focus if this is the currently focused component
 		if model.CurrentFocus == inputID {
-			model.CurrentFocus = ""
+			model.clearFocus()
+		} else {
+			// If this input is not the current focus, just blur it without affecting model.CurrentFocus
+			// Only call SetFocus if the component actually has focus
+			if comp.Instance.GetFocus() {
+				comp.Instance.SetFocus(false)
+			}
+			comp.LastFocusState = false
 		}
 		return map[string]interface{}{
 			"action":  "input_scape",

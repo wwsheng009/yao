@@ -206,6 +206,10 @@ func (m *TextModel) SetFocus(focus bool) {
 	// Text component doesn't support focus
 }
 
+func (m *TextModel) GetFocus() bool {
+	return false // Text component never has focus
+}
+
 func (m *TextModel) GetComponentType() string {
 	return "text"
 }
@@ -316,6 +320,10 @@ func (w *TextComponentWrapper) GetID() string {
 
 func (w *TextComponentWrapper) SetFocus(focus bool) {
 	// Text doesn't have focus concept
+}
+
+func (w *TextComponentWrapper) GetFocus() bool {
+	return false // Text component never has focus
 }
 
 func (w *TextComponentWrapper) GetComponentType() string {

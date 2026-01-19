@@ -216,6 +216,7 @@ type StopwatchComponentWrapper struct {
 	model stopwatch.Model
 	props StopwatchProps
 	id    string
+	focus bool
 }
 
 // NewStopwatchComponentWrapper creates a wrapper that implements ComponentInterface
@@ -314,7 +315,11 @@ func (w *StopwatchComponentWrapper) GetID() string {
 }
 
 func (w *StopwatchComponentWrapper) SetFocus(focus bool) {
-	// Stopwatch doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *StopwatchComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *StopwatchComponentWrapper) GetComponentType() string {

@@ -180,6 +180,7 @@ type FilePickerComponentWrapper struct {
 	model filepicker.Model
 	props FilePickerProps
 	id    string
+	focus bool
 }
 
 // NewFilePickerComponentWrapper creates a wrapper that implements ComponentInterface
@@ -260,7 +261,11 @@ func (w *FilePickerComponentWrapper) GetID() string {
 }
 
 func (w *FilePickerComponentWrapper) SetFocus(focus bool) {
-	// File picker focus is handled internally
+	w.focus = focus
+}
+
+func (w *FilePickerComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *FilePickerComponentWrapper) GetComponentType() string {

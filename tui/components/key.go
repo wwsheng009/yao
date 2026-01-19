@@ -329,6 +329,7 @@ type KeyComponentWrapper struct {
 	binding key.Binding
 	props   KeyProps
 	id      string
+	focus   bool
 }
 
 // NewKeyComponentWrapper creates a wrapper that implements ComponentInterface
@@ -463,7 +464,11 @@ func (w *KeyComponentWrapper) GetID() string {
 }
 
 func (w *KeyComponentWrapper) SetFocus(focus bool) {
-	// Key doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *KeyComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *KeyComponentWrapper) GetComponentType() string {

@@ -39,6 +39,7 @@ type ComponentInterface interface {
 	UpdateMsg(msg tea.Msg) (ComponentInterface, tea.Cmd, Response)
 	GetID() string       // 返回组件的唯一标识符
 	SetFocus(focus bool) // 设置/取消焦点
+	GetFocus() bool      // 获取焦点状态
 
 	// 类型识别方法
 	GetComponentType() string
@@ -175,10 +176,11 @@ type LogMsg struct {
 
 // ComponentInstance represents a runtime instance of a component with its own UID
 type ComponentInstance struct {
-	ID        string
-	Type      string
-	Instance  ComponentInterface
-	LastConfig RenderConfig
+	ID             string
+	Type           string
+	Instance       ComponentInterface
+	LastConfig     RenderConfig
+	LastFocusState bool // Tracks last focus state to avoid redundant SetFocus calls
 }
 
 // ActionMsg represents an internal action message for cross-component communication

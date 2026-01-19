@@ -207,6 +207,7 @@ type FooterComponentWrapper struct {
 	model *FooterModel
 	props FooterProps
 	id    string
+	focus bool
 }
 
 // NewFooterComponentWrapper creates a wrapper that implements ComponentInterface
@@ -247,7 +248,11 @@ func (w *FooterComponentWrapper) GetID() string {
 }
 
 func (w *FooterComponentWrapper) SetFocus(focus bool) {
-	// Footer doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *FooterComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 func (w *FooterComponentWrapper) GetComponentType() string {

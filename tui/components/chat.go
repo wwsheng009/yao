@@ -336,7 +336,7 @@ func NewChatModel(props ChatProps, id string) ChatModel {
 		cm.TextInput.Placeholder = "Type your message..."
 	}
 	cm.TextInput.ShowLineNumbers = false
-	cm.TextInput.Focus()
+	// Note: Do not call Focus() here, it should be handled by Init() method or by parent component
 
 	// Update history text
 	cm.updateHistoryText()
@@ -346,6 +346,10 @@ func NewChatModel(props ChatProps, id string) ChatModel {
 
 // Init initializes the chat model
 func (m *ChatModel) Init() tea.Cmd {
+	// Only focus if the input should be focused
+	if m.props.ShowInput {
+		return m.TextInput.Focus()
+	}
 	return nil
 }
 
@@ -488,7 +492,7 @@ func NewChatComponentWrapper(props ChatProps, id string) *ChatComponentWrapper {
 		cm.TextInput.Placeholder = "Type your message..."
 	}
 	cm.TextInput.ShowLineNumbers = false
-	cm.TextInput.Focus()
+	// Note: Do not call Focus() here, it should be handled by Init() method or by parent component
 
 	// Update history text
 	cm.updateHistoryText()
@@ -556,6 +560,10 @@ func (cm *ChatComponentWrapper) updateHistoryText() {
 }
 
 func (w *ChatComponentWrapper) Init() tea.Cmd {
+	// Only focus if the input should be focused
+	if w.props.ShowInput {
+		return w.TextInput.Focus()
+	}
 	return nil
 }
 
@@ -777,6 +785,10 @@ func (w *ChatComponentWrapper) SetFocus(focus bool) {
 	} else {
 		w.TextInput.Blur()
 	}
+}
+
+func (w *ChatComponentWrapper) GetFocus() bool {
+	return w.TextInput.Focused()
 }
 
 func (w *ChatComponentWrapper) GetComponentType() string {

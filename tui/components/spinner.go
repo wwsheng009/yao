@@ -209,6 +209,7 @@ type SpinnerComponentWrapper struct {
 	model spinner.Model
 	props SpinnerProps
 	id    string
+	focus bool
 }
 
 // NewSpinnerComponentWrapper creates a wrapper that implements ComponentInterface
@@ -307,7 +308,11 @@ func (w *SpinnerComponentWrapper) GetID() string {
 }
 
 func (w *SpinnerComponentWrapper) SetFocus(focus bool) {
-	// Spinner doesn't have focus concept
+	w.focus = focus
+}
+
+func (w *SpinnerComponentWrapper) GetFocus() bool {
+	return w.focus
 }
 
 // getSpinnerStyle returns the spinner style based on the style name

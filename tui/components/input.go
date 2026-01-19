@@ -37,11 +37,18 @@ type InputProps struct {
 	// Disabled determines if the input is disabled
 	Disabled bool `json:"disabled"`
 
+	// CursorMode specifies the cursor mode: "blink", "static", "hide"
+	CursorMode string `json:"cursorMode"`
+
+	// CursorChar specifies the cursor character
+	CursorChar string `json:"cursorChar"`
+
+	// CursorBlinkSpeed specifies the cursor blink speed in milliseconds
+	CursorBlinkSpeed int `json:"cursorBlinkSpeed"`
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
-
-
 
 // RenderInput renders an input component
 func RenderInput(props InputProps, width int) string {
@@ -91,7 +98,7 @@ func RenderInput(props InputProps, width int) string {
 	if props.Disabled {
 		input.Blur()
 	} else {
-		input.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	}
 
 	return input.View()
@@ -151,17 +158,18 @@ func applyTextInputConfig(input *textinput.Model, props InputProps) {
 	if props.Disabled {
 		input.Blur()
 	} else {
-		input.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	}
 }
 
 // InputComponentWrapper directly implements ComponentInterface by wrapping textinput.Model
 type InputComponentWrapper struct {
-	model       textinput.Model // 直接使用原生组件
-	props       InputProps      // 组件属性
-	id          string          // 组件ID
-	bindings    []core.ComponentBinding
-	stateHelper *core.InputStateHelper
+	model        textinput.Model
+	cursorHelper *CursorHelper
+	props        InputProps
+	id           string
+	bindings     []core.ComponentBinding
+	stateHelper  *core.InputStateHelper
 }
 
 // NewInputComponentWrapper creates a wrapper that implements ComponentInterface
@@ -173,18 +181,45 @@ func NewInputComponentWrapper(props InputProps, id string) *InputComponentWrappe
 	// Apply configuration directly to the native component
 	applyTextInputConfig(&input, props)
 
+	// Create cursor helper for managing cursor behavior
+	blinkSpeed := 530 * time.Millisecond
+	if props.CursorBlinkSpeed > 0 {
+		blinkSpeed = time.Duration(props.CursorBlinkSpeed) * time.Millisecond
+	}
+
+	cursorConfig := CursorConfig{
+		Mode:       ParseCursorMode(props.CursorMode),
+		Char:       props.CursorChar,
+		BlinkSpeed: blinkSpeed,
+		Visible:    !props.Disabled,
+	}
+
+	// Set cursor mode and character on the input model
+	if props.CursorMode != "" {
+		input.Cursor.SetMode(ParseCursorMode(props.CursorMode))
+	}
+	if props.CursorChar != "" {
+		input.Cursor.SetChar(props.CursorChar)
+	}
+
+	// Set blink speed if specified
+	if props.CursorBlinkSpeed > 0 {
+		input.Cursor.BlinkSpeed = blinkSpeed
+	}
+
 	// Create wrapper that directly implements all interfaces
 	wrapper := &InputComponentWrapper{
-		model:    input,
-		props:    props,
-		id:       id,
-		bindings: props.Bindings,
+		model:        input,
+		cursorHelper: NewCursorHelper(cursorConfig),
+		props:        props,
+		id:           id,
+		bindings:     props.Bindings,
 	}
 
 	// stateHelper uses wrapper itself as the implementation
 	wrapper.stateHelper = &core.InputStateHelper{
-		Valuer:      wrapper, // wrapper implements Valuer interface
-		Focuser:     wrapper, // wrapper implements Focuser interface
+		Valuer:      wrapper,
+		Focuser:     wrapper,
 		ComponentID: id,
 	}
 
@@ -202,14 +237,43 @@ func (w *InputComponentWrapper) Focused() bool {
 }
 
 func (w *InputComponentWrapper) SetFocus(focus bool) {
-	if focus {
-		w.model.Focus()
-	} else {
-		w.model.Blur()
+	currentFocus := w.model.Focused()
+	if focus != currentFocus {
+		if focus {
+			w.model.Focus()
+			w.cursorHelper.SetVisible(true)
+		} else {
+			w.model.Blur()
+			w.cursorHelper.SetVisible(false)
+		}
 	}
 }
 
+func (w *InputComponentWrapper) GetFocus() bool {
+	return w.model.Focused()
+}
+
+// SetFocusWithCmd applies focus and returns the command that starts blinking
+func (w *InputComponentWrapper) SetFocusWithCmd(focus bool) tea.Cmd {
+	currentFocus := w.model.Focused()
+	if focus != currentFocus {
+		if focus {
+			return w.model.Focus()
+		}
+		w.model.Blur()
+		w.cursorHelper.SetVisible(false)
+	}
+	return nil
+}
+
 func (w *InputComponentWrapper) Init() tea.Cmd {
+	// If component is not disabled, return Focus Cmd to start cursor blinking
+	if !w.props.Disabled {
+		currentFocus := w.model.Focused()
+		if !currentFocus {
+			return w.model.Focus()
+		}
+	}
 	return nil
 }
 
@@ -392,5 +456,34 @@ func (w *InputComponentWrapper) GetSubscribedMessageTypes() []string {
 	return []string{
 		"tea.KeyMsg",
 		"core.TargetedMsg",
+	}
+}
+
+// SetCursorMode sets the cursor mode for the input component
+func (w *InputComponentWrapper) SetCursorMode(mode string) {
+	w.props.CursorMode = mode
+	cursorMode := ParseCursorMode(mode)
+	w.model.Cursor.SetMode(cursorMode)
+	w.cursorHelper.SetMode(cursorMode)
+}
+
+// SetCursorChar sets the cursor character for the input component
+func (w *InputComponentWrapper) SetCursorChar(char string) {
+	w.props.CursorChar = char
+	w.model.Cursor.SetChar(char)
+	w.cursorHelper.SetChar(char)
+}
+
+// GetCursorHelper returns the cursor helper for this input component
+func (w *InputComponentWrapper) GetCursorHelper() *CursorHelper {
+	return w.cursorHelper
+}
+
+// SetCursorBlinkSpeed sets the cursor blink speed in milliseconds
+func (w *InputComponentWrapper) SetCursorBlinkSpeed(speedMs int) {
+	w.props.CursorBlinkSpeed = speedMs
+	if speedMs > 0 {
+		w.model.Cursor.BlinkSpeed = time.Duration(speedMs) * time.Millisecond
+		w.cursorHelper.SetBlinkSpeed(time.Duration(speedMs) * time.Millisecond)
 	}
 }

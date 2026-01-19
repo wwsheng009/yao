@@ -229,6 +229,10 @@ func (m *PaginatorModel) SetFocus(focus bool) {
 	m.props.Focused = focus
 }
 
+func (m *PaginatorModel) GetFocus() bool {
+	return m.props.Focused
+}
+
 // PaginatorComponentWrapper wraps the native paginator.Model directly
 type PaginatorComponentWrapper struct {
 	model       paginator.Model
@@ -333,6 +337,10 @@ func (w *PaginatorComponentWrapper) SetFocus(focus bool) {
 	// Paginator doesn't have focus concept in bubbletea paginator
 	// But we can update our local property
 	w.props.Focused = focus
+}
+
+func (w *PaginatorComponentWrapper) GetFocus() bool {
+	return w.props.Focused
 }
 
 // GetCurrentPage returns the current page (1-indexed)

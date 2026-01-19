@@ -122,7 +122,7 @@ func RenderTextarea(props TextareaProps, width int) string {
 	if props.Disabled {
 		ta.Blur()
 	} else {
-		ta.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	}
 
 	return ta.View()
@@ -199,7 +199,7 @@ func NewTextareaModel(props TextareaProps, id string) TextareaModel {
 	if props.Disabled {
 		ta.Blur()
 	} else {
-		ta.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	}
 
 	return TextareaModel{
@@ -234,6 +234,10 @@ func HandleTextareaUpdate(msg tea.Msg, textareaModel *TextareaModel) (TextareaMo
 
 // Init initializes the textarea model
 func (m *TextareaModel) Init() tea.Cmd {
+	// Only focus if not disabled
+	if !m.props.Disabled {
+		m.Model.Focus()
+	}
 	return nil
 }
 
@@ -254,6 +258,10 @@ func (m *TextareaModel) SetFocus(focus bool) {
 	} else {
 		m.Model.Blur()
 	}
+}
+
+func (m *TextareaModel) GetFocus() bool {
+	return m.Model.Focused()
 }
 
 // HasFocus returns whether the textarea model currently has focus
@@ -371,6 +379,18 @@ func NewTextareaComponentWrapper(props TextareaProps, id string) *TextareaCompon
 }
 
 func (w *TextareaComponentWrapper) Init() tea.Cmd {
+	// 如果组件未被禁用，则返回Focus命令以启动光标闪烁
+	if !w.props.Disabled {
+		return w.SetFocusWithCmd()
+	}
+	return nil
+}
+
+// SetFocusWithCmd sets focus and returns the command for cursor blinking
+func (w *TextareaComponentWrapper) SetFocusWithCmd() tea.Cmd {
+	w.model.Focus()
+	// Note: textarea.Focus() does not return a BlinkCmd like textinput does
+	// This method exists for interface consistency with InputComponentWrapper
 	return nil
 }
 
@@ -479,6 +499,10 @@ func (w *TextareaComponentWrapper) SetFocus(focus bool) {
 	}
 	// Note: We don't publish event here since it would require changing the interface.
 	// Events for focus changes are published in the UpdateMsg method for ESC key.
+}
+
+func (w *TextareaComponentWrapper) GetFocus() bool {
+	return w.model.Focused()
 }
 
 func (m *TextareaModel) GetComponentType() string {
@@ -659,7 +683,5 @@ func applyTextareaConfigDirect(textarea *textarea.Model, props TextareaProps) {
 	// Disable if needed
 	if props.Disabled {
 		textarea.Blur()
-	} else {
-		textarea.Focus()
-	}
+	} 
 }

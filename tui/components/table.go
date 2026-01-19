@@ -670,6 +670,10 @@ func (w *TableComponentWrapper) SetFocus(focus bool) {
 	}
 }
 
+func (w *TableComponentWrapper) GetFocus() bool {
+	return w.model.Focused()
+}
+
 // GetValue returns the current value (for Valuer interface)
 func (w *TableComponentWrapper) GetValue() string {
 	item := w.SelectedItem()
@@ -865,8 +869,9 @@ func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	}
 
 	// Update focus if changed
+	// Note: Focus should be handled by Init() or Update() methods, not in UpdateRenderConfig
 	if w.props.Focused {
-		w.model.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	} else {
 		w.model.Blur()
 	}
@@ -911,6 +916,10 @@ func (m *TableModel) SetFocus(focus bool) {
 	} else {
 		m.Model.Blur()
 	}
+}
+
+func (m *TableModel) GetFocus() bool {
+	return m.Model.Focused()
 }
 
 func (m *TableModel) Render(config core.RenderConfig) (string, error) {
@@ -975,8 +984,9 @@ func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	}
 
 	// Update focus if changed
+	// Note: Focus should be handled by Init() or Update() methods, not in UpdateRenderConfig
 	if m.props.Focused {
-		m.Model.Focus()
+		// Do not call Focus() here, it should be handled by Init() method
 	} else {
 		m.Model.Blur()
 	}
@@ -1107,9 +1117,10 @@ func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
 	}
 
 	// Update focus if changed
+	// Note: Focus should be handled by Init() or Update() methods, not in lightweightUpdate
 	if oldProps.Focused != newProps.Focused {
 		if newProps.Focused {
-			m.Model.Focus()
+			// Do not call Focus() here, it should be handled by Init() method
 		} else {
 			m.Model.Blur()
 		}
