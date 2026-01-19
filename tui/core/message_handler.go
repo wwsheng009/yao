@@ -230,3 +230,53 @@ func (h *ChatStateHelper) DetectStateChanges(old, new map[string]interface{}) []
 
 	return cmds
 }
+
+// ViewportStateHelper 视口组件状态捕获助手
+type ViewportStateHelper struct {
+	Scroller    interface{ GetOffset() int }
+	ComponentID string
+}
+
+func (h *ViewportStateHelper) CaptureState() map[string]interface{} {
+	return map[string]interface{}{
+		"offset": h.Scroller.GetOffset(),
+	}
+}
+
+func (h *ViewportStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	var cmds []tea.Cmd
+
+	if old["offset"] != new["offset"] {
+		cmds = append(cmds, PublishEvent(h.ComponentID, "VIEWPORT_SCROLLED", map[string]interface{}{
+			"oldOffset": old["offset"],
+			"newOffset": new["offset"],
+		}))
+	}
+
+	return cmds
+}
+
+// PaginatorStateHelper 分页器组件状态捕获助手
+type PaginatorStateHelper struct {
+	Pager       interface{ GetCurrentPage() int }
+	ComponentID string
+}
+
+func (h *PaginatorStateHelper) CaptureState() map[string]interface{} {
+	return map[string]interface{}{
+		"page": h.Pager.GetCurrentPage(),
+	}
+}
+
+func (h *PaginatorStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	var cmds []tea.Cmd
+
+	if old["page"] != new["page"] {
+		cmds = append(cmds, PublishEvent(h.ComponentID, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
+			"oldPage": old["page"],
+			"newPage": new["page"],
+		}))
+	}
+
+	return cmds
+}

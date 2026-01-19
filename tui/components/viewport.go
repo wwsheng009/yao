@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -248,9 +249,11 @@ func (m *ViewportModel) GotoBottom() {
 
 // ViewportComponentWrapper wraps the native viewport.Model directly
 type ViewportComponentWrapper struct {
-	model viewport.Model
-	props ViewportProps
-	id    string
+	model    viewport.Model
+	props    ViewportProps
+	id       string
+	bindings []core.ComponentBinding
+	stateHelper *core.ViewportStateHelper
 }
 
 // NewViewportComponentWrapper creates a wrapper that implements ComponentInterface
@@ -302,11 +305,19 @@ func NewViewportComponentWrapper(props ViewportProps, id string) *ViewportCompon
 		vp.Style = style
 	}
 
-	return &ViewportComponentWrapper{
-		model: vp,
-		props: props,
-		id:    id,
+	wrapper := &ViewportComponentWrapper{
+		model:    vp,
+		props:    props,
+		id:       id,
+		bindings: props.Bindings,
 	}
+
+	wrapper.stateHelper = &core.ViewportStateHelper{
+		Scroller:    wrapper,
+		ComponentID: id,
+	}
+
+	return wrapper
 }
 
 func (w *ViewportComponentWrapper) Init() tea.Cmd {
@@ -314,92 +325,16 @@ func (w *ViewportComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
 
-	case tea.KeyMsg:
-		// Handle scrolling keys
-		switch msg.Type {
-		case tea.KeyUp, tea.KeyPgUp:
-			// Handle scroll up
-			var cmd tea.Cmd
-			w.model, cmd = w.model.Update(msg)
-			return w, cmd, core.Handled
-
-		case tea.KeyDown, tea.KeyPgDown:
-			// Handle scroll down
-			var cmd tea.Cmd
-			w.model, cmd = w.model.Update(msg)
-			return w, cmd, core.Handled
-
-		case tea.KeyHome:
-			// Scroll to top
-			w.model.GotoTop()
-			return w, nil, core.Handled
-
-		case tea.KeyEnd:
-			// Scroll to bottom
-			w.model.GotoBottom()
-			return w, nil, core.Handled
-
-		case tea.KeyEsc:
-			// Pass ESC to parent for focus management
-			return w, nil, core.Ignored
-
-		default:
-			// For other key messages, update viewport
-			var cmd tea.Cmd
-			w.model, cmd = w.model.Update(msg)
-			return w, cmd, core.Handled
-		}
-
-	case core.ActionMsg:
-		// Handle internal action messages
-		switch msg.Action {
-		case core.EventDataLoaded:
-			// Update content when data is loaded
-			if data, ok := msg.Data.(map[string]interface{}); ok {
-				if content, ok := data["content"].(string); ok {
-					w.SetContent(content)
-					return w, nil, core.Handled
-				}
-			}
-		case core.EventDataRefreshed:
-			// Refresh content
-			if data, ok := msg.Data.(map[string]interface{}); ok {
-				if content, ok := data["content"].(string); ok {
-					w.SetContent(content)
-					return w, nil, core.Handled
-				}
-			}
-		}
-		return w, nil, core.Ignored
-
-	case tea.WindowSizeMsg:
-		// Handle window resize - update viewport dimensions
-		// Use new dimensions if not explicitly set
-		if w.props.Width <= 0 {
-			w.model.Width = msg.Width
-		}
-		if w.props.Height <= 0 {
-			w.model.Height = msg.Height
-		}
-		// Let viewport handle the resize
-		var cmd tea.Cmd
-		w.model, cmd = w.model.Update(msg)
-		return w, cmd, core.Handled
-	}
-
-	// For other messages, update viewport
-	var cmd tea.Cmd
-	w.model, cmd = w.model.Update(msg)
-	return w, cmd, core.Handled
+	return w, cmd, response
 }
 
 func (w *ViewportComponentWrapper) View() string {
@@ -408,6 +343,63 @@ func (w *ViewportComponentWrapper) View() string {
 
 func (w *ViewportComponentWrapper) GetID() string {
 	return w.id
+}
+
+// GetOffset returns the current offset of the viewport
+func (w *ViewportComponentWrapper) GetOffset() int {
+	return w.model.YOffset
+}
+
+// GetModel returns the underlying model of the component
+func (w *ViewportComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+// 实现 InteractiveBehavior 接口的方法
+
+func (w *ViewportComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
+
+func (w *ViewportComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// ViewportComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
+
+func (w *ViewportComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	w.model, cmd = w.model.Update(msg)
+	return cmd
+}
+
+// 实现 StateCapturable 接口
+func (w *ViewportComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *ViewportComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *ViewportComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEscape:
+		// ESC键返回Ignored，让其冒泡
+		return nil, core.Ignored, true
+	}
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
+
+// HasFocus returns whether the component currently has focus
+func (w *ViewportComponentWrapper) HasFocus() bool {
+	// Viewport 组件总是被认为是有焦点的，因为它处理滚动键
+	return true
 }
 
 // SetContent updates the viewport content through the wrapper
@@ -448,6 +440,23 @@ func (w *ViewportComponentWrapper) GotoBottom() {
 
 // SetFocus sets or removes focus from the viewport component
 // Viewport doesn't have a traditional focus state, but we can track it
+// PublishEvent creates and returns a command to publish an event
+func (w *ViewportComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *ViewportComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For viewport component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.id,
+			Timestamp: time.Now(),
+		}
+	}
+}
+
 func (w *ViewportComponentWrapper) SetFocus(focus bool) {
 	// Viewport doesn't have visual focus indicators like other components
 	// Focus tracking is mainly for keyboard event routing

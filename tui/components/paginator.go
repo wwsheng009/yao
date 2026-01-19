@@ -3,6 +3,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
@@ -230,9 +231,11 @@ func (m *PaginatorModel) SetFocus(focus bool) {
 
 // PaginatorComponentWrapper wraps the native paginator.Model directly
 type PaginatorComponentWrapper struct {
-	model  paginator.Model
-	props  PaginatorProps
-	id     string
+	model       paginator.Model
+	props       PaginatorProps
+	id          string
+	bindings    []core.ComponentBinding
+	stateHelper *core.PaginatorStateHelper
 }
 
 // NewPaginatorComponentWrapper creates a wrapper that implements ComponentInterface
@@ -276,11 +279,19 @@ func NewPaginatorComponentWrapper(props PaginatorProps, id string) *PaginatorCom
 		p.InactiveDot = inactiveStyle.Render("•")
 	}
 
-	return &PaginatorComponentWrapper{
-		model: p,
-		props: props,
-		id:    id,
+	wrapper := &PaginatorComponentWrapper{
+		model:    p,
+		props:    props,
+		id:       id,
+		bindings: props.Bindings,
 	}
+
+	wrapper.stateHelper = &core.PaginatorStateHelper{
+		Pager:       wrapper,
+		ComponentID: id,
+	}
+
+	return wrapper
 }
 
 func (w *PaginatorComponentWrapper) Init() tea.Cmd {
@@ -288,72 +299,16 @@ func (w *PaginatorComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
 
-	case tea.KeyMsg:
-		oldPage := w.model.Page
-		var cmds []tea.Cmd
-
-		switch msg.Type {
-		case tea.KeyLeft:
-			if w.model.Page > 0 {
-				w.model.Page--
-				// Publish page changed event
-				cmds = append(cmds, core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
-					"oldPage": oldPage + 1,
-					"newPage": w.model.Page + 1,
-				}))
-			}
-		case tea.KeyRight:
-			if w.model.Page < w.model.TotalPages-1 {
-				w.model.Page++
-				// Publish page changed event
-				cmds = append(cmds, core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
-					"oldPage": oldPage + 1,
-					"newPage": w.model.Page + 1,
-				}))
-			}
-		}
-
-		// For other key messages, update the model
-		var cmd tea.Cmd
-		w.model, cmd = w.model.Update(msg)
-
-		// Check if page changed
-		if w.model.Page != oldPage {
-			cmds = append(cmds, cmd)
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Handled
-			}
-		}
-		return w, cmd, core.Handled
-	}
-
-	// For other messages, update using the underlying model
-	oldPage := w.model.Page
-	var cmd tea.Cmd
-	w.model, cmd = w.model.Update(msg)
-
-	// Check if page changed
-	if w.model.Page != oldPage {
-		// Publish page changed event
-		eventCmd := core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
-			"oldPage": oldPage + 1,
-			"newPage": w.model.Page + 1,
-		})
-		if cmd != nil {
-			return w, tea.Batch(cmd, eventCmd), core.Handled
-		}
-		return w, eventCmd, core.Handled
-	}
-	return w, cmd, core.Handled
+	return w, cmd, response
 }
 
 func (w *PaginatorComponentWrapper) View() string {
@@ -390,6 +345,75 @@ func (w *PaginatorComponentWrapper) SetCurrentPage(page int) {
 	if page > 0 && page <= w.model.TotalPages {
 		w.model.Page = page - 1
 	}
+}
+
+// 实现 InteractiveBehavior 接口的方法
+
+func (w *PaginatorComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
+
+func (w *PaginatorComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// PaginatorComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
+
+func (w *PaginatorComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	w.model, cmd = w.model.Update(msg)
+	return cmd
+}
+
+// 实现 StateCapturable 接口
+func (w *PaginatorComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *PaginatorComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *PaginatorComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEscape:
+		// ESC键返回Ignored，让其冒泡
+		return nil, core.Ignored, true
+	}
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
+
+// HasFocus returns whether the component currently has focus
+func (w *PaginatorComponentWrapper) HasFocus() bool {
+	// Paginator 组件总是被认为是有焦点的，因为它处理分页键
+	return true
+}
+
+// PublishEvent creates and returns a command to publish an event
+func (w *PaginatorComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *PaginatorComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For paginator component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.id,
+			Timestamp: time.Now(),
+		}
+	}
+}
+
+// GetModel returns the underlying model of the component
+func (w *PaginatorComponentWrapper) GetModel() interface{} {
+	return w.model
 }
 
 func (m *PaginatorModel) GetComponentType() string {
