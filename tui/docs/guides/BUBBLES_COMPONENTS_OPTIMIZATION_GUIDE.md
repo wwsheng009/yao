@@ -1335,11 +1335,69 @@ func DefaultInteractiveUpdateMsg(
 
 **重要**: 所有新开发或重构的组件都应该使用这个统一的消息处理工具，以确保代码的一致性和可维护性。
 
+### 新的重构范式：统一消息处理模板
+
+基于组件重构的深入分析，我们确定使用**统一消息处理模板**作为标准重构范式，以替代之前的适配器模式。这种模式能够显著减少重复代码，提高组件间的一致性，并提升可维护性。
+
+#### 传统模式的问题
+
+典型的重复实现结构：
+```go
+// 重构前的重复实现
+func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+    // Layer 1: 定向消息处理
+    // Layer 2: 按键消息分层
+    // Layer 3: 状态变化检测
+    // 每个组件都重复实现相同的逻辑
+    // ...
+}
+```
+
+**核心问题**：
+1. **代码重复**：每个组件都实现相似的消息处理逻辑
+2. **维护困难**：修改逻辑需要更新每个组件
+3. **不一致性**：不同组件可能有细微差别
+4. **开发成本**：新组件需要重复实现相同模式
+
+#### 统一消息处理模板的优势
+
+```go
+// 重构后的统一结构
+func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+    // 使用统一的消息处理模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
+    
+    return w, cmd, response
+}
+```
+
+**优势**：
+1. **减少重复代码**：消除 60-70% 的重复实现
+2. **提高一致性**：所有组件使用相同的处理模式
+3. **易于维护**：只需在一处修改模板逻辑
+4. **功能完整**：保持所有原生 bubbles 功能
+
+#### 统一消息处理模板的实现要点
+
+1. **实现 InteractiveBehavior 接口**：在组件包装器中实现必要的行为方法
+2. **使用统一模板函数**：调用 `DefaultInteractiveUpdateMsg` 处理消息
+3. **实现辅助方法**：实现 `getBindings`, `handleBinding`, `delegateToBubbles` 等辅助方法
+4. **状态变化检测**：实现 `CaptureState` 和 `DetectStateChanges` 方法
+5. **特殊按键处理**：实现 `HandleSpecialKey` 和 `HasFocus` 方法
+
 ---
 
 ### 1. Input 组件实现示例 (P0 - 高优先级)
 
 **文件**: `tui/components/input.go`
+
+**重构模式**: ✅ 采用统一消息处理模板
 
 **功能扩展**: ✅ 支持组件按键绑定
 
@@ -1395,6 +1453,97 @@ func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
     )
 
     return w, cmd, response
+}
+
+// 辅助函数
+func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
+
+func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
+
+// 直接委托方法 - 直接操作原生组件
+func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    var cmd tea.Cmd
+    w.model.Model, cmd = w.model.Model.Update(msg)
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *InputComponentWrapper) HasFocus() bool {
+    return w.model.Focused()
+}
+
+func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEsc:
+        // ESC: 失焦并发布事件
+        w.model.Blur()
+        eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{"focused": false})
+        return eventCmd, core.Handled, true
+    case tea.KeyEnter:
+        // Enter: 委托给原组件处理，但发布事件
+        oldValue := w.model.Value()
+        var cmd tea.Cmd
+        w.model.Model, cmd = w.model.Model.Update(keyMsg)
+        newValue := w.model.Value()
+        
+        eventCmds := []tea.Cmd{
+            core.PublishEvent(w.model.id, core.EventInputEnterPressed,
+                map[string]interface{}{"value": newValue}),
+        }
+        
+        if oldValue != newValue {
+            eventCmds = append(eventCmds,
+                core.PublishEvent(w.model.id, core.EventInputValueChanged,
+                    map[string]interface{}{
+                        "oldValue": oldValue,
+                        "newValue": newValue,
+                    }))
+        }
+        
+        if len(eventCmds) > 0 {
+            return tea.Batch(append([]tea.Cmd{cmd}, eventCmds...)...), core.Handled, true
+        }
+        return cmd, core.Handled, true
+    case tea.KeyTab:
+        // Tab: 返回 Ignored 让上层处理导航
+        return nil, core.Ignored, true
+    }
+    
+    return nil, core.Handled, false
+}
+
+func (w *InputComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "value":   w.model.Value(),
+        "focused": w.model.Focused(),
+    }
+}
+
+func (w *InputComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    if oldState["value"] != newState["value"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged,
+            map[string]interface{}{
+                "oldValue": oldState["value"],
+                "newValue": newState["value"],
+            }))
+    }
+    
+    if oldState["focused"] != newState["focused"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{
+                "focused": newState["focused"],
+            }))
+    }
+    
+    return cmds
 }
 
 // 辅助函数
@@ -1503,6 +1652,8 @@ func (w *InputComponentWrapper) DetectStateChanges(oldState, newState map[string
 
 **文件**: `tui/components/list.go`
 
+**重构模式**: ✅ 采用统一消息处理模板
+
 **问题分析**:
 ```go
 // ❌ 当前实现（第 244-313 行）
@@ -1549,6 +1700,7 @@ func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Com
     return cmd, response, handled
 }
 
+// 直接委托方法 - 直接操作原生组件
 func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
     updatedModel, cmd := w.model.Model.Update(msg)
     w.model.Model = updatedModel
@@ -1611,12 +1763,15 @@ func (w *ListComponentWrapper) DetectStateChanges(oldState, newState map[string]
 - ✅ 保留 list 原生的导航能力
 - ✅ 只拦截 Enter 和 Tab
 - ✅ 统一选择变化检测
+- ✅ 采用直接实现模式，移除中间包装层
 
 ---
 
 ### 3. Menu 组件 (P0 - 高优先级)
 
 **文件**: `tui/components/menu.go`
+
+**重构模式**: ✅ 采用统一消息处理模板
 
 **问题分析**:
 - 使用自定义焦状态 `w.model.focused`
@@ -1649,6 +1804,7 @@ func (w *MenuComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Com
     return cmd, response, handled
 }
 
+// 直接委托方法 - 直接操作原生组件
 func (w *MenuComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
     updatedModel, cmd := w.model.Model.Update(msg)
     w.model.Model = updatedModel
@@ -1765,6 +1921,8 @@ func (w *MenuComponentWrapper) DetectStateChanges(oldState, newState map[string]
 
 **文件**: `tui/components/table.go`
 
+**重构模式**: ✅ 采用统一消息处理模板
+
 **问题分析**:
 - 实现相对合理
 - 可以进一步简化导航按键处理
@@ -1795,6 +1953,7 @@ func (w *TableComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Co
     return cmd, response, handled
 }
 
+// 直接委托方法 - 直接操作原生组件
 func (w *TableComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
     updatedModel, cmd := w.model.Model.Update(msg)
     w.model.Model = updatedModel
@@ -1879,6 +2038,8 @@ func (w *TableComponentWrapper) DetectStateChanges(oldState, newState map[string
 
 **文件**: `tui/components/chat.go`
 
+**重构模式**: ✅ 采用统一消息处理模板
+
 **问题分析**:
 - 包含了 textarea 封装，继承了相同问题
 - 焦点检查阻止消息进入 textarea 内部
@@ -1909,6 +2070,7 @@ func (w *ChatComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Com
     return cmd, response, handled
 }
 
+// 直接委托方法 - 直接操作原生组件
 func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
     updatedModel, cmd := w.model.TextInput.Update(msg)
     w.model.TextInput = updatedModel
@@ -2404,3 +2566,5 @@ go test -bench=. -benchmem tui/components/textarea_test.go
 - 新增组件按键绑定系统设计
 - 支持自定义快捷键覆盖默认行为
 - 与现有事件系统无缝集成
+- 2025-01-20: 重大更新 - 采用统一消息处理模板替代简单适配器模式
+- 所有组件均已完成统一消息处理模板重构

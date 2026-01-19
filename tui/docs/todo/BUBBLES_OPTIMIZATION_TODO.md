@@ -7,26 +7,166 @@
 
 ---
 
+## 重要更新通知
+
+**⚠️ 注意**: 组件重构方式已更新！不再使用简单的适配器模式，而是采用**统一消息处理模板**。
+
+### 新的重构范式：统一消息处理模板
+
+经过进一步分析，我们决定使用统一消息处理模板（`DefaultInteractiveUpdateMsg`）作为标准实现方式：
+
+#### 传统方式（简单适配器模式）的问题
+
+1. **代码重复**: 每个组件都实现了相似的分层拦截逻辑
+   ```go
+   // 传统方式：每个组件重复实现相同逻辑
+   func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+       // Layer 1: 定向消息处理
+       // Layer 2: 按键消息处理
+       // Layer 3: 非按键消息处理
+       // 状态变化检测
+       // ... 每个组件都有类似的实现
+   }
+   ```
+
+2. **维护困难**: 修改分层逻辑需要更新每个组件
+3. **一致性差**: 不同开发者可能有不同的实现方式
+
+#### 统一消息处理模板的优势
+
+1. **减少重复代码**: 使用统一的 `DefaultInteractiveUpdateMsg` 模板
+   ```go
+   // 使用统一模板：组件只需实现必要的接口
+   func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+       cmd, response := messageHandler.DefaultInteractiveUpdateMsg(
+           w,                           // 实现 InteractiveBehavior 接口
+           msg,                         // 消息
+           w.getBindings,               // 获取组件绑定
+           w.handleBinding,             // 处理绑定
+           w.delegateToBubbles,         // 委托给原生组件
+       )
+       return w, cmd, response
+   }
+   ```
+
+2. **提高一致性**: 所有组件使用相同的处理逻辑
+3. **易于维护**: 只需在一处修改模板逻辑
+4. **功能完整**: 保持所有原生 bubbles 功能
+
+#### 实现方式：组合统一模板
+
+采用组合方式，将组件与统一消息处理模板结合：
+
+```go
+// 组合统一消息处理模板 - 实现标准接口
+func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+    // 使用统一的消息处理模板
+    cmd, response := messageHandler.DefaultInteractiveUpdateMsg(
+        w,                           // 组件实现 InteractiveBehavior 接口
+        msg,                         // 输入消息
+        w.getBindings,               // 获取组件绑定配置
+        w.handleBinding,             // 处理组件绑定
+        w.delegateToBubbles,         // 委托给原生 bubbles 组件
+    )
+    
+    return w, cmd, response
+}
+
+// 实现获取绑定的方法
+func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
+
+// 实现处理绑定的方法
+func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    switch {
+    case binding.Action != nil:
+        // 执行 Action
+        cmd := w.executeAction(binding.Action)
+        return cmd, core.Handled, true
+    case binding.Event != "":
+        // 发布事件
+        cmd := core.PublishEvent(w.model.id, binding.Event, map[string]interface{}{
+            "key": keyMsg.String(),
+        })
+        return cmd, core.Handled, true
+    default:
+        return nil, core.Ignored, false
+    }
+}
+
+// 实现委托给原生组件的方法
+func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    var cmd tea.Cmd
+    w.model.Model, cmd = w.model.Model.Update(msg)
+    return cmd
+}
+
+// 实现特殊按键处理
+func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEnter:
+        // 特殊处理 Enter 键
+        oldValue := w.model.Model.Value()
+        cmd := w.delegateToBubbles(keyMsg)
+        newValue := w.model.Model.Value()
+        
+        if oldValue != newValue {
+            eventCmd := core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
+                "oldValue": oldValue,
+                "newValue": newValue,
+            })
+            cmd = tea.Batch(cmd, eventCmd)
+        }
+        return cmd, core.Handled, true
+        
+    case tea.KeyEsc:
+        w.model.Model.Blur()
+        eventCmd := core.PublishEvent(w.model.id, "INPUT_BLURRED", nil)
+        return eventCmd, core.Handled, true
+        
+    case tea.KeyTab:
+        return nil, core.Ignored, true  // 不处理 Tab，返回 Ignored
+    }
+    
+    return nil, core.Ignored, false  // 未处理
+}
+```
+
+### 重构模式更新
+
+- Input 组件: ✅ 采用统一消息处理模板
+- List 组件: ✅ 采用统一消息处理模板
+- Menu 组件: ✅ 采用统一消息处理模板
+- Table 组件: ✅ 采用统一消息处理模板
+- Chat 组件: ✅ 采用统一消息处理模板
+- Viewport 组件: ✅ 采用统一消息处理模板
+- Paginator 组件: ✅ 采用统一消息处理模板
+
+---
+
 ## 总体进度
 
 - [x] 阶段 0: 组件按键绑定系统实现 - 预计 1 天
 - [x] 阶段 0.5: 统一消息处理工具重构 - 预计 1 天
-- [ ] 阶段 1: 高优先级组件优化 (P0) - 预计 2-3 天
-- [ ] 阶段 2: 中优先级组件优化 (P1) - 预计 1 天
+- [x] 阶段 0.6: 统一消息处理模板推广 - 预计 1 天
+- [x] 阶段 1: 高优先级组件优化 (P0) - 预计 2-3 天
+- [x] 阶段 2: 中优先级组件优化 (P1) - 预计 1 天
 - [ ] 阶段 3: 集成测试与文档 - 预计 1 天
 - [ ] 阶段 4: 回归测试与发布 - 预计 1 天
 
-**总体进度**: 2/7 阶段 | 0/16 组件
+**总体进度**: 4/7 阶段 | 7/7 组件（所有组件已完成统一消息处理模板重构）
 
 ## 核心目标
 
-使用统一消息处理工具重构所有组件的 `UpdateMsg` 函数，以实现：
+使用统一消息处理模板重构所有组件的 `UpdateMsg` 函数，以实现：
 
-- **代码一致性**: 所有组件使用相同的处理模式
-- **减少重复**: 通过统一工具消除 60-70% 的重复代码
+- **代码一致性**: 所有组件使用相同的处理模式（`DefaultInteractiveUpdateMsg` 模板）
+- **减少重复**: 通过统一模板消除 60-70% 的重复代码
 - **易于维护**: 集中管理消息处理逻辑
 - **功能完整性**: 保持所有原生 bubbles 功能
 - **扩展性**: 通过组件绑定系统提供灵活的按键配置
+- **接口标准化**: 通过 `InteractiveBehavior` 接口标准化组件行为
 
 ---
 
@@ -1044,47 +1184,284 @@ Documentation:
 
 - [x] 0.5.4.1 创建 input.go 重构示例
   ```go
-  // 使用统一消息处理工具重构后的 input 组件
+  // 使用统一消息处理模板重构后的 input 组件
   
   func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-      // 创建状态助手
-      stateHelper := &messageHandler.InputStateHelper{
-          valuer:    w.model,
-          focuser:   w.model,
-          componentID: w.model.id,
-      }
-      
-      // 使用通用模板
+      // 使用统一的消息处理模板
       cmd, response := messageHandler.DefaultInteractiveUpdateMsg(
-          w,
-          msg,
-          w.getBindings,           // 获取绑定（可选）
-          w.handleBinding,          // 处理绑定（可选）
-          w.delegateToBubbles,      // 委托给 bubbles 原组件
+          w,                           // 实现 InteractiveBehavior 接口
+          msg,                         // 输入消息
+          w.getBindings,               // 获取组件绑定
+          w.handleBinding,             // 处理绑定
+          w.delegateToBubbles,         // 委托给原生组件
       )
       
       return w, cmd, response
   }
   
+  // 实现获取绑定的方法
   func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
       return w.model.props.Bindings
   }
   
+  // 实现处理绑定的方法
   func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-      // 复用已有的绑定处理逻辑
-      // ...
+      switch {
+      case binding.Action != nil:
+          // 执行 Action
+          cmd := w.executeAction(binding.Action)
+          return cmd, core.Handled, true
+      case binding.Event != "":
+          // 发布事件
+          cmd := core.PublishEvent(w.model.id, binding.Event, map[string]interface{}{
+              "key": keyMsg.String(),
+          })
+          return cmd, core.Handled, true
+      default:
+          return nil, core.Ignored, false
+      }
   }
   
+  // 实现委托给原生组件的方法
   func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
-      w.model.Model, cmd := w.model.Model.Update(msg)
+      var cmd tea.Cmd
+      w.model.Model, cmd = w.model.Model.Update(msg)
       return cmd
+  }
+  
+  // 实现特殊按键处理
+  func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+      switch keyMsg.Type {
+      case tea.KeyEnter:
+          // 特殊处理 Enter 键
+          oldValue := w.model.Model.Value()
+          cmd := w.delegateToBubbles(keyMsg)
+          newValue := w.model.Model.Value()
+          
+          if oldValue != newValue {
+              eventCmd := core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
+                  "oldValue": oldValue,
+                  "newValue": newValue,
+              })
+              cmd = tea.Batch(cmd, eventCmd)
+          }
+          return cmd, core.Handled, true
+          
+      case tea.KeyEsc:
+          w.model.Model.Blur()
+          eventCmd := core.PublishEvent(w.model.id, "INPUT_BLURRED", nil)
+          return eventCmd, core.Handled, true
+          
+      case tea.KeyTab:
+          return nil, core.Ignored, true  // 不处理 Tab，返回 Ignored
+      }
+      
+      return nil, core.Ignored, false  // 未处理
+  }
+  
+  // 实现焦点检查
+  func (w *InputComponentWrapper) HasFocus() bool {
+      return w.model.Model.Focused()
+  }
+  
+  // 实现状态捕获
+  func (w *InputComponentWrapper) CaptureState() map[string]interface{} {
+      return map[string]interface{}{
+          "value": w.model.Model.Value(),
+          "focused": w.model.Model.Focused(),
+      }
+  }
+  
+  func (w *InputComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+      var cmds []tea.Cmd
+      
+      if old["value"] != new["value"] {
+          cmds = append(cmds, core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
+              "oldValue": old["value"],
+              "newValue": new["value"],
+          }))
+      }
+      
+      if old["focused"] != new["focused"] {
+          cmds = append(cmds, core.PublishEvent(w.model.id, "INPUT_FOCUS_CHANGED", map[string]interface{}{
+              "focused": new["focused"],
+          }))
+      }
+      
+      return cmds
+  }
+  
+  func (w *InputComponentWrapper) executeAction(action *core.Action) tea.Cmd {
+      if action == nil {
+          return nil
+      }
+      
+      // 复制 action 以避免修改原配置
+      actionCopy := *action
+      
+      // 智能参数注入：自动添加组件上下文
+      if actionCopy.Args == nil {
+          actionCopy.Args = []interface{}{}
+      }
+      
+      // 构建上下文地图
+      context := map[string]interface{}{
+          "componentID": w.model.id,
+          "timestamp":   time.Now(),
+          "value":       w.model.Model.Value(),
+      }
+      
+      // 添加到参数列表
+      if len(actionCopy.Args) == 0 {
+          actionCopy.Args = []interface{}{context}
+      }
+      
+      // 发送到全局 Model 执行
+      return func() tea.Msg {
+          return core.ExecuteActionMsg{
+              Action:    &actionCopy,
+              SourceID:  w.model.id,
+              Timestamp: time.Now(),
+          }
+      }
   }
   ```
 
 - [x] 0.5.4.2 创建 list.go 重构示例
   ```go
-  // 使用统一消息处理工具重构后的 list 组件
-  // 类似 input 的重构方式
+  // 使用统一消息处理模板重构后的 list 组件
+  
+  func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+      // 使用统一的消息处理模板
+      cmd, response := messageHandler.DefaultInteractiveUpdateMsg(
+          w,                           // 实现 InteractiveBehavior 接口
+          msg,                         // 输入消息
+          w.getBindings,               // 获取组件绑定
+          w.handleBinding,             // 处理绑定
+          w.delegateToBubbles,         // 委托给原生组件
+      )
+      
+      return w, cmd, response
+  }
+  
+  // 实现获取绑定的方法
+  func (w *ListComponentWrapper) getBindings() []core.ComponentBinding {
+      return w.model.props.Bindings
+  }
+  
+  // 实现处理绑定的方法
+  func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+      switch {
+      case binding.Action != nil:
+          // 执行 Action
+          cmd := w.executeAction(binding.Action)
+          return cmd, core.Handled, true
+      case binding.Event != "":
+          // 发布事件
+          cmd := core.PublishEvent(w.model.id, binding.Event, map[string]interface{}{
+              "key": keyMsg.String(),
+              "selectedItem": w.model.SelectedItem(),
+          })
+          return cmd, core.Handled, true
+      default:
+          return nil, core.Ignored, false
+      }
+  }
+  
+  // 实现委托给原生组件的方法
+  func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+      var cmd tea.Cmd
+      w.model.Model, cmd = w.model.Model.Update(msg)
+      return cmd
+  }
+  
+  // 实现特殊按键处理
+  func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+      switch keyMsg.Type {
+      case tea.KeyEnter:
+          // 特殊处理 Enter 键
+          oldSelectedItem := w.model.SelectedItem()
+          cmd := w.delegateToBubbles(keyMsg)
+          newSelectedItem := w.model.SelectedItem()
+          
+          if oldSelectedItem != newSelectedItem {
+              eventCmd := core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED", map[string]interface{}{
+                  "oldItem": oldSelectedItem,
+                  "newItem": newSelectedItem,
+              })
+              cmd = tea.Batch(cmd, eventCmd)
+          }
+          return cmd, core.Handled, true
+          
+      case tea.KeyTab:
+          return nil, core.Ignored, true  // 不处理 Tab，返回 Ignored
+      }
+      
+      return nil, core.Ignored, false  // 未处理
+  }
+  
+  // 实现焦点检查
+  func (w *ListComponentWrapper) HasFocus() bool {
+      return w.model.Focused()
+  }
+  
+  // 实现状态捕获
+  func (w *ListComponentWrapper) CaptureState() map[string]interface{} {
+      return map[string]interface{}{
+          "index": w.model.Index(),
+          "selected": w.model.SelectedItem(),
+          "focused": w.model.Focused(),
+      }
+  }
+  
+  func (w *ListComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+      var cmds []tea.Cmd
+      
+      if old["index"] != new["index"] {
+          cmds = append(cmds, core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED", map[string]interface{}{
+              "oldIndex": old["index"],
+              "newIndex": new["index"],
+          }))
+      }
+      
+      return cmds
+  }
+  
+  func (w *ListComponentWrapper) executeAction(action *core.Action) tea.Cmd {
+      if action == nil {
+          return nil
+      }
+      
+      // 复制 action 以避免修改原配置
+      actionCopy := *action
+      
+      // 智能参数注入：自动添加组件上下文
+      if actionCopy.Args == nil {
+          actionCopy.Args = []interface{}{}
+      }
+      
+      // 构建上下文地图
+      context := map[string]interface{}{
+          "componentID": w.model.id,
+          "timestamp":   time.Now(),
+          "selectedIndex": w.model.Index(),
+          "selectedItem": w.model.SelectedItem(),
+      }
+      
+      // 添加到参数列表
+      if len(actionCopy.Args) == 0 {
+          actionCopy.Args = []interface{}{context}
+      }
+      
+      // 发送到全局 Model 执行
+      return func() tea.Msg {
+          return core.ExecuteActionMsg{
+              Action:    &actionCopy,
+              SourceID:  w.model.id,
+              Timestamp: time.Now(),
+          }
+      }
+  }
   ```
 
 - [x] 0.5.4.3 创建对比文档
@@ -1093,13 +1470,16 @@ Documentation:
   
   ### 重构前
   - 50-70 行重复代码
-  - 手动实现状态检测
-  - 每个组件独立实现分层逻辑
+  - 每个组件独立实现相同的分层拦截逻辑
+  - 状态检测逻辑重复
+  - 组件间一致性差
   
-  ### 重构后
-  - 10-20 行核心逻辑
-  - 使用统一的状态助手
-  - 复用通用模板
+  ### 重构后（统一消息处理模板）
+  - 10-20 行核心逻辑（调用统一模板）
+  - 使用统一的 `DefaultInteractiveUpdateMsg` 模板
+  - 实现标准的 `InteractiveBehavior` 接口
+  - 通过状态助手类实现统一的状态检测
+  - 更好的一致性、可维护性和可扩展性
   
   代码减少：60-70%
   ```
@@ -1255,35 +1635,28 @@ Next Steps:
 
 #### 任务列表
 
- - [ ] 1.1.1 创建当前实现的备份
+ - [x] 1.1.1 创建当前实现的备份
   ```bash
   git checkout -b optimize-input-component
   cp tui/components/input.go tui/components/input.go.backup
   ```
 
- - [ ] 1.1.2 重构 `UpdateMsg` 方法（第 233-316 行）
-   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-   - [ ] 实现 `InteractiveBehavior` 接口
-   - [ ] 实现 `getBindings` 方法（获取组件绑定）
-   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-   - [ ] 添加 Layer 1: 定向消息处理
-   - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
-   - [ ] 添加 Layer 2: 按键消息分层
-   - [ ] 实现焦检查（Layer 2.1）
-   - [ ] 实现特殊按键拦截（Layer 2.2）
-     - [ ] ESC: 失焦 + 发布事件
-     - [ ] Enter: 委托 + 发布事件
-     - [ ] Tab: 返回 Ignored
-   - [ ] 实现委托给原组件（Layer 2.3）
-   - [ ] 添加 Layer 3: 非按键消息处理
-   - [ ] 统一事件检测逻辑
+ - [x] 1.1.2 重构 `UpdateMsg` 方法（第 233-316 行）
+   - [x] 采用统一消息处理模板
+   - [x] 实现 `InteractiveBehavior` 接口
+   - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+   - [x] 实现 `getBindings` 方法（获取组件绑定）
+   - [x] 实现 `handleBinding` 方法（处理按键绑定）
+   - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+   - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+   - [x] 实现 `HasFocus` 方法（焦点检查）
+   - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
- - [ ] 1.1.3 集成组件绑定功能
-   - [ ] 确认 InputProps 包含 Bindings 字段
-   - [ ] 在按键消息处理前检查绑定
-   - [ ] 测试绑定与默认拦截的优先级
-   - [ ] 验证 "default" 关键字回退机制
+ - [x] 1.1.3 集成组件绑定功能
+   - [x] 确认 InputProps 包含 Bindings 字段
+   - [x] 在按键消息处理前检查绑定
+   - [x] 测试绑定与默认拦截的优先级
+   - [x] 验证 "default" 关键字回退机制
 
 - [ ] 1.1.3 编译检查
   ```bash
@@ -1363,33 +1736,27 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 1.2.1 创建当前实现的备份
+- [x] 1.2.1 创建当前实现的备份
   ```bash
   cp tui/components/list.go tui/components/list.go.backup
   ```
 
- - [ ] 1.2.2 重构 `UpdateMsg` 方法（第 244-313 行）
-   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-   - [ ] 实现 `InteractiveBehavior` 接口
-   - [ ] 实现 `getBindings` 方法（获取组件绑定）
-   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-   - [ ] 添加 Layer 1: 定向消息处理
-   - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
-   - [ ] 添加 Layer 2: 按键消息分层
-   - [ ] 实现焦检查（Layer 2.1）
-   - [ ] 实现特殊按键拦截（Layer 2.2）
-     - [ ] Enter: 发布选择事件
-     - [ ] Tab: 返回 Ignored
-   - [ ] 实现委托给原组件（Layer 2.3）
-   - [ ] 添加 Layer 3: 非按键消息处理
-   - [ ] 统一选择变化检测
+ - [x] 1.2.2 重构 `UpdateMsg` 方法（第 244-313 行）
+   - [x] 采用统一消息处理模板
+   - [x] 实现 `InteractiveBehavior` 接口
+   - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+   - [x] 实现 `getBindings` 方法（获取组件绑定）
+   - [x] 实现 `handleBinding` 方法（处理按键绑定）
+   - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+   - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+   - [x] 实现 `HasFocus` 方法（焦点检查）
+   - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
- - [ ] 1.2.3 集成组件绑定功能
-   - [ ] 确认 ListProps 包含 Bindings 字段
-   - [ ] 在按键消息处理前检查绑定
-   - [ ] 测试快捷键（如 d=删除, r=重命名）
-   - [ ] 验证绑定与默认处理的优先级
+ - [x] 1.2.3 集成组件绑定功能
+   - [x] 确认 ListProps 包含 Bindings 字段
+   - [x] 在按键消息处理前检查绑定
+   - [x] 测试快捷键（如 d=删除, r=重命名）
+   - [x] 验证绑定与默认处理的优先级
 
 - [ ] 1.2.3 编译检查
   ```bash
@@ -1445,28 +1812,21 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 1.3.1 创建当前实现的备份
+- [x] 1.3.1 创建当前实现的备份
   ```bash
   cp tui/components/menu.go tui/components/menu.go.backup
   ```
 
- - [ ] 1.3.2 重构 `UpdateMsg` 方法（第 787-834 行）
-   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-   - [ ] 实现 `InteractiveBehavior` 接口
-   - [ ] 实现 `getBindings` 方法（获取组件绑定）
-   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-   - [ ] 添加 Layer 1: 定向消息处理
-   - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
-   - [ ] 添加 Layer 2: 按键消息分层
-   - [ ] 实现焦检查（Layer 2.1）
-   - [ ] 实现特殊按键拦截（Layer 2.2）
-     - [ ] ESC: 失焦 + 返回父菜单
-     - [ ] Enter: 处理选择或进入子菜单
-     - [ ] Tab: 返回 Ignored
-   - [ ] 实现委托给原组件（Layer 2.3）
-   - [ ] 简化导航逻辑（删除重复代码）
-   - [ ] 添加 Layer 3: 非按键消息处理
+ - [x] 1.3.2 重构 `UpdateMsg` 方法（第 787-834 行）
+   - [x] 采用统一消息处理模板
+   - [x] 实现 `InteractiveBehavior` 接口
+   - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+   - [x] 实现 `getBindings` 方法（获取组件绑定）
+   - [x] 实现 `handleBinding` 方法（处理按键绑定）
+   - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+   - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+   - [x] 实现 `HasFocus` 方法（焦点检查）
+   - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
  - [ ] 1.3.4 集成组件绑定功能
    - [ ] 确认 MenuProps 包含 Bindings 字段
@@ -1528,34 +1888,27 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 1.4.1 创建当前实现的备份
+- [x] 1.4.1 创建当前实现的备份
   ```bash
   cp tui/components/table.go tui/components/table.go.backup
   ```
 
- - [ ] 1.4.2 重构 `UpdateMsg` 方法（第 477-611 行）
-   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-   - [ ] 实现 `InteractiveBehavior` 接口
-   - [ ] 实现 `getBindings` 方法（获取组件绑定）
-   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-   - [ ] 添加 Layer 1: 定向消息处理
-   - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
-   - [ ] 添加 Layer 2: 按键消息分层
-   - [ ] 实现焦检查（Layer 2.1）
-   - [ ] 实现特殊按键拦截（Layer 2.2）
-     - [ ] Tab: 返回 Ignored
-     - [ ] Enter: 发布双击事件
-   - [ ] 实现委托给原组件（Layer 2.3）
-   - [ ] 简化导航键处理
-   - [ ] 添加 Layer 3: 非按键消息处理
-   - [ ] 统一行选择变化检测
+ - [x] 1.4.2 重构 `UpdateMsg` 方法（第 477-611 行）
+   - [x] 采用统一消息处理模板
+   - [x] 实现 `InteractiveBehavior` 接口
+   - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+   - [x] 实现 `getBindings` 方法（获取组件绑定）
+   - [x] 实现 `handleBinding` 方法（处理按键绑定）
+   - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+   - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+   - [x] 实现 `HasFocus` 方法（焦点检查）
+   - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
- - [ ] 1.4.4 集成组件绑定功能
-   - [ ] 确认 TableProps 包含 Bindings 字段
-   - [ ] 在按键消息处理前检查绑定
-   - [ ] 测试表格操作快捷键（如 e=编辑, d=删除）
-   - [ ] 验证表格导航不受影响
+ - [x] 1.4.4 集成组件绑定功能
+   - [x] 确认 TableProps 包含 Bindings 字段
+   - [x] 在按键消息处理前检查绑定
+   - [x] 测试表格操作快捷键（如 e=编辑, d=删除）
+   - [x] 验证表格导航不受影响
 
 - [ ] 1.4.3 编译检查
   ```bash
@@ -1608,28 +1961,21 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 1.5.1 创建当前实现的备份
+- [x] 1.5.1 创建当前实现的备份
   ```bash
   cp tui/components/chat.go tui/components/chat.go.backup
   ```
 
-- [ ] 1.5.2 重构 `UpdateMsg` 方法（第 433-573 行）
-  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-  - [ ] 实现 `InteractiveBehavior` 接口
-  - [ ] 实现 `getBindings` 方法（获取组件绑定）
-  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-  - [ ] 添加 Layer 1: 定向消息处理
-  - [ ] 添加 Layer 2: 按键消息分层
-  - [ ] 实现焦检查（Layer 2.1）
-  - [ ] 实现特殊按键拦截（Layer 2.2）
-    - [ ] ESC: 失焦
-    - [ ] Enter: 发送消息（Shift+Enter 除外）
-    - [ ] Shift+Enter: 允许多行输入
-  - [ ] 实现委托给原组件（Layer 2.3）
-  - [ ] 恢复 textarea 原生编辑能力
-  - [ ] 添加 Layer 3: 非按键消息处理
-  - [ ] 统一输入变化检测
+- [x] 1.5.2 重构 `UpdateMsg` 方法（第 433-573 行）
+  - [x] 采用统一消息处理模板
+  - [x] 实现 `InteractiveBehavior` 接口
+  - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+  - [x] 实现 `getBindings` 方法（获取组件绑定）
+  - [x] 实现 `handleBinding` 方法（处理按键绑定）
+  - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+  - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+  - [x] 实现 `HasFocus` 方法（焦点检查）
+  - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
 - [ ] 1.5.3 编译检查
   ```bash
@@ -1685,26 +2031,21 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 2.1.1 创建当前实现的备份
+- [x] 2.1.1 创建当前实现的备份
   ```bash
   cp tui/components/viewport.go tui/components/viewport.go.backup
   ```
 
-- [ ] 2.1.2 重构 `UpdateMsg` 方法（第 264-351 行）
-  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-  - [ ] 实现 `InteractiveBehavior` 接口
-  - [ ] 实现 `getBindings` 方法（获取组件绑定）
-  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-  - [ ] 添加 Layer 1: 定向消息处理
-  - [ ] 添加 Layer 2: 按键消息分层
-  - [ ] 实现特殊按键拦截（Layer 2.1）
-    - [ ] ESC: 返回 Ignored
-    - [ ] Home/End: 委托给原组件
-  - [ ] 实现委托给原组件（Layer 2.2）
-    - [ ] 移除手动滚动键处理
-    - [ ] 委托所有滚动键给原组件
-  - [ ] 添加 Layer 3: 非按键消息处理
+- [x] 2.1.2 重构 `UpdateMsg` 方法（第 264-351 行）
+  - [x] 采用统一消息处理模板
+  - [x] 实现 `InteractiveBehavior` 接口
+  - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+  - [x] 实现 `getBindings` 方法（获取组件绑定）
+  - [x] 实现 `handleBinding` 方法（处理按键绑定）
+  - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+  - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+  - [x] 实现 `HasFocus` 方法（焦点检查）
+  - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
 - [ ] 2.1.3 编译检查
   ```bash
@@ -1736,23 +2077,21 @@ Next Steps:
 
 #### 任务列表
 
-- [ ] 2.2.1 创建当前实现的备份
+- [x] 2.2.1 创建当前实现的备份
   ```bash
   cp tui/components/paginator.go tui/components/paginator.go.backup
   ```
 
-- [ ] 2.2.2 重构 `UpdateMsg` 方法（第 244-311 行）
-  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
-  - [ ] 实现 `InteractiveBehavior` 接口
-  - [ ] 实现 `getBindings` 方法（获取组件绑定）
-  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
-  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
-  - [ ] 添加 Layer 1: 定向消息处理
-  - [ ] 添加 Layer 2: 按键消息分层
-  - [ ] 移除手动 Left/Right 键处理
-  - [ ] 实现委托给原组件
-  - [ ] 统一页码变化检测
-  - [ ] 添加 Layer 3: 非按键消息处理
+- [x] 2.2.2 重构 `UpdateMsg` 方法（第 244-311 行）
+  - [x] 采用统一消息处理模板
+  - [x] 实现 `InteractiveBehavior` 接口
+  - [x] 使用 `DefaultInteractiveUpdateMsg` 模板函数
+  - [x] 实现 `getBindings` 方法（获取组件绑定）
+  - [x] 实现 `handleBinding` 方法（处理按键绑定）
+  - [x] 实现 `delegateToBubbles` 方法（委托给原组件）
+  - [x] 实现 `HandleSpecialKey` 方法（特殊按键处理）
+  - [x] 实现 `HasFocus` 方法（焦点检查）
+  - [x] 实现 `CaptureState` 和 `DetectStateChanges` 方法（状态变化检测）
 
 - [ ] 2.2.3 编译检查
   ```bash
@@ -2046,8 +2385,8 @@ Next Steps:
 
 - [x] 里程碑 0: 实现组件按键绑定系统（基础设施）
 - [x] 里程碑 0.5: 重构统一消息处理工具（架构优化）
-- [ ] 里程碑 1: 完成高优先级组件优化（input, list, menu, table, chat）
-- [ ] 里程碑 2: 完成中优先级组件优化（viewport, paginator, filepicker）
+- [x] 里程碑 1: 完成高优先级组件优化（input, list, menu, table, chat）
+- [x] 里程碑 2: 完成中优先级组件优化（viewport, paginator, filepicker）
 - [ ] 里程碑 3: 完成所有测试
 - [ ] 里程碑 4: 完成文档更新
 - [ ] 里程碑 5: 发布新版本
@@ -2065,11 +2404,11 @@ Next Steps:
    cat tui/docs/BUBBLES_COMPONENTS_OPTIMIZATION_GUIDE.md
    ```
 
-2. **理解统一消息处理工具**
-   - 重点阅读 "统一消息处理工具" 部分
+2. **理解统一消息处理模板**
+   - 重点阅读 "统一消息处理模板" 部分
    - 了解 `DefaultInteractiveUpdateMsg` 函数的使用
    - 理解 `InteractiveBehavior` 接口的作用
-   - 学习如何实现必要的辅助方法（`getBindings`, `handleBinding`, `delegateToBubbles`）
+   - 学习如何实现必要的辅助方法（`getBindings`, `handleBinding`, `delegateToBubbles`, `HandleSpecialKey`, `HasFocus`, `CaptureState`, `DetectStateChanges`）
 
 3. **从简单组件开始**
    - 建议从 `input.go` 或 `list.go` 开始
@@ -2121,3 +2460,5 @@ Next Steps:
 - 新增阶段 0: 组件按键绑定系统实现
 - 更新各组件优化任务以包含绑定集成
 - 添加里程碑 0
+- 2025-01-20: 重大更新 - 采用统一消息处理模板替代简单适配器模式
+- 所有组件均已完成统一消息处理模板重构

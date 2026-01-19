@@ -288,7 +288,7 @@
       "program": "main.go",
       "args": [
         "tui",
-        "table",
+        "cursor-helper",
       ],
       "cwd": "E:/projects/yao/yao-projects/yao-docs/docs/YaoApps/tui_app",
     },
