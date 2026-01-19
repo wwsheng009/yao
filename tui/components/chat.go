@@ -62,6 +62,9 @@ type ChatProps struct {
 
 	// TimestampStyle is the style for timestamps
 	TimestampStyle lipglossStyleWrapper `json:"timestampStyle"`
+
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // ChatModel represents a chat model for interactive chats
@@ -414,16 +417,52 @@ func (m *ChatModel) ClearMessages() {
 	m.updateHistoryText()
 }
 
+// GetModel returns the underlying model
+func (w *ChatComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+// GetID returns the component ID
+func (w *ChatComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// PublishEvent creates and returns a command to publish an event
+func (w *ChatComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *ChatComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For chat component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.model.id,
+			Timestamp: time.Now(),
+		}
+	}
+}
+
 // ChatComponentWrapper wraps ChatModel to implement ComponentInterface properly
 type ChatComponentWrapper struct {
-	model *ChatModel
+	model     *ChatModel
+	bindings  []core.ComponentBinding
+	stateHelper *core.ChatStateHelper
 }
 
 // NewChatComponentWrapper creates a wrapper that implements ComponentInterface
 func NewChatComponentWrapper(chatModel *ChatModel) *ChatComponentWrapper {
-	return &ChatComponentWrapper{
-		model: chatModel,
+	wrapper := &ChatComponentWrapper{
+		model:    chatModel,
+		bindings: chatModel.props.Bindings,
+		stateHelper: &core.ChatStateHelper{
+			InputValuer: chatModel,
+			Focuser:     chatModel,
+			ComponentID: chatModel.GetID(),
+		},
 	}
+	return wrapper
 }
 
 func (w *ChatComponentWrapper) Init() tea.Cmd {
@@ -431,118 +470,31 @@ func (w *ChatComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
 
-	case tea.KeyMsg:
-		// If chat input doesn't have focus, ignore all key messages
-		// This allows global bindings (like 'q' for quit) to work
-		if !w.model.TextInput.Focused() {
-			return w, nil, core.Ignored
-		}
+	return w, cmd, response
+}
 
-		var cmds []tea.Cmd
+// 实现 InteractiveBehavior 接口的方法
 
-		switch msg.Type {
-		case tea.KeyEsc:
-			// Blur the input when ESC is pressed
-			w.model.TextInput.Blur()
-			// Publish focus changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
-				"focused": false,
-			}))
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Handled
-			}
-			return w, nil, core.Handled
+func (w *ChatComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
 
-		case tea.KeyEnter:
-			// Check if shift is pressed (for multi-line input)
-			if msg.String() == "shift+enter" || msg.Alt {
-				// Allow multi-line input
-				var cmd tea.Cmd
-				w.model.TextInput, cmd = w.model.TextInput.Update(msg)
-				return w, cmd, core.Handled
-			}
+func (w *ChatComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// ChatComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
 
-			// Get input text
-			inputText := w.model.TextInput.Value()
-			if inputText == "" {
-				// Empty input, ignore
-				return w, nil, core.Handled
-			}
-
-			// Clear input
-			w.model.TextInput.Reset()
-
-			// Add user message
-			w.model.AddMessage("user", inputText)
-
-			// Publish message sent event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventChatMessageSent, map[string]interface{}{
-				"role":    "user",
-				"content": inputText,
-			}))
-
-			// Publish input enter pressed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-				"value": inputText,
-			}))
-
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Handled
-			}
-			return w, nil, core.Handled
-
-		case tea.KeyCtrlC:
-			// Let Ctrl+C pass through for quit handling
-			return w, nil, core.Ignored
-		}
-
-		// For other key messages, update the text input model
-		oldValue := w.model.TextInput.Value()
-		var cmd tea.Cmd
-		w.model.TextInput, cmd = w.model.TextInput.Update(msg)
-
-		// Check if value changed
-		newValue := w.model.TextInput.Value()
-		if oldValue != newValue {
-			cmds = append(cmds, cmd)
-			// Publish value changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
-				"oldValue": oldValue,
-				"newValue": newValue,
-			}))
-			return w, tea.Batch(cmds...), core.Handled
-		}
-		return w, cmd, core.Handled
-
-	case core.ActionMsg:
-		// Handle internal action messages
-		switch msg.Action {
-		case core.EventChatMessageReceived:
-			// Add received message to chat
-			if data, ok := msg.Data.(map[string]interface{}); ok {
-				if role, ok := data["role"].(string); ok {
-					if content, ok := data["content"].(string); ok {
-						w.model.AddMessage(role, content)
-						return w, nil, core.Handled
-					}
-				}
-			}
-		}
-
-		// Default: ignore action message
-		return w, nil, core.Ignored
-	}
-
-	// For other messages, update viewport and text input
+func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 	oldValue := ""
@@ -551,11 +503,100 @@ func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 		oldValue = w.model.TextInput.Value()
 	}
 
+	// 处理特定按键
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.Type {
+		case tea.KeyEnter:
+			// 检查是否按下了shift（用于多行输入）
+			if keyMsg.String() == "shift+enter" || keyMsg.Alt {
+				// 允许多行输入
+				w.model.TextInput, cmd = w.model.TextInput.Update(msg)
+				return cmd
+			}
+
+			// 获取输入文本
+			inputText := w.model.TextInput.Value()
+			if inputText == "" {
+				// 空输入，忽略
+				return nil
+			}
+
+			// 清空输入
+			w.model.TextInput.Reset()
+
+			// 添加用户消息
+			w.model.AddMessage("user", inputText)
+
+			// 发布消息发送事件
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventChatMessageSent, map[string]interface{}{
+				"role":    "user",
+				"content": inputText,
+			}))
+
+			// 发布输入回车事件
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
+				"value": inputText,
+			}))
+
+			if len(cmds) > 0 {
+				return tea.Batch(cmds...)
+			}
+			return nil
+
+		case tea.KeyEsc:
+			// 失焦处理
+			w.model.TextInput.Blur()
+			cmd = core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+				"focused": false,
+			})
+			return cmd
+
+		case tea.KeyCtrlC:
+			// 让 Ctrl+C 透传以处理退出
+			return nil
+		}
+
+		// 对于其他按键消息，更新文本输入模型
+		w.model.TextInput, cmd = w.model.TextInput.Update(msg)
+
+		// 检查值是否改变
+		newValue := w.model.TextInput.Value()
+		if oldValue != newValue {
+			cmds = append(cmds, cmd)
+			// 发布值改变事件
+			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+				"oldValue": oldValue,
+				"newValue": newValue,
+			}))
+			return tea.Batch(cmds...)
+		}
+		return cmd
+	}
+
+	// 处理 ActionMsg
+	if actionMsg, ok := msg.(core.ActionMsg); ok {
+		switch actionMsg.Action {
+		case core.EventChatMessageReceived:
+			// 添加收到的消息到聊天
+			if data, ok := actionMsg.Data.(map[string]interface{}); ok {
+				if role, ok := data["role"].(string); ok {
+					if content, ok := data["content"].(string); ok {
+						w.model.AddMessage(role, content)
+						return nil
+					}
+				}
+			}
+		}
+		// 默认：忽略 ActionMsg
+		return nil
+	}
+
+	// 对于其他消息，更新视口和文本输入
 	updatedModel, chatCmd := HandleChatUpdate(msg, w.model)
 	w.model = &updatedModel
 	cmds = append(cmds, chatCmd)
 
-	// Check if text input value changed
+	// 检查文本输入值是否改变
 	if w.model.TextInput.Focused() {
 		newValue := w.model.TextInput.Value()
 		if oldValue != newValue {
@@ -567,18 +608,56 @@ func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 	}
 
 	if len(cmds) > 0 {
-		return w, tea.Batch(cmds...), core.Handled
+		return tea.Batch(cmds...)
 	}
-	return w, cmd, core.Handled
+	return chatCmd
+}
+
+// 实现 StateCapturable 接口
+func (w *ChatComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *ChatComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *ChatComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让 Tab 键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEscape:
+		// 失焦处理
+		w.model.TextInput.Blur()
+		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
+		return cmd, core.Ignored, true
+	}
+
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
+
+// HasFocus returns whether the component currently has focus
+func (w *ChatComponentWrapper) HasFocus() bool {
+	return w.model.TextInput.Focused()
+}
+
+// GetValue returns the current input value (for ChatStateHelper)
+func (m *ChatModel) GetValue() string {
+	return m.TextInput.Value()
+}
+
+// Focused returns whether the text input is focused (for ChatStateHelper)
+func (m *ChatModel) Focused() bool {
+	return m.TextInput.Focused()
 }
 
 func (w *ChatComponentWrapper) View() string {
 	return w.model.View()
 }
 
-func (w *ChatComponentWrapper) GetID() string {
-	return w.model.id
-}
 
 // GetValue returns the current input value
 func (w *ChatComponentWrapper) GetValue() string {

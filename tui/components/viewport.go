@@ -43,6 +43,9 @@ type ViewportProps struct {
 
 	// AutoScroll determines if viewport automatically scrolls to bottom
 	AutoScroll bool `json:"autoScroll"`
+	
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // ViewportModel wraps the viewport.Model to handle TUI integration

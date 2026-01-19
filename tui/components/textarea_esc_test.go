@@ -14,8 +14,7 @@ func TestTextareaESCAndQuitKeys(t *testing.T) {
 		Placeholder: "Enter text...",
 		Disabled:    false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Initially focused
 	assert.True(t, wrapper.HasFocus(), "Textarea should be initially focused")
@@ -45,8 +44,7 @@ func TestTextAreaHandlesRegularKeys(t *testing.T) {
 		Placeholder: "Enter text...",
 		Disabled:    false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Test regular input keys
 	oldValue := wrapper.GetValue()
@@ -69,8 +67,7 @@ func TestTextAreaIgnoresKeysWhenBlurred(t *testing.T) {
 		Placeholder: "Enter text...",
 		Disabled:    false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Blur the textarea
 	wrapper.SetFocus(false)

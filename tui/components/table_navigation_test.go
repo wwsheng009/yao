@@ -25,8 +25,9 @@ func TestTableComponentWrapper_UpdateMsg_KeyDown(t *testing.T) {
 		Height:     10,
 		Width:      60,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// Test initial selection
 	initialCursor := tableModel.Model.Cursor()
@@ -72,8 +73,9 @@ func TestTableComponentWrapper_UpdateMsg_NavigationKeys(t *testing.T) {
 		Height:     10,
 		Width:      30,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	testCases := []struct {
 		name         string
@@ -118,8 +120,9 @@ func TestTableComponentWrapper_UpdateMsg_EnterKey(t *testing.T) {
 		Height:     10,
 		Width:      30,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// Move to second row
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
@@ -156,8 +159,8 @@ func TestTableComponentWrapper_UpdateMsg_TargetedMsg(t *testing.T) {
 		ShowBorder: true,
 		Focused:    true,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
 
 	// Test targeted message to this component
 	innerMsg := tea.KeyMsg{Type: tea.KeyDown}
@@ -202,8 +205,8 @@ func TestTableComponentWrapper_UpdateMsg_RowSelectionEvent(t *testing.T) {
 		Height:     10,
 		Width:      30,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
 
 	// Move down to trigger selection event
 	_, cmd, _ := wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
@@ -320,8 +323,9 @@ func TestTableComponentWrapper_SetFocus(t *testing.T) {
 		ShowBorder: true,
 		Focused:    false,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// Set focus
 	wrapper.SetFocus(true)
@@ -345,8 +349,8 @@ func TestTableComponentWrapper_GetID(t *testing.T) {
 			{1, "Alice"},
 		},
 	}
-	tableModel := NewTableModel(props, "test-id-789")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-id-789")
 
 	if wrapper.GetID() != "test-id-789" {
 		t.Errorf("Expected id 'test-id-789', got '%s'", wrapper.GetID())
@@ -368,8 +372,8 @@ func TestTableComponentWrapper_View(t *testing.T) {
 		Height:     10,
 		Width:      30,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
 
 	view := wrapper.View()
 	if view == "" {
@@ -386,8 +390,8 @@ func TestTableComponentWrapper_Init(t *testing.T) {
 			{1, "Alice"},
 		},
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
 
 	cmd := wrapper.Init()
 	if cmd != nil {
@@ -409,8 +413,9 @@ func TestTableComponentWrapper_BoundaryNavigation(t *testing.T) {
 		Height:     10,
 		Width:      30,
 	}
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// Move to last row
 	tableModel.Model.SetCursor(1)

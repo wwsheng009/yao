@@ -23,8 +23,9 @@ func TestTableModel_FocusAndNavigation(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 初始状态：应该有焦点
 	if !tableModel.Model.Focused() {
@@ -73,8 +74,9 @@ func TestTableModel_FocusLost_IgnoresKeys(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 初始状态：不应该有焦点
 	if tableModel.Model.Focused() {
@@ -107,8 +109,9 @@ func TestTableModel_SetFocus_Dynamic(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 初始状态：无焦点
 	if tableModel.Model.Focused() {
@@ -167,8 +170,9 @@ func TestTableModel_SelectionEvents(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 订阅事件
 	var receivedEvents []core.ActionMsg
@@ -218,8 +222,9 @@ func TestTableModel_EnterKey(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 移动到第二行
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyDown})
@@ -257,8 +262,9 @@ func TestTableModel_Pagination(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 初始光标在第一行
 	if cursor := tableModel.Model.Cursor(); cursor != 0 {
@@ -301,8 +307,9 @@ func TestTableModel_EmptyTable(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 光标应该在 0 或 -1（取决于表格实现）
 	cursor := tableModel.Model.Cursor()
@@ -331,8 +338,9 @@ func TestTableModel_SingleRowTable(t *testing.T) {
 		ShowBorder: true,
 	}
 
-	tableModel := NewTableModel(props, "test-table")
-	wrapper := NewTableComponentWrapper(&tableModel)
+	// 使用新的API
+	wrapper := NewTableComponentWrapper(props, "test-table")
+	tableModel := wrapper.model
 
 	// 初始光标在第一行
 	if cursor := tableModel.Model.Cursor(); cursor != 0 {

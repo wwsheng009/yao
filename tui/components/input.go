@@ -3,6 +3,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,6 +36,9 @@ type InputProps struct {
 
 	// Disabled determines if the input is disabled
 	Disabled bool `json:"disabled"`
+	
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // InputModel wraps the textinput.Model to handle TUI integration
@@ -217,110 +221,176 @@ func (m *InputModel) Render(config core.RenderConfig) (string, error) {
 // InputComponentWrapper wraps InputModel to implement ComponentInterface properly
 type InputComponentWrapper struct {
 	model *InputModel
+	bindings []core.ComponentBinding
+	stateHelper *core.InputStateHelper
+}
+
+// inputValuerAdapter adapts InputModel to satisfy interface{GetValue() string}
+type inputValuerAdapter struct {
+	*InputModel
+}
+
+func (a *inputValuerAdapter) GetValue() string {
+	return a.Model.Value()
+}
+
+// inputFocuserAdapter adapts InputModel to satisfy interface{Focused() bool}
+type inputFocuserAdapter struct {
+	*InputModel
+}
+
+func (a *inputFocuserAdapter) Focused() bool {
+	return a.Model.Focused()
 }
 
 // NewInputComponentWrapper creates a wrapper that implements ComponentInterface
 func NewInputComponentWrapper(inputModel *InputModel) *InputComponentWrapper {
-	return &InputComponentWrapper{
+	wrapper := &InputComponentWrapper{
 		model: inputModel,
+		bindings: inputModel.props.Bindings,
 	}
+
+	// 创建一个适配器来满足接口要求
+	valuerAdapter := &inputValuerAdapter{inputModel}
+	focuserAdapter := &inputFocuserAdapter{inputModel}
+	wrapper.stateHelper = &core.InputStateHelper{
+		Valuer:      valuerAdapter,
+		Focuser:     focuserAdapter,
+		ComponentID: inputModel.id,
+	}
+	return wrapper
 }
 
 func (w *InputComponentWrapper) Init() tea.Cmd {
 	return nil
 }
 
+// GetModel returns the underlying model
+func (w *InputComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+// GetID returns the component ID
+func (w *InputComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// PublishEvent creates and returns a command to publish an event
+func (w *InputComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *InputComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For input component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.model.id,
+			Timestamp: time.Now(),
+		}
+	}
+}
+
+// inputComponentWrapperAdapter adapts InputComponentWrapper to implement core.ComponentWrapper interface
+type inputComponentWrapperAdapter struct {
+	*InputComponentWrapper
+}
+
+func (a *inputComponentWrapperAdapter) GetModel() interface{} {
+	return a.InputComponentWrapper.model
+}
+
+func (a *inputComponentWrapperAdapter) GetID() string {
+	return a.InputComponentWrapper.model.id
+}
+
+func (a *inputComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+func (a *inputComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
+	return a.InputComponentWrapper.ExecuteAction(action)
+}
+
+
 func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
 
-	case tea.KeyMsg:
-		// If input doesn't have focus, ignore all key messages
-		// This allows global bindings (like 'q' for quit) to work
-		if !w.model.Focused() {
-			return w, nil, core.Ignored
-		}
+	return w, cmd, response
+}
 
-		oldValue := w.model.Value()
-		var cmds []tea.Cmd
+// 实现 InteractiveBehavior 接口的方法
 
-		switch msg.Type {
-		case tea.KeyEsc:
-			w.model.Blur()
-			// Publish focus changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
-				"focused": false,
-			}))
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Handled
-			}
-			return w, nil, core.Handled
-		case tea.KeyEnter:
-			// Publish enter pressed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-				"value": w.model.Value(),
-			}))
-			// Let bubble to handleKeyPress for form submission
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Ignored
-			}
-			return w, nil, core.Ignored
-		case tea.KeyTab:
-			// Let bubble to handleKeyPress for navigation
-			return w, nil, core.Ignored
-		}
+func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
 
-		// For other key messages, update the model
-		var cmd tea.Cmd
-		w.model.Model, cmd = w.model.Model.Update(msg)
+func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// 使用通用绑定处理函数
+	wrapper := &inputComponentWrapperAdapter{w}
+	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	return cmd, response, handled
+}
 
-		// Check if value changed
-		newValue := w.model.Value()
-		if oldValue != newValue {
-			cmds = append(cmds, cmd)
-			// Publish value changed event
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
-				"oldValue": oldValue,
-				"newValue": newValue,
-			}))
-			return w, tea.Batch(cmds...), core.Handled
-		}
-		return w, cmd, core.Handled
-	}
-
-	// For other messages, update using the underlying model
-	oldValue := w.model.Value()
+func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
-
-	// Check if value changed
-	newValue := w.model.Value()
-	if oldValue != newValue {
-		// Publish value changed event
-		eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
-			"oldValue": oldValue,
-			"newValue": newValue,
+	
+	// 如果是Enter键，处理后发布事件
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter {
+		w.model.Model, cmd = w.model.Model.Update(msg)
+		
+		// 发布Enter按下事件
+		enterCmd := core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
+			"value": w.model.Model.Value(),
 		})
+		
+		// 如果原始命令存在，批处理两个命令
 		if cmd != nil {
-			return w, tea.Batch(cmd, eventCmd), core.Handled
+			return tea.Batch(enterCmd, cmd)
 		}
-		return w, eventCmd, core.Handled
+		return enterCmd
 	}
-	return w, cmd, core.Handled
+	
+	w.model.Model, cmd = w.model.Model.Update(msg)
+	return cmd
+}
+
+// 实现 StateCapturable 接口
+func (w *InputComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *InputComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEscape:
+		// 失焦处理
+		w.model.Model.Blur()
+		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
+		return cmd, core.Ignored, true
+	}
+
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
 }
 
 func (w *InputComponentWrapper) View() string {
 	return w.model.View()
-}
-
-func (w *InputComponentWrapper) GetID() string {
-	return w.model.id
 }
 
 // GetValue returns the current value of the input component

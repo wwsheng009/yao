@@ -81,41 +81,35 @@ func NewTextareaComponent(config core.RenderConfig, id string) *TextareaComponen
 		}
 	}
 	
-	model := NewTextareaModel(props, id)
-	return &TextareaComponentWrapper{
-		model: &model,
-	}
+	// 直接调用统一的 wrapper 构造函数
+	return NewTextareaComponentWrapper(props, id)
 }
 
 // NewMenuComponent creates a new Menu component wrapper
 func NewMenuComponent(config core.RenderConfig, id string) *MenuComponentWrapper {
 	var props MenuProps
-	
+
 	// Extract props from config
 	if config.Data != nil {
 		if dataMap, ok := config.Data.(map[string]interface{}); ok {
 			props = ParseMenuProps(dataMap)
 		}
 	}
-	
+
 	// Use defaults if no data provided
 	if len(props.Items) == 0 {
 		props = MenuProps{
-			Items:     []MenuItem{},
-			Title:     "",
-			Height:    0,
-			Width:     0,
-			Focused:   false,
+			Items:        []MenuItem{},
+			Title:        "",
+			Height:       0,
+			Width:        0,
+			Focused:       false,
 			ShowStatusBar: true,
 			ShowFilter:    false,
 		}
 	}
-	
-	model := NewMenuInteractiveModel(props)
-	model.ID = id
-	return &MenuComponentWrapper{
-		model: &model,
-	}
+
+	return NewMenuComponentWrapper(props, id)
 }
 
 // NewTableComponent creates a new Table component wrapper
@@ -140,10 +134,8 @@ func NewTableComponent(config core.RenderConfig, id string) *TableComponentWrapp
 		}
 	}
 	
-	model := NewTableModel(props, id)
-	return &TableComponentWrapper{
-		model: &model,
-	}
+	// 直接调用统一的 wrapper 构造函数
+	return NewTableComponentWrapper(props, id)
 }
 
 // NewFormComponent creates a new Form component wrapper
@@ -168,10 +160,8 @@ func NewFormComponent(config core.RenderConfig, id string) *FormComponentWrapper
 		}
 	}
 	
-	model := NewFormModel(props, id)
-	return &FormComponentWrapper{
-		model: &model,
-	}
+	// 直接调用统一的 wrapper 构造函数
+	return NewFormComponentWrapper(props, id)
 }
 
 // NewListComponent creates a new List component wrapper
@@ -260,14 +250,14 @@ func NewViewportComponent(config core.RenderConfig, id string) *ViewportComponen
 // NewChatComponent creates a new Chat component wrapper
 func NewChatComponent(config core.RenderConfig, id string) *ChatComponentWrapper {
 	var props ChatProps
-	
+
 	// Extract props from config
 	if config.Data != nil {
 		if dataMap, ok := config.Data.(map[string]interface{}); ok {
 			props = ParseChatProps(dataMap)
 		}
 	}
-	
+
 	// Use defaults if no data provided
 	if len(props.Messages) == 0 {
 		props = ChatProps{
@@ -281,11 +271,9 @@ func NewChatComponent(config core.RenderConfig, id string) *ChatComponentWrapper
 			InputHeight:     3,
 		}
 	}
-	
+
 	model := NewChatModel(props, id)
-	return &ChatComponentWrapper{
-		model: &model,
-	}
+	return NewChatComponentWrapper(&model)
 }
 
 // NewProgressComponent creates a new Progress component wrapper

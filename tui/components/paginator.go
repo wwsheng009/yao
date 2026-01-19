@@ -47,6 +47,9 @@ type PaginatorProps struct {
 
 	// Focused determines if the paginator is focused
 	Focused bool `json:"focused"`
+	
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // PaginatorModel wraps the paginator.Model to handle TUI integration

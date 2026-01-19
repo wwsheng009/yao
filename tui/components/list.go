@@ -3,6 +3,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -67,6 +68,9 @@ type ListProps struct {
 
 	// Background specifies the background color
 	Background string `json:"background"`
+	
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // ListModel wraps the list.Model to handle TUI integration
@@ -228,13 +232,45 @@ func (m *ListModel) SetFocus(focus bool) {
 // ListComponentWrapper wraps ListModel to implement ComponentInterface properly
 type ListComponentWrapper struct {
 	model *ListModel
+	bindings []core.ComponentBinding
+	stateHelper *core.ListStateHelper
+}
+
+// listIndexerAdapter adapts ListModel to satisfy interface{Index() int}
+type listIndexerAdapter struct {
+	*ListModel
+}
+
+func (a *listIndexerAdapter) Index() int {
+	return a.Model.Index()
+}
+
+// listSelectorAdapter adapts ListModel to satisfy interface{SelectedItem() interface{}}
+type listSelectorAdapter struct {
+	*ListModel
+}
+
+func (a *listSelectorAdapter) SelectedItem() interface{} {
+	return a.Model.SelectedItem()
 }
 
 // NewListComponentWrapper creates a wrapper that implements ComponentInterface
 func NewListComponentWrapper(listModel *ListModel) *ListComponentWrapper {
-	return &ListComponentWrapper{
+	wrapper := &ListComponentWrapper{
 		model: listModel,
+		bindings: listModel.props.Bindings,
 	}
+
+	// 创建适配器来满足接口要求
+	indexerAdapter := &listIndexerAdapter{listModel}
+	selectorAdapter := &listSelectorAdapter{listModel}
+	wrapper.stateHelper = &core.ListStateHelper{
+		Indexer:     indexerAdapter,
+		Selector:    selectorAdapter,
+		Focused:     listModel.props.Focused,
+		ComponentID: listModel.id,
+	}
+	return wrapper
 }
 
 func (w *ListComponentWrapper) Init() tea.Cmd {
@@ -242,74 +278,101 @@ func (w *ListComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
 
-	case tea.KeyMsg:
-		// If list doesn't have focus, ignore all key messages
-		// This allows global bindings (like 'q' for quit) and Tab navigation to work
-		if !w.model.props.Focused {
-			return w, nil, core.Ignored
-		}
+	return w, cmd, response
+}
 
-		oldIndex := w.model.Index()
-		var cmds []tea.Cmd
+// 实现 InteractiveBehavior 接口的方法
 
-		switch msg.Type {
-		case tea.KeyEnter:
-			if selectedItem := w.model.SelectedItem(); selectedItem != nil {
-				item := selectedItem.(ListItem)
-				// Publish item selected event
-				cmds = append(cmds, core.PublishEvent(w.model.id, core.EventMenuItemSelected, map[string]interface{}{
-					"item":  item,
-					"index": w.model.Index(),
-					"title": item.Title,
-					"value": item.Value,
-				}))
-			}
-		case tea.KeyTab:
-			// Let Tab bubble to handleKeyPress for component navigation
-			return w, nil, core.Ignored
-		}
+func (w *ListComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
 
-		// For other key messages, update the model
-		var cmd tea.Cmd
-		w.model.Model, cmd = w.model.Model.Update(msg)
+func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// 创建适配器来实现 ComponentWrapper 接口
+	wrapper := &listComponentWrapperAdapter{w}
+	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	return cmd, response, handled
+}
 
-		// Check if selection changed
-		if w.model.Index() != oldIndex {
-			cmds = append(cmds, cmd)
-			if len(cmds) > 0 {
-				return w, tea.Batch(cmds...), core.Handled
-			}
-		}
-		return w, cmd, core.Handled
-	}
-
-	// For other messages, update using the underlying model
-	oldIndex := w.model.Index()
+func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	w.model.Model, cmd = w.model.Model.Update(msg)
+	return cmd
+}
 
-	// Check if selection changed
-	if w.model.Index() != oldIndex {
-		// Publish selection changed event
-		eventCmd := core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED", map[string]interface{}{
-			"oldIndex": oldIndex,
-			"newIndex": w.model.Index(),
-		})
-		if cmd != nil {
-			return w, tea.Batch(cmd, eventCmd), core.Handled
+// 实现 StateCapturable 接口
+func (w *ListComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *ListComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HasFocus 方法
+func (w *ListComponentWrapper) HasFocus() bool {
+	return w.model.props.Focused
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyEnter:
+		if selectedItem := w.model.Model.SelectedItem(); selectedItem != nil {
+			item := selectedItem.(ListItem)
+			// 发布菜单项选择事件
+			cmd := core.PublishEvent(w.model.id, core.EventMenuItemSelected, map[string]interface{}{
+				"item":  item,
+				"index": w.model.Model.Index(),
+				"title": item.Title,
+				"value": item.Value,
+			})
+			return cmd, core.Handled, true
 		}
-		return w, eventCmd, core.Handled
+	case tea.KeyTab:
+		// 让 Tab 键冒泡以处理组件导航
+		return nil, core.Ignored, true
 	}
-	return w, cmd, core.Handled
+	
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
+
+// listComponentWrapperAdapter 适配器实现 ComponentWrapper 接口
+type listComponentWrapperAdapter struct {
+	*ListComponentWrapper
+}
+
+func (a *listComponentWrapperAdapter) GetModel() interface{} {
+	return a.ListComponentWrapper.model
+}
+
+func (a *listComponentWrapperAdapter) GetID() string {
+	return a.ListComponentWrapper.model.id
+}
+
+func (a *listComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+func (a *listComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
+	// 对于列表组件，返回一个创建 ExecuteActionMsg 的命令
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  a.ListComponentWrapper.model.id,
+			Timestamp: time.Now(),
+		}
+	}
 }
 
 func (w *ListComponentWrapper) View() string {

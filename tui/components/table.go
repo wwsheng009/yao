@@ -3,6 +3,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,6 +58,9 @@ type TableProps struct {
 
 	// SelectedStyle is the style for selected cells
 	SelectedStyle lipglossStyleWrapper `json:"selectedStyle"`
+	
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // TableModel wraps the table.Model to handle TUI integration
@@ -66,6 +70,7 @@ type TableModel struct {
 	data                [][]interface{} // Store the original data
 	id                  string          // Unique identifier for this instance
 	previousSelectedRow int             // Track previous selection for change detection
+	ID                  string          // For component interface
 }
 
 // RenderTable renders a table component
@@ -458,226 +463,231 @@ func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, c
 	return m, cmd, core.Handled
 }
 
+// TableStateHelper 表格组件状态捕获助手
+type TableStateHelper struct {
+	Indexer     interface{ Index() int }
+	Selector    interface{ SelectedItem() interface{} }
+	Focuser     interface{ Focused() bool }
+	ComponentID string
+}
+
+func (h *TableStateHelper) CaptureState() map[string]interface{} {
+	return map[string]interface{}{
+		"index":    h.Indexer.Index(),
+		"selected": h.Selector.SelectedItem(),
+		"focused":  h.Focuser.Focused(),
+	}
+}
+
+func (h *TableStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	var cmds []tea.Cmd
+
+	// 检测索引变化
+	if old["index"] != new["index"] {
+		cmds = append(cmds, core.PublishEvent(h.ComponentID, core.EventRowSelected, map[string]interface{}{
+			"oldIndex": old["index"],
+			"newIndex": new["index"],
+		}))
+	}
+
+	// 检测选中项变化
+	if old["selected"] != new["selected"] {
+		cmds = append(cmds, core.PublishEvent(h.ComponentID, "TABLE_ITEM_SELECTED", map[string]interface{}{
+			"oldSelected": old["selected"],
+			"newSelected": new["selected"],
+		}))
+	}
+
+	// 检测焦点变化
+	if old["focused"] != new["focused"] {
+		cmds = append(cmds, core.PublishEvent(h.ComponentID, core.EventFocusChanged, map[string]interface{}{
+			"focused": new["focused"],
+		}))
+	}
+
+	return cmds
+}
+
 // TableComponentWrapper wraps TableModel to implement ComponentInterface properly
 type TableComponentWrapper struct {
 	model *TableModel
+	bindings []core.ComponentBinding
+	stateHelper *TableStateHelper
 }
 
 // NewTableComponentWrapper creates a wrapper that implements ComponentInterface
-func NewTableComponentWrapper(tableModel *TableModel) *TableComponentWrapper {
-	return &TableComponentWrapper{
-		model: tableModel,
+func NewTableComponentWrapper(props TableProps, id string) *TableComponentWrapper {
+	// 内部创建 model
+	tableModel := NewTableModel(props, id)
+	tableModel.ID = id
+
+	// 完整初始化 wrapper（直接使用 model 而不需要适配器）
+	wrapper := &TableComponentWrapper{
+		model:    &tableModel,
+		bindings: props.Bindings,
+		stateHelper: &TableStateHelper{
+			Indexer:     &tableModel,  // TableModel 实现了 Index() int 方法
+			Selector:    &tableModel, // TableModel 实现了 SelectedItem() interface{} 方法
+			Focuser:     &tableModel, // TableModel 实现了 Focused() bool 方法
+			ComponentID: id,
+		},
 	}
+
+	return wrapper
 }
 
 func (w *TableComponentWrapper) Init() tea.Cmd {
 	return nil
 }
 
-func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
-
-	case tea.KeyMsg:
-		// If not focused, ignore keyboard navigation events
-		if !w.model.Model.Focused() {
-			return w, nil, core.Ignored
-		}
-
-		// Track current selection before update
-		prevSelectedRow := w.model.Model.Cursor()
-
-		// Handle navigation keys explicitly
-		switch msg.Type {
-		case tea.KeyTab:
-			// Let Tab bubble to handleKeyPress for component navigation
-			return w, nil, core.Ignored
-
-		case tea.KeyDown, tea.KeyUp, tea.KeyPgUp, tea.KeyPgDown:
-			// Explicitly handle navigation keys to ensure proper event publishing
-			var cmd tea.Cmd
-			w.model.Model, cmd = w.model.Model.Update(msg)
-
-			// Check if selection changed after navigation
-			currentSelectedRow := w.model.Model.Cursor()
-			if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
-				// Selection changed, publish event
-				// Get row data if available
-				var rowData interface{}
-				rows := w.model.Model.Rows()
-				if currentSelectedRow < len(rows) {
-					rowData = rows[currentSelectedRow]
-				}
-
-				// Publish event with navigation key info
-				eventCmd := core.PublishEvent(
-					w.model.id,
-					core.EventRowSelected,
-					map[string]interface{}{
-						"rowIndex":      currentSelectedRow,
-						"prevRowIndex":  prevSelectedRow,
-						"rowData":       rowData,
-						"tableID":       w.model.id,
-						"navigationKey": msg.String(),
-						"isNavigation":  true,
-					},
-				)
-
-				// Combine commands if we have an existing cmd
-				if cmd != nil {
-					cmd = tea.Batch(cmd, eventCmd)
-				} else {
-					cmd = eventCmd
-				}
-			}
-
-			return w, cmd, core.Handled
-
-		case tea.KeyEnter:
-			// Handle Enter key for row selection confirmation
-			currentSelectedRow := w.model.Model.Cursor()
-			if currentSelectedRow >= 0 {
-				// Get row data if available
-				var rowData interface{}
-				rows := w.model.Model.Rows()
-				if currentSelectedRow < len(rows) {
-					rowData = rows[currentSelectedRow]
-				}
-
-				// Publish row double-click / enter pressed event
-				eventCmd := core.PublishEvent(
-					w.model.id,
-					core.EventRowDoubleClicked,
-					map[string]interface{}{
-						"rowIndex": currentSelectedRow,
-						"rowData":  rowData,
-						"tableID":  w.model.id,
-						"trigger":  "enter_key",
-					},
-				)
-
-				return w, eventCmd, core.Handled
-			}
-			return w, nil, core.Handled
-
-		default:
-			// For other key messages, update normally and check for selection changes
-			var cmd tea.Cmd
-			w.model.Model, cmd = w.model.Model.Update(msg)
-
-			// Check if selection changed
-			currentSelectedRow := w.model.Model.Cursor()
-			if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
-				// Selection changed, publish event
-				// Get row data if available
-				var rowData interface{}
-				rows := w.model.Model.Rows()
-				if currentSelectedRow < len(rows) {
-					rowData = rows[currentSelectedRow]
-				}
-
-				eventCmd := core.PublishEvent(
-					w.model.id,
-					core.EventRowSelected,
-					map[string]interface{}{
-						"rowIndex": currentSelectedRow,
-						"rowData":  rowData,
-						"tableID":  w.model.id,
-					},
-				)
-
-				// Combine commands if we have an existing cmd
-				if cmd != nil {
-					cmd = tea.Batch(cmd, eventCmd)
-				} else {
-					cmd = eventCmd
-				}
-			}
-
-			return w, cmd, core.Handled
-		}
-	}
-
-	// For non-key messages, update using the underlying model
-	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
-	return w, cmd, core.Handled
+// GetModel returns the underlying model
+func (w *TableComponentWrapper) GetModel() interface{} {
+	return w.model
 }
 
-func (w *TableComponentWrapper) View() string {
-	return w.model.View()
-}
-
+// GetID returns the component ID
 func (w *TableComponentWrapper) GetID() string {
 	return w.model.id
 }
 
-// SetFocus sets or removes focus from table component
-func (m *TableModel) SetFocus(focus bool) {
-	if focus {
-		m.Model.Focus()
-	} else {
-		m.Model.Blur()
+// View returns the view of the component
+func (w *TableComponentWrapper) View() string {
+	return w.model.View()
+}
+
+// PublishEvent creates and returns a command to publish an event
+func (w *TableComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *TableComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For table component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.model.id,
+			Timestamp: time.Now(),
+		}
 	}
 }
 
+// tableComponentWrapperAdapter adapts TableComponentWrapper to implement core.ComponentWrapper interface
+type tableComponentWrapperAdapter struct {
+	*TableComponentWrapper
+}
+
+func (a *tableComponentWrapperAdapter) GetModel() interface{} {
+	return a.TableComponentWrapper.model
+}
+
+func (a *tableComponentWrapperAdapter) GetID() string {
+	return a.TableComponentWrapper.model.id
+}
+
+func (a *tableComponentWrapperAdapter) View() string {
+	return a.TableComponentWrapper.model.View()
+}
+
+func (a *tableComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+func (a *tableComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
+	return a.TableComponentWrapper.ExecuteAction(action)
+}
+
+func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
+
+	return w, cmd, response
+}
+
+// 实现 InteractiveBehavior 接口的方法
+
+func (w *TableComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
+
+func (w *TableComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// 创建适配器来实现 ComponentWrapper 接口
+	wrapper := &tableComponentWrapperAdapter{w}
+	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	return cmd, response, handled
+}
+
+func (w *TableComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	w.model.Model, cmd = w.model.Model.Update(msg)
+	return cmd
+}
+
+// 实现 StateCapturable 接口
+func (w *TableComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *TableComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HasFocus 方法
+func (w *TableComponentWrapper) HasFocus() bool {
+	return w.model.Model.Focused()
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	case tea.KeyEnter:
+		// Handle Enter key for row selection confirmation
+		currentSelectedRow := w.model.Model.Cursor()
+		if currentSelectedRow >= 0 {
+			// Get row data if available
+			var rowData interface{}
+			rows := w.model.Model.Rows()
+			if currentSelectedRow < len(rows) {
+				rowData = rows[currentSelectedRow]
+			}
+
+			// Publish row double-click / enter pressed event
+			eventCmd := core.PublishEvent(
+				w.model.id,
+				core.EventRowDoubleClicked,
+				map[string]interface{}{
+					"rowIndex": currentSelectedRow,
+					"rowData":  rowData,
+					"tableID":  w.model.id,
+					"trigger":  "enter_key",
+				},
+			)
+			
+			return eventCmd, core.Handled, true
+		}
+		return nil, core.Handled, true
+	}
+
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
+}
+
+// SetFocus sets or removes focus from table component
 func (w *TableComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
 }
 
 func (w *TableComponentWrapper) GetComponentType() string {
 	return "table"
-}
-
-// UpdateRenderConfig updates the render configuration without recreating the instance
-func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
-	propsMap, ok := config.Data.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("TableModel: invalid data type")
-	}
-
-	newProps := ParseTableProps(propsMap)
-	oldProps := m.props
-
-	// Determine if we need to rebuild the model
-	if m.shouldRebuildModel(oldProps, newProps) {
-		// Completely rebuild table model
-		return m.rebuildTableModel(newProps)
-	}
-
-	// Perform lightweight update
-	return m.lightweightUpdate(oldProps, newProps)
-}
-
-// Cleanup 清理资源
-func (m *TableModel) Cleanup() {
-	// TableModel 通常不需要特殊清理操作
-}
-
-// GetStateChanges returns the state changes from this component
-func (m *TableModel) GetStateChanges() (map[string]interface{}, bool) {
-	// Table state is managed by the wrapper
-	return nil, false
-}
-
-// GetSubscribedMessageTypes returns the message types this component subscribes to
-func (m *TableModel) GetSubscribedMessageTypes() []string {
-	return []string{
-		"tea.KeyMsg",
-	}
-}
-
-func (m *TableModel) Render(config core.RenderConfig) (string, error) {
-	// This method is kept for backward compatibility
-	// It now delegates to UpdateRenderConfig
-	_ = m.UpdateRenderConfig(config)
-	return m.View(), nil
 }
 
 func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
@@ -717,6 +727,141 @@ func (w *TableComponentWrapper) GetSubscribedMessageTypes() []string {
 		"tea.KeyMsg",
 		"core.TargetedMsg",
 	}
+}
+
+// SetFocus sets or removes focus from table component
+func (m *TableModel) SetFocus(focus bool) {
+	if focus {
+		m.Model.Focus()
+	} else {
+		m.Model.Blur()
+	}
+}
+
+func (m *TableModel) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("TableModel: invalid data type")
+	}
+
+	// Parse table properties
+	props := ParseTableProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Return rendered view
+	return m.View(), nil
+}
+
+// UpdateRenderConfig updates the render configuration without recreating the instance
+func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("TableModel: invalid data type for UpdateRenderConfig")
+	}
+
+	// Parse table properties
+	props := ParseTableProps(propsMap)
+
+	// Update component properties
+	m.props = props
+
+	// Update table data if provided
+	if props.Data != nil {
+		rows := make([]table.Row, 0, len(props.Data))
+		for _, rowData := range props.Data {
+			// Skip rows that don't match column count
+			if len(rowData) != len(props.Columns) {
+				continue
+			}
+			row := make([]string, len(rowData))
+			for j, cell := range rowData {
+				// Apply column-specific style if defined, otherwise use default formatting
+				if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+					row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
+				} else {
+					row[j] = formatCell(cell)
+				}
+			}
+			rows = append(rows, row)
+		}
+		m.Model.SetRows(rows)
+		m.data = props.Data
+	}
+
+	// Update dimensions if changed
+	if m.props.Width > 0 {
+		m.Model.SetWidth(m.props.Width)
+	}
+	if m.props.Height > 0 {
+		m.Model.SetHeight(m.props.Height)
+	}
+
+	// Update focus if changed
+	if m.props.Focused {
+		m.Model.Focus()
+	} else {
+		m.Model.Blur()
+	}
+
+	return nil
+}
+
+// Cleanup 清理资源
+func (m *TableModel) Cleanup() {
+	// TableModel 通常不需要特殊清理操作
+}
+
+// GetStateChanges returns the state changes from this component
+func (m *TableModel) GetStateChanges() (map[string]interface{}, bool) {
+	selectedRow := m.Model.Cursor()
+	rows := m.Model.Rows()
+
+	rowData := interface{}(nil)
+	if selectedRow >= 0 && selectedRow < len(rows) {
+		rowData = rows[selectedRow]
+	}
+
+	return map[string]interface{}{
+		m.GetID() + "_selected_row":  selectedRow,
+		m.GetID() + "_selected_data": rowData,
+	}, len(rows) > 0 && selectedRow >= 0
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (m *TableModel) GetSubscribedMessageTypes() []string {
+	return []string{
+		"tea.KeyMsg",
+		"core.TargetedMsg",
+	}
+}
+
+// Index returns the current cursor position
+func (m *TableModel) Index() int {
+	return m.Model.Cursor()
+}
+
+// SelectedItem returns the currently selected item
+func (m *TableModel) SelectedItem() interface{} {
+	cursor := m.Model.Cursor()
+	rows := m.Model.Rows()
+	if cursor >= 0 && cursor < len(rows) {
+		return rows[cursor]
+	}
+	return nil
+}
+
+// GetSelected returns the currently selected item and whether anything is selected
+func (m *TableModel) GetSelected() (interface{}, bool) {
+	item := m.SelectedItem()
+	return item, item != nil
+}
+
+// Focused returns whether the table is focused
+func (m *TableModel) Focused() bool {
+	return m.Model.Focused()
 }
 
 // shouldRebuildModel determines if the table model needs to be rebuilt

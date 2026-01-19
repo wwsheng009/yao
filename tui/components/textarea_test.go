@@ -14,8 +14,7 @@ func TestTextareaComponentWrapperHasFocus(t *testing.T) {
 		Placeholder: "Enter text...",
 		Disabled:    false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Initially focused
 	assert.True(t, wrapper.HasFocus(), "Textarea should be initially focused")
@@ -34,8 +33,7 @@ func TestTextareaComponentWrapperUpdateMsg(t *testing.T) {
 		Placeholder: "Enter text...",
 		Disabled:    false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Test ESC key when focused
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -60,8 +58,7 @@ func TestTextareaComponentWrapperGetValue(t *testing.T) {
 		Value:    "Initial value",
 		Disabled: false,
 	}
-	model := NewTextareaModel(props, "test-textarea")
-	wrapper := NewTextareaComponentWrapper(&model)
+	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	assert.Equal(t, "Initial value", wrapper.GetValue(), "Should return initial value")
 

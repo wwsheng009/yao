@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -80,6 +81,9 @@ type FormProps struct {
 
 	// ButtonStyle is the style for buttons
 	ButtonStyle lipglossStyleWrapper `json:"buttonStyle"`
+
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // FormModel represents a form model for interactive forms
@@ -91,6 +95,40 @@ type FormModel struct {
 	Validated  bool
 	focused    bool   // Whether the form has focus
 	id         string // Unique identifier for this instance
+	ID         string // For component interface
+}
+
+// FormStateHelper 表单组件状态捕获助手
+type FormStateHelper struct {
+	Valuer      interface{ GetValue() string }
+	Focuser     interface{ Focused() bool }
+	ComponentID string
+}
+
+func (h *FormStateHelper) CaptureState() map[string]interface{} {
+	return map[string]interface{}{
+		"value":   h.Valuer.GetValue(),
+		"focused": h.Focuser.Focused(),
+	}
+}
+
+func (h *FormStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	var cmds []tea.Cmd
+
+	if old["value"] != new["value"] {
+		cmds = append(cmds, core.PublishEvent(h.ComponentID, core.EventInputValueChanged, map[string]interface{}{
+			"oldValue": old["value"],
+			"newValue": new["value"],
+		}))
+	}
+
+	if old["focused"] != new["focused"] {
+		cmds = append(cmds, core.PublishEvent(h.ComponentID, core.EventInputFocusChanged, map[string]interface{}{
+			"focused": new["focused"],
+		}))
+	}
+
+	return cmds
 }
 
 // RenderForm renders a form component
@@ -261,6 +299,7 @@ func NewFormModel(props FormProps, id string) FormModel {
 		Validated:  false,
 		focused:    false,
 		id:         id,
+		ID:         id,
 	}
 }
 
@@ -318,15 +357,53 @@ func (m *FormModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, co
 	return m, nil, core.Ignored
 }
 
+// GetModel returns the underlying model
+func (w *FormComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+// GetID returns the component ID
+func (w *FormComponentWrapper) GetID() string {
+	return w.model.id
+}
+
+// PublishEvent creates and returns a command to publish an event
+func (w *FormComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+// ExecuteAction executes an action
+func (w *FormComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// For form component, we return a command that creates an ExecuteActionMsg
+	return func() tea.Msg {
+		return core.ExecuteActionMsg{
+			Action:    action,
+			SourceID:  w.model.id,
+			Timestamp: time.Now(),
+		}
+	}
+}
+
 // FormComponentWrapper wraps FormModel to implement ComponentInterface properly
 type FormComponentWrapper struct {
-	model *FormModel
+	model     *FormModel
+	bindings  []core.ComponentBinding
+	stateHelper *FormStateHelper
 }
 
 // NewFormComponentWrapper creates a wrapper that implements ComponentInterface
-func NewFormComponentWrapper(formModel *FormModel) *FormComponentWrapper {
+func NewFormComponentWrapper(props FormProps, id string) *FormComponentWrapper {
+	formModel := NewFormModel(props, id)
+	formModel.ID = id
+
 	return &FormComponentWrapper{
-		model: formModel,
+		model: &formModel,
+		bindings: props.Bindings,
+		stateHelper: &FormStateHelper{
+			Valuer:      &formModel,
+			Focuser:     &formModel,
+			ComponentID: id,
+		},
 	}
 }
 
@@ -335,65 +412,97 @@ func (w *FormComponentWrapper) Init() tea.Cmd {
 }
 
 func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle key press events
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                           // 实现了 InteractiveBehavior 接口的组件
+		msg,                         // 接收的消息
+		w.getBindings,              // 获取按键绑定的函数
+		w.handleBinding,            // 处理按键绑定的函数
+		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+	)
+
+	return w, cmd, response
+}
+
+// 实现 InteractiveBehavior 接口的方法
+func (w *FormComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
+
+func (w *FormComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	// FormComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
+
+func (w *FormComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+
+	// Handle key press events for navigation and submission
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		// If form doesn't have focus, ignore all key messages
 		// This allows global bindings (like 'q' for quit) and Tab navigation to work
 		if !w.model.focused {
-			return w, nil, core.Ignored
+			return nil
 		}
 
 		switch msg.Type {
-		case tea.KeyEsc:
-			// Publish FORM_CANCEL event when ESC is pressed
-			cancelCmd := core.PublishEvent(
-				w.model.id,
-				core.EventFormCancel,
-				map[string]interface{}{
-					"formID": w.model.id,
-					"reason": "user_pressed_esc",
-				},
-			)
-			return w, cancelCmd, core.Handled
 		case tea.KeyEnter:
-			// Let Enter bubble to handleKeyPress for form submission
-			return w, nil, core.Ignored
+			// Form submission - bubble to parent to handle
+			return nil
+		case tea.KeyEsc:
+			// Cancel form - bubble to parent
+			return nil
 		case tea.KeyTab:
 			// Let Tab bubble to handleKeyPress for component navigation
-			return w, nil, core.Ignored
-		}
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
-	case core.ActionMsg:
-		// Handle internal action messages
-		if msg.Action == core.EventFormSubmitSuccess {
-			// Reset focus and values after successful submission
-			w.model.Values = make(map[string]string)
-			w.model.focusIndex = 0
-			return w, nil, core.Handled
-		}
-		if msg.Action == core.EventFormCancel {
-			// Clear form on cancel
-			w.model.Values = make(map[string]string)
-			return w, nil, core.Handled
+			return nil
+		case tea.KeyUp:
+			// Navigate to previous field
+			if w.model.focusIndex > 0 {
+				w.model.focusIndex--
+			}
+			return nil
+		case tea.KeyDown:
+			// Navigate to next field
+			if w.model.focusIndex < len(w.model.props.Fields)-1 {
+				w.model.focusIndex++
+			}
+			return nil
 		}
 	}
 
-	// Default: ignore message
-	return w, nil, core.Ignored
+	return cmd
+}
+
+// 实现 StateCapturable 接口
+func (w *FormComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *FormComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HasFocus 方法
+func (w *FormComponentWrapper) HasFocus() bool {
+	return w.model.focused
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *FormComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	switch keyMsg.Type {
+	case tea.KeyTab:
+		// 让Tab键冒泡以处理组件导航
+		return nil, core.Ignored, true
+	}
+
+	// 其他按键不由这个函数处理
+	return nil, core.Ignored, false
 }
 
 func (w *FormComponentWrapper) View() string {
 	return w.model.View()
-}
-
-func (w *FormComponentWrapper) GetID() string {
-	return w.model.id
 }
 
 // SetFocus sets or removes focus from form component
@@ -496,6 +605,20 @@ func (w *FormComponentWrapper) GetSubscribedMessageTypes() []string {
 	return []string{
 		"tea.KeyMsg",
 		"core.TargetedMsg",
-		"core.ActionMsg",
 	}
+}
+
+// GetValue returns the current value of the form component
+func (m *FormModel) GetValue() string {
+	// Return a string representation of the form values
+	var sb strings.Builder
+	for key, value := range m.Values {
+		sb.WriteString(fmt.Sprintf("%s=%s\n", key, value))
+	}
+	return sb.String()
+}
+
+// Focused returns whether the form is focused
+func (m *FormModel) Focused() bool {
+	return m.focused
 }
