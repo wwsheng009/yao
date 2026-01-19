@@ -3,12 +3,12 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -58,7 +58,7 @@ type TableProps struct {
 
 	// SelectedStyle is the style for selected cells
 	SelectedStyle lipglossStyleWrapper `json:"selectedStyle"`
-	
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
@@ -80,38 +80,9 @@ func RenderTable(props TableProps, width int) string {
 		return ""
 	}
 
-	// Prepare columns
-	columns := make([]table.Column, len(props.Columns))
-	for i, col := range props.Columns {
-		colWidth := col.Width
-		if colWidth <= 0 {
-			// Calculate reasonable default width
-			colWidth = 10
-		}
-		columns[i] = table.Column{
-			Title: col.Title,
-			Width: colWidth,
-		}
-	}
-
-	// Prepare rows with validation (no column-specific styling to avoid ANSI conflicts)
-	rows := make([]table.Row, 0, len(props.Data))
-	for _, rowData := range props.Data {
-		// Skip rows that don't match column count
-		if len(rowData) != len(props.Columns) {
-			continue
-		}
-		row := make([]string, len(rowData))
-		for j, cell := range rowData {
-			// Apply column-specific style if defined, otherwise use default formatting
-			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
-			} else {
-				row[j] = formatCell(cell)
-			}
-		}
-		rows = append(rows, row)
-	}
+	// Build table configuration using helper functions
+	columns := buildTableColumns(props.Columns)
+	rows := buildTableRows(props.Data, props.Columns)
 
 	// Create table model
 	t := table.New(
@@ -121,42 +92,7 @@ func RenderTable(props TableProps, width int) string {
 	)
 
 	// Apply styles
-	headerStyle := props.HeaderStyle.GetStyle()
-	cellStyle := props.CellStyle.GetStyle()
-	selectedStyle := props.SelectedStyle.GetStyle()
-
-	// Set default styles if not provided for better visibility
-	if headerStyle.String() == lipgloss.NewStyle().String() {
-		headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("214")) // Light orange
-	}
-	if cellStyle.String() == lipgloss.NewStyle().String() {
-		cellStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")) // Dark gray
-	}
-	if selectedStyle.String() == lipgloss.NewStyle().String() {
-		// High-contrast selected style for better visibility
-		selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("231")). // Black
-			Background(lipgloss.Color("39")).  // Light blue background
-			Underline(true)
-	}
-
-	if props.ShowBorder {
-		t.SetStyles(table.Styles{
-			Header: headerStyle,
-			// Cell:     cellStyle,
-			Selected: selectedStyle,
-		})
-	} else {
-		s := table.DefaultStyles()
-		s.Header = headerStyle
-		s.Cell = cellStyle
-		s.Selected = selectedStyle
-		t.SetStyles(s)
-	}
+	applyTableStyles(&t, props)
 
 	// Set size if specified
 	if props.Width > 0 {
@@ -271,57 +207,53 @@ func formatCell(cell interface{}) string {
 	return fmt.Sprintf("%v", cell)
 }
 
-// createNativeTableModel creates a new native table.Model from TableProps
-func createNativeTableModel(props TableProps) table.Model {
-	// Validate input: ensure we have columns
-	if len(props.Columns) == 0 {
-		return table.New()
-	}
+// ============================================================================
+// Helper Functions - Extract common logic for code reuse
+// ============================================================================
 
-	// Prepare columns
-	columns := make([]table.Column, len(props.Columns))
-	for i, col := range props.Columns {
+// buildTableColumns builds table columns from column definitions
+func buildTableColumns(columns []Column) []table.Column {
+	result := make([]table.Column, len(columns))
+	for i, col := range columns {
 		colWidth := col.Width
 		if colWidth <= 0 {
-			// Calculate reasonable default width
-			colWidth = 10
+			colWidth = 10 // Default width
 		}
-		columns[i] = table.Column{
+		result[i] = table.Column{
 			Title: col.Title,
 			Width: colWidth,
 		}
 	}
+	return result
+}
 
-	// Prepare rows with validation and column-specific styling
-	rows := make([]table.Row, 0, len(props.Data))
-	for _, rowData := range props.Data {
+// buildTableRows builds table rows from data and column definitions
+func buildTableRows(data [][]interface{}, columns []Column) []table.Row {
+	rows := make([]table.Row, 0, len(data))
+	for _, rowData := range data {
 		// Skip rows that don't match column count
-		if len(rowData) != len(props.Columns) {
+		if len(rowData) != len(columns) {
 			continue
 		}
 		row := make([]string, len(rowData))
 		for j, cell := range rowData {
 			// Apply column-specific style if defined, otherwise use default formatting
-			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
+			if j < len(columns) && columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
+				row[j] = columns[j].Style.GetStyle().Render(formatCell(cell))
 			} else {
 				row[j] = formatCell(cell)
 			}
 		}
 		rows = append(rows, row)
 	}
+	return rows
+}
 
-	// Create table model
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(props.Focused),
-	)
-
-	// Apply styles
-	headerStyle := props.HeaderStyle.GetStyle()
-	cellStyle := props.CellStyle.GetStyle()
-	selectedStyle := props.SelectedStyle.GetStyle()
+// buildTableStyles builds table styles from props
+func buildTableStyles(props TableProps) (headerStyle, cellStyle, selectedStyle lipgloss.Style) {
+	headerStyle = props.HeaderStyle.GetStyle()
+	cellStyle = props.CellStyle.GetStyle()
+	selectedStyle = props.SelectedStyle.GetStyle()
 
 	// Set default styles if not provided for better visibility
 	if headerStyle.String() == lipgloss.NewStyle().String() {
@@ -342,6 +274,13 @@ func createNativeTableModel(props TableProps) table.Model {
 			Underline(true)
 	}
 
+	return
+}
+
+// applyTableStyles applies styles to a table model
+func applyTableStyles(t *table.Model, props TableProps) {
+	headerStyle, cellStyle, selectedStyle := buildTableStyles(props)
+
 	if props.ShowBorder {
 		t.SetStyles(table.Styles{
 			Header: headerStyle,
@@ -355,14 +294,96 @@ func createNativeTableModel(props TableProps) table.Model {
 		s.Selected = selectedStyle
 		t.SetStyles(s)
 	}
+}
 
-	// Set size if specified
+// applyTableDimensions applies width and height to a table model
+func applyTableDimensions(t *table.Model, width, height int) {
+	if width > 0 {
+		t.SetWidth(width)
+	}
+	if height > 0 {
+		t.SetHeight(height)
+	}
+}
+
+// ============================================================================
+// Update Functions - For updating existing table models without recreation
+// ============================================================================
+
+// updateTableModelData updates table data without recreating the model
+func updateTableModelData(model *table.Model, data [][]interface{}, columns []Column) {
+	if data == nil {
+		return
+	}
+
+	// Save current cursor position to restore after update
+	oldCursor := model.Cursor()
+
+	// Build new rows
+	rows := buildTableRows(data, columns)
+
+	// Update model with new rows
+	model.SetRows(rows)
+
+	// Restore cursor position if still valid
+	if oldCursor >= 0 && oldCursor < len(rows) {
+		// model.SetCursor(oldCursor) - Note: bubbles/table doesn't have SetCursor
+		// The cursor position is automatically adjusted by the library
+	}
+}
+
+// updateTableModelStyles updates table styles without recreating the model
+func updateTableModelStyles(model *table.Model, props TableProps) {
+	applyTableStyles(model, props)
+}
+
+// updateTableModelDimensions updates table dimensions without recreating the model
+func updateTableModelDimensions(model *table.Model, props TableProps) {
 	if props.Width > 0 {
-		t.SetWidth(props.Width)
+		model.SetWidth(props.Width)
 	}
 	if props.Height > 0 {
-		t.SetHeight(props.Height)
+		model.SetHeight(props.Height)
 	}
+}
+
+// updateTableModelFocus updates table focus state without recreating the model
+func updateTableModelFocus(model *table.Model, focused bool) {
+	if focused {
+		model.Focus()
+	} else {
+		model.Blur()
+	}
+}
+
+// ============================================================================
+// Core Table Creation Functions
+// ============================================================================
+
+// createNativeTableModel creates a new native table.Model from TableProps
+// This function should ONLY be called during initialization, not during updates
+func createNativeTableModel(props TableProps) table.Model {
+	// Validate input: ensure we have columns
+	if len(props.Columns) == 0 {
+		return table.New()
+	}
+
+	// Build table configuration using helper functions
+	columns := buildTableColumns(props.Columns)
+	rows := buildTableRows(props.Data, props.Columns)
+
+	// Create table model
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(props.Focused),
+	)
+
+	// Apply styles
+	applyTableStyles(&t, props)
+
+	// Set size if specified
+	applyTableDimensions(&t, props.Width, props.Height)
 
 	return t
 }
@@ -380,102 +401,20 @@ func HandleTableUpdate(msg tea.Msg, tableModel *TableModel) (TableModel, tea.Cmd
 }
 
 // NewTableModel creates a new TableModel from TableProps
+// This function now uses createNativeTableModel to avoid code duplication
 func NewTableModel(props TableProps, id string) TableModel {
 	// Validate input: ensure we have columns
 	if len(props.Columns) == 0 {
 		return TableModel{props: props, id: id}
 	}
 
-	// Prepare columns
-	columns := make([]table.Column, len(props.Columns))
-	for i, col := range props.Columns {
-		colWidth := col.Width
-		if colWidth <= 0 {
-			// Calculate reasonable default width
-			colWidth = 10
-		}
-		columns[i] = table.Column{
-			Title: col.Title,
-			Width: colWidth,
-		}
-	}
-
-	// Prepare rows with validation and column-specific styling
-	rows := make([]table.Row, 0, len(props.Data))
-	for _, rowData := range props.Data {
-		// Skip rows that don't match column count
-		if len(rowData) != len(props.Columns) {
-			continue
-		}
-		row := make([]string, len(rowData))
-		for j, cell := range rowData {
-			// Apply column-specific style if defined, otherwise use default formatting
-			if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-				row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
-			} else {
-				row[j] = formatCell(cell)
-			}
-		}
-		rows = append(rows, row)
-	}
-
-	// Create table model
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(props.Focused),
-	)
-
-	// Apply styles
-	headerStyle := props.HeaderStyle.GetStyle()
-	cellStyle := props.CellStyle.GetStyle()
-	selectedStyle := props.SelectedStyle.GetStyle()
-
-	// Set default styles if not provided for better visibility
-	if headerStyle.String() == lipgloss.NewStyle().String() {
-		headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("214")) // Light orange
-	}
-	if cellStyle.String() == lipgloss.NewStyle().String() {
-		cellStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")) // Dark gray
-	}
-	if selectedStyle.String() == lipgloss.NewStyle().String() {
-		// High-contrast selected style for better visibility
-		selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("231")). // Black
-			Background(lipgloss.Color("39")).  // Light blue background
-			Underline(true)
-	}
-
-	if props.ShowBorder {
-		t.SetStyles(table.Styles{
-			Header: headerStyle,
-			// Cell:     cellStyle,
-			Selected: selectedStyle,
-		})
-	} else {
-		s := table.DefaultStyles()
-		s.Header = headerStyle
-		s.Cell = cellStyle
-		s.Selected = selectedStyle
-		t.SetStyles(s)
-	}
-
-	// Set size if specified
-	if props.Width > 0 {
-		t.SetWidth(props.Width)
-	}
-	if props.Height > 0 {
-		t.SetHeight(props.Height)
-	}
+	// Create native table model
+	t := createNativeTableModel(props)
 
 	return TableModel{
 		Model: t,
 		props: props,
-		data:  props.Data, // Initialize with provided data
+		data:  props.Data,
 		id:    id,
 	}
 }
@@ -587,7 +526,7 @@ func (h *TableStateHelper) DetectStateChanges(old, new map[string]interface{}) [
 	}
 
 	// 检测选中项变化
-	if old["selected"] != new["selected"] {
+	if !compareRows(old["selected"], new["selected"]) {
 		cmds = append(cmds, core.PublishEvent(h.ComponentID, "TABLE_ITEM_SELECTED", map[string]interface{}{
 			"oldSelected": old["selected"],
 			"newSelected": new["selected"],
@@ -604,12 +543,74 @@ func (h *TableStateHelper) DetectStateChanges(old, new map[string]interface{}) [
 	return cmds
 }
 
+// compareRows compares two potentially nil row values
+func compareRows(a, b interface{}) bool {
+	// If both are nil, they are equal
+	if a == nil && b == nil {
+		return true
+	}
+	// If one is nil and the other isn't, they are not equal
+	if a == nil || b == nil {
+		return false
+	}
+	// Try to cast both to []string for comparison
+	rowA, okA := a.([]string)
+	rowB, okB := b.([]string)
+	if okA && okB {
+		// Compare lengths first
+		if len(rowA) != len(rowB) {
+			return false
+		}
+		// Compare each element
+		for i := range rowA {
+			if rowA[i] != rowB[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	// For other types, use reflection to check if they are comparable
+	// and handle comparison safely
+	return safeCompare(a, b)
+}
+
+// safeCompare compares two values safely, avoiding panic on uncomparable types
+func safeCompare(a, b interface{}) bool {
+	// If types are different, they cannot be equal
+	if reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+
+	// Use reflection to check if the types are comparable
+	// If not, we consider them unequal rather than panicking
+	valA := reflect.ValueOf(a)
+	valB := reflect.ValueOf(b)
+
+	if valA.Kind() != valB.Kind() {
+		return false
+	}
+
+	// If either value is not valid, they are not equal
+	if !valA.IsValid() || !valB.IsValid() {
+		return false
+	}
+
+	// Check if the type is comparable using reflection
+	if valA.Type().Comparable() {
+		return a == b
+	}
+
+	// For uncomparable types, return false instead of panicking
+	return false
+}
+
 // TableComponentWrapper wraps the native table.Model to implement ComponentInterface properly
 type TableComponentWrapper struct {
-	model    table.Model
-	props    TableProps
-	id       string
-	bindings []core.ComponentBinding
+	model       table.Model
+	props       TableProps
+	id          string
+	bindings    []core.ComponentBinding
 	stateHelper *TableStateHelper
 }
 
@@ -617,7 +618,7 @@ type TableComponentWrapper struct {
 func NewTableComponentWrapper(props TableProps, id string) *TableComponentWrapper {
 	// 创建原生 table.Model
 	nativeModel := createNativeTableModel(props)
-	
+
 	// 初始化 wrapper，直接使用原生模型
 	wrapper := &TableComponentWrapper{
 		model:    nativeModel,
@@ -625,7 +626,7 @@ func NewTableComponentWrapper(props TableProps, id string) *TableComponentWrappe
 		id:       id,
 		bindings: props.Bindings,
 	}
-	
+
 	// 初始化 stateHelper，使用 wrapper 自身
 	wrapper.stateHelper = &TableStateHelper{
 		Indexer:     wrapper, // wrapper 自己实现 Index() 方法
@@ -633,7 +634,7 @@ func NewTableComponentWrapper(props TableProps, id string) *TableComponentWrappe
 		Focuser:     wrapper, // wrapper 自己实现 Focused() 方法
 		ComponentID: id,
 	}
-	
+
 	return wrapper
 }
 
@@ -663,10 +664,13 @@ func (w *TableComponentWrapper) Focused() bool {
 
 // SetFocus sets or removes focus from table component
 func (w *TableComponentWrapper) SetFocus(focus bool) {
-	if focus {
-		w.model.Focus()
-	} else {
-		w.model.Blur()
+	currentFocus := w.model.Focused()
+	if focus != currentFocus {
+		if focus {
+			w.model.Focus()
+		} else {
+			w.model.Blur()
+		}
 	}
 }
 
@@ -716,16 +720,14 @@ func (w *TableComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	}
 }
 
-
-
 func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -791,7 +793,7 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 					"trigger":  "enter_key",
 				},
 			)
-			
+
 			return eventCmd, core.Handled, true
 		}
 		return nil, core.Handled, true
@@ -801,31 +803,33 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 	return nil, core.Ignored, false
 }
 
-
-
 func (w *TableComponentWrapper) GetComponentType() string {
 	return "table"
 }
 
 // Render renders the table component
+// REFACTORED: Now uses update functions instead of recreating the table
 func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	// Apply new configuration to the table model
+	// Parse configuration
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
 		return "", fmt.Errorf("TableComponentWrapper: invalid data type")
 	}
 	props := ParseTableProps(propsMap)
-	
-	// Update the model with new data
-	nativeModel := createNativeTableModel(props)
-	w.model = nativeModel
+
+	// Update the existing model instead of recreating it
+	updateTableModelData(&w.model, props.Data, props.Columns)
+	updateTableModelStyles(&w.model, props)
+	updateTableModelDimensions(&w.model, props)
+	// updateTableModelFocus(&w.model, props.Focused)
 	w.props = props
-	
+
 	// Return the view
 	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
+// REFACTORED: Now uses update functions for cleaner code
 func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
@@ -838,43 +842,12 @@ func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	// Update component properties
 	w.props = props
 
-	// Update table data if provided
-	if props.Data != nil {
-		r := make([]table.Row, 0, len(props.Data))
-		for _, rowData := range props.Data {
-			// Skip rows that don't match column count
-			if len(rowData) != len(props.Columns) {
-				continue
-			}
-			row := make([]string, len(rowData))
-			for j, cell := range rowData {
-				// Apply column-specific style if defined, otherwise use default formatting
-				if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-					row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
-				} else {
-					row[j] = formatCell(cell)
-				}
-			}
-			r = append(r, row)
-		}
-		w.model.SetRows(r)
-	}
-
-	// Update dimensions if changed
-	if w.props.Width > 0 {
-		w.model.SetWidth(w.props.Width)
-	}
-	if w.props.Height > 0 {
-		w.model.SetHeight(w.props.Height)
-	}
-
-	// Update focus if changed
-	// Note: Focus should be handled by Init() or Update() methods, not in UpdateRenderConfig
-	if w.props.Focused {
-		// Do not call Focus() here, it should be handled by Init() method
-	} else {
-		w.model.Blur()
-	}
+	// Update table data, styles, dimensions, and focus using helper functions
+	updateTableModelData(&w.model, props.Data, props.Columns)
+	updateTableModelStyles(&w.model, props)
+	updateTableModelDimensions(&w.model, props)
+	// don't update the focused property
+	// updateTableModelFocus(&w.model, props.Focused)
 
 	return nil
 }
@@ -940,6 +913,7 @@ func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
+// REFACTORED: Now uses update functions for cleaner code
 func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
@@ -952,44 +926,12 @@ func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// Update component properties
 	m.props = props
 
-	// Update table data if provided
-	if props.Data != nil {
-		rows := make([]table.Row, 0, len(props.Data))
-		for _, rowData := range props.Data {
-			// Skip rows that don't match column count
-			if len(rowData) != len(props.Columns) {
-				continue
-			}
-			row := make([]string, len(rowData))
-			for j, cell := range rowData {
-				// Apply column-specific style if defined, otherwise use default formatting
-				if j < len(props.Columns) && props.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-					row[j] = props.Columns[j].Style.GetStyle().Render(formatCell(cell))
-				} else {
-					row[j] = formatCell(cell)
-				}
-			}
-			rows = append(rows, row)
-		}
-		m.Model.SetRows(rows)
-		m.data = props.Data
-	}
-
-	// Update dimensions if changed
-	if m.props.Width > 0 {
-		m.Model.SetWidth(m.props.Width)
-	}
-	if m.props.Height > 0 {
-		m.Model.SetHeight(m.props.Height)
-	}
-
-	// Update focus if changed
-	// Note: Focus should be handled by Init() or Update() methods, not in UpdateRenderConfig
-	if m.props.Focused {
-		// Do not call Focus() here, it should be handled by Init() method
-	} else {
-		m.Model.Blur()
-	}
+	// Update table data, styles, dimensions, and focus using helper functions
+	updateTableModelData(&m.Model, props.Data, props.Columns)
+	updateTableModelStyles(&m.Model, props)
+	updateTableModelDimensions(&m.Model, props)
+	// updateTableModelFocus(&m.Model, props.Focused)
+	m.data = props.Data
 
 	return nil
 }
@@ -1047,103 +989,4 @@ func (m *TableModel) GetSelected() (interface{}, bool) {
 // Focused returns whether the table is focused
 func (m *TableModel) Focused() bool {
 	return m.Model.Focused()
-}
-
-// shouldRebuildModel determines if the table model needs to be rebuilt
-func (m *TableModel) shouldRebuildModel(oldProps, newProps TableProps) bool {
-	// Check if number of columns changed
-	if len(oldProps.Columns) != len(newProps.Columns) {
-		return true
-	}
-
-	// Check if any column definition changed
-	for i := range oldProps.Columns {
-		if oldProps.Columns[i].Key != newProps.Columns[i].Key ||
-			oldProps.Columns[i].Title != newProps.Columns[i].Title ||
-			oldProps.Columns[i].Width != newProps.Columns[i].Width {
-			return true
-		}
-	}
-
-	// Check if focused state changed
-	if oldProps.Focused != newProps.Focused {
-		return true
-	}
-
-	return false
-}
-
-// rebuildTableModel recreates the entire table model with new data
-func (m *TableModel) rebuildTableModel(props TableProps) error {
-	newModel := NewTableModel(props, m.id)
-	m.Model = newModel.Model
-	m.props = props
-	m.data = props.Data
-	log.Trace("TableModel: Rebuilt table model for %s", m.id)
-	return nil
-}
-
-// lightweightUpdate performs a light update without rebuilding the model
-func (m *TableModel) lightweightUpdate(oldProps, newProps TableProps) error {
-	// Update data if it changed
-	if !sliceEqual(oldProps.Data, newProps.Data) {
-		rows := make([]table.Row, 0, len(newProps.Data))
-		for _, rowData := range newProps.Data {
-			// Skip rows that don't match column count
-			if len(rowData) != len(newProps.Columns) {
-				continue
-			}
-			row := make([]string, len(rowData))
-			for j, cell := range rowData {
-				// Apply column-specific style if defined, otherwise use default formatting
-				if j < len(newProps.Columns) && newProps.Columns[j].Style.GetStyle().String() != lipgloss.NewStyle().String() {
-					row[j] = newProps.Columns[j].Style.GetStyle().Render(formatCell(cell))
-				} else {
-					row[j] = formatCell(cell)
-				}
-			}
-			rows = append(rows, row)
-		}
-		m.Model.SetRows(rows)
-		m.data = newProps.Data
-	}
-
-	// Update dimensions if changed
-	if oldProps.Width != newProps.Width {
-		m.Model.SetWidth(newProps.Width)
-	}
-	if oldProps.Height != newProps.Height {
-		m.Model.SetHeight(newProps.Height)
-	}
-
-	// Update focus if changed
-	// Note: Focus should be handled by Init() or Update() methods, not in lightweightUpdate
-	if oldProps.Focused != newProps.Focused {
-		if newProps.Focused {
-			// Do not call Focus() here, it should be handled by Init() method
-		} else {
-			m.Model.Blur()
-		}
-	}
-
-	m.props = newProps
-	return nil
-}
-
-// sliceEqual compares two slices of interface{} slices for equality
-func sliceEqual(a, b [][]interface{}) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if len(a[i]) != len(b[i]) {
-			return false
-		}
-		for j := range a[i] {
-			if a[i][j] != b[i][j] {
-				return false
-			}
-		}
-	}
-	return true
 }
