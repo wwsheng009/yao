@@ -205,12 +205,17 @@ func (m *FooterModel) Render(config core.RenderConfig) (string, error) {
 // FooterComponentWrapper wraps FooterModel to implement ComponentInterface properly
 type FooterComponentWrapper struct {
 	model *FooterModel
+	props FooterProps
+	id    string
 }
 
 // NewFooterComponentWrapper creates a wrapper that implements ComponentInterface
-func NewFooterComponentWrapper(footerModel *FooterModel) *FooterComponentWrapper {
+func NewFooterComponentWrapper(props FooterProps, id string) *FooterComponentWrapper {
+	model := NewFooterModel(props, id)
 	return &FooterComponentWrapper{
-		model: footerModel,
+		model: &model,
+		props: props,
+		id:    id,
 	}
 }
 
@@ -223,7 +228,7 @@ func (w *FooterComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -234,11 +239,11 @@ func (w *FooterComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 }
 
 func (w *FooterComponentWrapper) View() string {
-	return w.model.View()
+	return RenderFooter(w.props, w.props.Width)
 }
 
 func (w *FooterComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *FooterComponentWrapper) SetFocus(focus bool) {
@@ -250,7 +255,21 @@ func (w *FooterComponentWrapper) GetComponentType() string {
 }
 
 func (w *FooterComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("FooterComponentWrapper: invalid data type")
+	}
+
+	// Parse footer properties
+	props := ParseFooterProps(propsMap)
+
+	// Update component properties
+	w.props = props
+	w.model.props = props
+
+	// Return rendered view
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -264,6 +283,7 @@ func (w *FooterComponentWrapper) UpdateRenderConfig(config core.RenderConfig) er
 	props := ParseFooterProps(propsMap)
 
 	// Update component properties
+	w.props = props
 	w.model.props = props
 
 	return nil

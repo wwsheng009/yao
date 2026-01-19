@@ -279,7 +279,7 @@ func (w *TextareaComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		return core.ExecuteActionMsg{
 			Action:    action,
-			SourceID:  w.model.id,
+			SourceID:  w.id,
 			Timestamp: time.Now(),
 		}
 	}
@@ -294,14 +294,14 @@ type TextareaStateHelper struct {
 
 // CaptureState implements StateCapturable interface
 func (h *TextareaStateHelper) CaptureState() map[string]interface{} {
-	if h.component == nil || h.component.model == nil {
+	if h.component == nil {
 		return map[string]interface{}{}
 	}
 	
 	return map[string]interface{}{
 		"value":     h.component.model.Value(),
-		"focused":   h.component.model.HasFocus(),
-		"disabled":  h.component.model.props.Disabled,
+		"focused":   h.component.model.Focused(),
+		"disabled":  h.component.props.Disabled,
 		"component": "textarea",
 	}
 }
@@ -336,30 +336,37 @@ func (h *TextareaStateHelper) DetectStateChanges(old, new map[string]interface{}
 	return cmds
 }
 
-// TextareaComponentWrapper wraps TextareaModel to implement ComponentInterface properly
+// TextareaComponentWrapper wraps the native textarea.Model to implement ComponentInterface properly
 type TextareaComponentWrapper struct {
-	model        *TextareaModel
-	bindings     []core.ComponentBinding
-	stateHelper  *TextareaStateHelper
+	model       textarea.Model  // Directly use the native model
+	props       TextareaProps // Component properties
+	id          string        // Component ID
+	bindings    []core.ComponentBinding
+	stateHelper *TextareaStateHelper
 }
 
 // NewTextareaComponentWrapper creates a wrapper that implements ComponentInterface
-// This is the unified entry point that takes props and id
+// This is the unified entry point that accepts props and id, creating the model internally
 func NewTextareaComponentWrapper(props TextareaProps, id string) *TextareaComponentWrapper {
-	// Create textarea model with props
-	textareaModel := NewTextareaModel(props, id)
-	textareaModel.id = id
+	// Directly create textarea.Model
+	ta := textarea.New()
 
+	// Apply configuration directly to the native component
+	applyTextareaConfigDirect(&ta, props)
+
+	// Create wrapper that directly implements all interfaces
 	wrapper := &TextareaComponentWrapper{
-		model:    &textareaModel,
+		model:    ta,
+		props:    props,
+		id:       id,
 		bindings: props.Bindings,
 	}
-	
-	// 创建状态助手
+
+	// stateHelper uses wrapper itself as the implementation
 	wrapper.stateHelper = &TextareaStateHelper{
 		component: wrapper,
 	}
-	
+
 	return wrapper
 }
 
@@ -396,12 +403,12 @@ func (w *TextareaComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 
 	// 如果是Enter键且EnterSubmits为true，则发布Enter按下事件
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter && w.model.props.EnterSubmits {
-		w.model.Model, cmd = w.model.Model.Update(msg)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter && w.props.EnterSubmits {
+		w.model, cmd = w.model.Update(msg)
 		
 		// 发布Enter按下事件
-		enterCmd := core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
-			"value": w.model.Model.Value(),
+		enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
+			"value": w.model.Value(),
 		})
 		
 		// 如果原始命令存在，批处理两个命令
@@ -411,7 +418,7 @@ func (w *TextareaComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 		return enterCmd
 	}
 	
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 	return cmd
 }
 
@@ -432,8 +439,8 @@ func (w *TextareaComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd,
 		return nil, core.Ignored, true
 	case tea.KeyEscape:
 		// 失焦处理
-		w.model.Model.Blur()
-		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
+		w.model.Blur()
+		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
 		return cmd, core.Ignored, true
 	}
 
@@ -443,7 +450,7 @@ func (w *TextareaComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd,
 
 // HasFocus returns whether the component currently has focus
 func (w *TextareaComponentWrapper) HasFocus() bool {
-	return w.model.Model.Focused()
+	return w.model.Focused()
 }
 
 func (w *TextareaComponentWrapper) View() string {
@@ -451,7 +458,7 @@ func (w *TextareaComponentWrapper) View() string {
 }
 
 func (w *TextareaComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 // GetValue returns the current value of the textarea component
@@ -465,7 +472,11 @@ func (w *TextareaComponentWrapper) SetValue(value string) {
 }
 
 func (w *TextareaComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
+	if focus {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
+	}
 	// Note: We don't publish event here since it would require changing the interface.
 	// Events for focus changes are published in the UpdateMsg method for ESC key.
 }
@@ -524,7 +535,27 @@ func (m *TextareaModel) Cleanup() {
 }
 
 func (w *TextareaComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("TextareaComponentWrapper: invalid data type")
+	}
+
+	// Parse textarea properties
+	props := ParseTextareaProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update textarea value if provided
+	if value, exists := propsMap["value"]; exists {
+		if valueStr, ok := value.(string); ok {
+			w.model.SetValue(valueStr)
+		}
+	}
+
+	// Return the view
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -538,7 +569,7 @@ func (w *TextareaComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 	props := ParseTextareaProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	// Update textarea value if provided
 	if value, exists := propsMap["value"]; exists {
@@ -568,5 +599,67 @@ func (w *TextareaComponentWrapper) GetSubscribedMessageTypes() []string {
 	return []string{
 		"tea.KeyMsg",
 		"core.TargetedMsg",
+	}
+}
+
+// applyTextareaConfigDirect applies TextareaProps configuration to textarea.Model
+func applyTextareaConfigDirect(textarea *textarea.Model, props TextareaProps) {
+	// Set placeholder
+	if props.Placeholder != "" {
+		textarea.Placeholder = props.Placeholder
+	}
+
+	// Set initial value
+	if props.Value != "" {
+		textarea.SetValue(props.Value)
+	}
+
+	// Set prompt
+	if props.Prompt != "" {
+		textarea.Prompt = props.Prompt
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to textarea
+	textarea.FocusedStyle.Text = textarea.FocusedStyle.Text.Inherit(style)
+	textarea.BlurredStyle.Text = textarea.BlurredStyle.Text.Inherit(style)
+
+	// Set dimensions
+	if props.Width > 0 {
+		textarea.SetWidth(props.Width)
+	}
+
+	if props.Height > 0 {
+		textarea.SetHeight(props.Height)
+	}
+
+	if props.MaxHeight > 0 {
+		textarea.MaxHeight = props.MaxHeight
+	}
+
+	// Set other properties
+	textarea.ShowLineNumbers = props.ShowLineNumbers
+	if props.CharLimit > 0 {
+		textarea.CharLimit = props.CharLimit
+	}
+
+	// Configure Enter key behavior
+	// If EnterSubmits is true, disable InsertNewline so Enter can submit form (Shift+Enter still works for newline)
+	// If EnterSubmits is false (default), Enter inserts newline
+	textarea.KeyMap.InsertNewline.SetEnabled(!props.EnterSubmits)
+
+	// Disable if needed
+	if props.Disabled {
+		textarea.Blur()
+	} else {
+		textarea.Focus()
 	}
 }

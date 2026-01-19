@@ -207,20 +207,29 @@ func (m *TimerModel) SetRunning(running bool) {
 	m.props.Running = running
 }
 
-// TimerComponentWrapper wraps TimerModel to implement ComponentInterface properly
+// TimerComponentWrapper wraps the native timer.Model directly
 type TimerComponentWrapper struct {
-	model *TimerModel
+	model timer.Model
+	props TimerProps
+	id    string
 }
 
 // NewTimerComponentWrapper creates a wrapper that implements ComponentInterface
-func NewTimerComponentWrapper(timerModel *TimerModel) *TimerComponentWrapper {
+func NewTimerComponentWrapper(props TimerProps, id string) *TimerComponentWrapper {
+	t := timer.NewWithInterval(props.Duration, time.Second)
+
 	return &TimerComponentWrapper{
-		model: timerModel,
+		model: t,
+		props: props,
+		id:    id,
 	}
 }
 
 func (w *TimerComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	if w.props.Running {
+		return w.model.Init()
+	}
+	return nil
 }
 
 func (w *TimerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -228,7 +237,7 @@ func (w *TimerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -236,12 +245,12 @@ func (w *TimerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 
 	// For timer, just update the model
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	// Publish timer tick event if running
-	if w.model.props.Running {
-		eventCmd := core.PublishEvent(w.model.id, "TIMER_TICK", map[string]interface{}{
-			"running": w.model.props.Running,
+	if w.props.Running {
+		eventCmd := core.PublishEvent(w.id, "TIMER_TICK", map[string]interface{}{
+			"running": w.props.Running,
 		})
 		if cmd != nil {
 			return w, tea.Batch(cmd, eventCmd), core.Handled
@@ -253,11 +262,44 @@ func (w *TimerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 }
 
 func (w *TimerComponentWrapper) View() string {
-	return w.model.View()
+	// Format the timer display
+	format := w.props.Format
+	if format == "" {
+		format = "15:04:05"
+	}
+
+	var display string
+	if w.props.ShowElapsed {
+		// For elapsed time, show 00:00:00 as default
+		display = "00:00:00"
+	} else {
+		// For countdown, show the duration
+		display = w.props.Duration.String()
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		style = style.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		style = style.Background(lipgloss.Color(w.props.Background))
+	}
+	if w.props.Bold {
+		style = style.Bold(true)
+	}
+	if w.props.Italic {
+		style = style.Italic(true)
+	}
+	if w.props.Underline {
+		style = style.Underline(true)
+	}
+
+	return style.Render(display)
 }
 
 func (w *TimerComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *TimerComponentWrapper) SetFocus(focus bool) {
@@ -268,46 +310,26 @@ func (w *TimerComponentWrapper) GetComponentType() string {
 	return "timer"
 }
 
-func (m *TimerModel) Render(config core.RenderConfig) (string, error) {
+func (w *TimerComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("TimerModel: invalid data type")
+		return "", fmt.Errorf("TimerComponentWrapper: invalid data type")
 	}
 
 	// Parse timer properties
 	props := ParseTimerProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
+
+	// Update timer with new duration if changed
+	if props.Duration != w.props.Duration {
+		w.model = timer.NewWithInterval(props.Duration, time.Second)
+	}
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-// UpdateRenderConfig 更新渲染配置
-func (m *TimerModel) UpdateRenderConfig(config core.RenderConfig) error {
-	propsMap, ok := config.Data.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("TimerModel: invalid data type for UpdateRenderConfig")
-	}
-
-	// Parse timer properties
-	props := ParseTimerProps(propsMap)
-
-	// Update component properties
-	m.props = props
-
-	return nil
-}
-
-// Cleanup 清理资源
-func (m *TimerModel) Cleanup() {
-	// TimerModel 通常不需要特殊清理操作
-}
-
-func (w *TimerComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -321,7 +343,12 @@ func (w *TimerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	props := ParseTimerProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
+
+	// Update timer with new duration if changed
+	if props.Duration != w.props.Duration {
+		w.model = timer.NewWithInterval(props.Duration, time.Second)
+	}
 
 	return nil
 }
@@ -335,8 +362,8 @@ func (w *TimerComponentWrapper) Cleanup() {
 func (w *TimerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Timer component may have state
 	return map[string]interface{}{
-		w.GetID() + "_timeout": w.model.Model.Timeout,
-		w.GetID() + "_running": w.model.Model.Running(),
+		w.GetID() + "_timeout": w.model.Timeout,
+		w.GetID() + "_running": w.model.Running(),
 	}, true
 }
 
@@ -346,5 +373,3 @@ func (w *TimerComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-
-

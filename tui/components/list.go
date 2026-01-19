@@ -229,47 +229,76 @@ func (m *ListModel) SetFocus(focus bool) {
 	m.props.Focused = focus
 }
 
-// ListComponentWrapper wraps ListModel to implement ComponentInterface properly
+// ListComponentWrapper wraps the native list.Model to implement ComponentInterface properly
 type ListComponentWrapper struct {
-	model *ListModel
+	model    list.Model  // Directly use the native model
+	props    ListProps   // Component properties
+	id       string      // Component ID
 	bindings []core.ComponentBinding
 	stateHelper *core.ListStateHelper
 }
 
-// listIndexerAdapter adapts ListModel to satisfy interface{Index() int}
-type listIndexerAdapter struct {
-	*ListModel
-}
-
-func (a *listIndexerAdapter) Index() int {
-	return a.Model.Index()
-}
-
-// listSelectorAdapter adapts ListModel to satisfy interface{SelectedItem() interface{}}
-type listSelectorAdapter struct {
-	*ListModel
-}
-
-func (a *listSelectorAdapter) SelectedItem() interface{} {
-	return a.Model.SelectedItem()
-}
-
 // NewListComponentWrapper creates a wrapper that implements ComponentInterface
-func NewListComponentWrapper(listModel *ListModel) *ListComponentWrapper {
-	wrapper := &ListComponentWrapper{
-		model: listModel,
-		bindings: listModel.props.Bindings,
+// This is the unified entry point that accepts props and id, creating the model internally
+func NewListComponentWrapper(props ListProps, id string) *ListComponentWrapper {
+	// Convert items to list.Item interface
+	items := make([]list.Item, len(props.Items))
+	for i, item := range props.Items {
+		items[i] = item
 	}
 
-	// 创建适配器来满足接口要求
-	indexerAdapter := &listIndexerAdapter{listModel}
-	selectorAdapter := &listSelectorAdapter{listModel}
-	wrapper.stateHelper = &core.ListStateHelper{
-		Indexer:     indexerAdapter,
-		Selector:    selectorAdapter,
-		Focused:     listModel.props.Focused,
-		ComponentID: listModel.id,
+	// Create the native list model
+	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+
+	// Set title
+	if props.Title != "" && props.ShowTitle {
+		l.Title = props.Title
 	}
+
+	// Set dimensions
+	if props.Width > 0 {
+		l.SetWidth(props.Width)
+	}
+
+	if props.Height > 0 {
+		l.SetHeight(props.Height)
+	}
+
+	// Configure list options
+	l.SetShowTitle(props.ShowTitle)
+	l.SetShowStatusBar(props.ShowStatusBar)
+	l.SetShowFilter(props.ShowFilter)
+	l.SetFilteringEnabled(props.FilteringEnabled)
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to list
+	l.Styles.Title = l.Styles.Title.Inherit(style)
+	l.Styles.NoItems = l.Styles.NoItems.Inherit(style)
+
+	// Create wrapper that directly implements all interfaces
+	wrapper := &ListComponentWrapper{
+		model:    l,
+		props:    props,
+		id:       id,
+		bindings: props.Bindings,
+	}
+
+	// stateHelper uses wrapper itself as the implementation
+	wrapper.stateHelper = &core.ListStateHelper{
+		Indexer:     wrapper,  // wrapper implements Index() method
+		Selector:    wrapper,  // wrapper implements SelectedItem() method
+		Focused:     props.Focused,
+		ComponentID: id,
+	}
+
 	return wrapper
 }
 
@@ -297,15 +326,14 @@ func (w *ListComponentWrapper) getBindings() []core.ComponentBinding {
 }
 
 func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-	// 创建适配器来实现 ComponentWrapper 接口
-	wrapper := &listComponentWrapperAdapter{w}
-	cmd, response, handled := core.HandleBinding(wrapper, keyMsg, binding)
+	// ListComponentWrapper 已经实现了 ComponentWrapper 接口，可以直接传递
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
 	return cmd, response, handled
 }
 
 func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 	return cmd
 }
 
@@ -320,19 +348,19 @@ func (w *ListComponentWrapper) DetectStateChanges(old, new map[string]interface{
 
 // 实现 HasFocus 方法
 func (w *ListComponentWrapper) HasFocus() bool {
-	return w.model.props.Focused
+	return w.props.Focused
 }
 
 // 实现 HandleSpecialKey 方法
 func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
 	switch keyMsg.Type {
 	case tea.KeyEnter:
-		if selectedItem := w.model.Model.SelectedItem(); selectedItem != nil {
+		if selectedItem := w.model.SelectedItem(); selectedItem != nil {
 			item := selectedItem.(ListItem)
 			// 发布菜单项选择事件
-			cmd := core.PublishEvent(w.model.id, core.EventMenuItemSelected, map[string]interface{}{
+			cmd := core.PublishEvent(w.id, core.EventMenuItemSelected, map[string]interface{}{
 				"item":  item,
-				"index": w.model.Model.Index(),
+				"index": w.model.Index(),
 				"title": item.Title,
 				"value": item.Value,
 			})
@@ -347,29 +375,33 @@ func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 	return nil, core.Ignored, false
 }
 
-// listComponentWrapperAdapter 适配器实现 ComponentWrapper 接口
-type listComponentWrapperAdapter struct {
-	*ListComponentWrapper
+// Index returns the current cursor position
+func (w *ListComponentWrapper) Index() int {
+	return w.model.Index()
+}
+// SelectedItem returns the currently selected item
+func (w *ListComponentWrapper) SelectedItem() interface{} {
+	return w.model.SelectedItem()
 }
 
-func (a *listComponentWrapperAdapter) GetModel() interface{} {
-	return a.ListComponentWrapper.model
+func (w *ListComponentWrapper) GetModel() interface{} {
+	return w.model
 }
 
-func (a *listComponentWrapperAdapter) GetID() string {
-	return a.ListComponentWrapper.model.id
+func (w *ListComponentWrapper) GetID() string {
+	return w.id
 }
 
-func (a *listComponentWrapperAdapter) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+func (w *ListComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
 	return core.PublishEvent(sourceID, eventName, payload)
 }
 
-func (a *listComponentWrapperAdapter) ExecuteAction(action *core.Action) tea.Cmd {
+func (w *ListComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	// 对于列表组件，返回一个创建 ExecuteActionMsg 的命令
 	return func() tea.Msg {
 		return core.ExecuteActionMsg{
 			Action:    action,
-			SourceID:  a.ListComponentWrapper.model.id,
+			SourceID:  w.id,
 			Timestamp: time.Now(),
 		}
 	}
@@ -379,12 +411,9 @@ func (w *ListComponentWrapper) View() string {
 	return w.model.View()
 }
 
-func (w *ListComponentWrapper) GetID() string {
-	return w.model.id
-}
-
 func (w *ListComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
+	// Update the focused property
+	w.props.Focused = focus
 }
 
 // GetSelectedItem returns the currently selected item
@@ -460,7 +489,29 @@ func (m *ListModel) Cleanup() {
 }
 
 func (w *ListComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("ListComponentWrapper: invalid data type")
+	}
+
+	// Parse list properties
+	props := ParseListProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update list items if provided
+	if props.Items != nil {
+		listItems := make([]list.Item, len(props.Items))
+		for i, item := range props.Items {
+			listItems[i] = item
+		}
+		w.model.SetItems(listItems)
+	}
+
+	// Return the view
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -474,7 +525,7 @@ func (w *ListComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 	props := ParseListProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	// Update list items if provided
 	if props.Items != nil {
@@ -482,7 +533,7 @@ func (w *ListComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 		for i, item := range props.Items {
 			listItems[i] = item
 		}
-		w.model.Model.SetItems(listItems)
+		w.model.SetItems(listItems)
 	}
 
 	return nil
@@ -496,7 +547,7 @@ func (w *ListComponentWrapper) Cleanup() {
 
 // GetStateChanges returns the state changes from this component
 func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	selectedItem := w.model.Model.SelectedItem()
+	selectedItem := w.model.SelectedItem()
 	if selectedItem == nil {
 		return map[string]interface{}{
 			w.GetID() + "_selected_index": -1,
@@ -505,7 +556,7 @@ func (w *ListComponentWrapper) GetStateChanges() (map[string]interface{}, bool) 
 	}
 
 	return map[string]interface{}{
-		w.GetID() + "_selected_index": w.model.Model.Index(),
+		w.GetID() + "_selected_index": w.model.Index(),
 		w.GetID() + "_selected_item":  selectedItem,
 	}, true
 }

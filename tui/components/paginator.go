@@ -228,15 +228,58 @@ func (m *PaginatorModel) SetFocus(focus bool) {
 	m.props.Focused = focus
 }
 
-// PaginatorComponentWrapper wraps PaginatorModel to implement ComponentInterface properly
+// PaginatorComponentWrapper wraps the native paginator.Model directly
 type PaginatorComponentWrapper struct {
-	model *PaginatorModel
+	model  paginator.Model
+	props  PaginatorProps
+	id     string
 }
 
 // NewPaginatorComponentWrapper creates a wrapper that implements ComponentInterface
-func NewPaginatorComponentWrapper(paginatorModel *PaginatorModel) *PaginatorComponentWrapper {
+func NewPaginatorComponentWrapper(props PaginatorProps, id string) *PaginatorComponentWrapper {
+	p := paginator.New()
+
+	// Set total pages
+	if props.TotalPages > 0 {
+		p.TotalPages = props.TotalPages
+	} else if props.TotalItems > 0 && props.PageSize > 0 {
+		p.TotalPages = (props.TotalItems + props.PageSize - 1) / props.PageSize
+	}
+
+	// Set current page
+	if props.CurrentPage > 0 {
+		p.Page = props.CurrentPage - 1 // Convert to 0-indexed
+	}
+
+	// Set paginator type
+	if props.Type == "dots" {
+		p.Type = paginator.Dots
+	} else {
+		p.Type = paginator.Arabic
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to paginator
+	p.ActiveDot = style.Render("•")
+
+	// Set inactive color
+	if props.InactiveColor != "" {
+		inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(props.InactiveColor))
+		p.InactiveDot = inactiveStyle.Render("•")
+	}
+
 	return &PaginatorComponentWrapper{
-		model: paginatorModel,
+		model: p,
+		props: props,
+		id:    id,
 	}
 }
 
@@ -249,7 +292,7 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -263,7 +306,7 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 			if w.model.Page > 0 {
 				w.model.Page--
 				// Publish page changed event
-				cmds = append(cmds, core.PublishEvent(w.model.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
+				cmds = append(cmds, core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
 					"oldPage": oldPage + 1,
 					"newPage": w.model.Page + 1,
 				}))
@@ -272,7 +315,7 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 			if w.model.Page < w.model.TotalPages-1 {
 				w.model.Page++
 				// Publish page changed event
-				cmds = append(cmds, core.PublishEvent(w.model.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
+				cmds = append(cmds, core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
 					"oldPage": oldPage + 1,
 					"newPage": w.model.Page + 1,
 				}))
@@ -281,7 +324,7 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 
 		// For other key messages, update the model
 		var cmd tea.Cmd
-		w.model.Model, cmd = w.model.Model.Update(msg)
+		w.model, cmd = w.model.Update(msg)
 
 		// Check if page changed
 		if w.model.Page != oldPage {
@@ -296,12 +339,12 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 	// For other messages, update using the underlying model
 	oldPage := w.model.Page
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	// Check if page changed
 	if w.model.Page != oldPage {
 		// Publish page changed event
-		eventCmd := core.PublishEvent(w.model.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
+		eventCmd := core.PublishEvent(w.id, "PAGINATOR_PAGE_CHANGED", map[string]interface{}{
 			"oldPage": oldPage + 1,
 			"newPage": w.model.Page + 1,
 		})
@@ -314,15 +357,27 @@ func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 }
 
 func (w *PaginatorComponentWrapper) View() string {
-	return w.model.View()
+	view := w.model.View()
+
+	// Add page info if requested
+	if w.props.ShowInfo && w.model.TotalPages > 0 {
+		info := lipgloss.NewStyle().Faint(true).Render(
+			fmt.Sprintf(" (%d/%d)", w.model.Page+1, w.model.TotalPages),
+		)
+		view += info
+	}
+
+	return view
 }
 
 func (w *PaginatorComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *PaginatorComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
+	// Paginator doesn't have focus concept in bubbletea paginator
+	// But we can update our local property
+	w.props.Focused = focus
 }
 
 // GetCurrentPage returns the current page (1-indexed)
@@ -345,25 +400,58 @@ func (w *PaginatorComponentWrapper) GetComponentType() string {
 	return "paginator"
 }
 
-func (m *PaginatorModel) Render(config core.RenderConfig) (string, error) {
+func (w *PaginatorComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("PaginatorModel: invalid data type")
+		return "", fmt.Errorf("PaginatorComponentWrapper: invalid data type")
 	}
 
 	// Parse paginator properties
 	props := ParsePaginatorProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
+
+	// Update pagination settings
+	if props.TotalPages > 0 {
+		w.model.TotalPages = props.TotalPages
+	} else if props.TotalItems > 0 && props.PageSize > 0 {
+		w.model.TotalPages = (props.TotalItems + props.PageSize - 1) / props.PageSize
+	}
+
+	// Set current page
+	if props.CurrentPage > 0 {
+		w.model.Page = props.CurrentPage - 1 // Convert to 0-indexed
+	}
+
+	// Set paginator type
+	if props.Type == "dots" {
+		w.model.Type = paginator.Dots
+	} else {
+		w.model.Type = paginator.Arabic
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to paginator
+	w.model.ActiveDot = style.Render("•")
+
+	// Set inactive color
+	if props.InactiveColor != "" {
+		inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(props.InactiveColor))
+		w.model.InactiveDot = inactiveStyle.Render("•")
+	}
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *PaginatorComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -377,7 +465,7 @@ func (w *PaginatorComponentWrapper) UpdateRenderConfig(config core.RenderConfig)
 	props := ParsePaginatorProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	// Update pagination settings
 	if props.TotalPages > 0 {
@@ -427,9 +515,9 @@ func (w *PaginatorComponentWrapper) Cleanup() {
 
 // GetStateChanges returns the state changes from this component
 func (w *PaginatorComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	page := w.model.Model.Page
-	perPage := w.model.Model.PerPage
-	totalPages := w.model.Model.TotalPages
+	page := w.model.Page
+	perPage := w.model.PerPage
+	totalPages := w.model.TotalPages
 
 	return map[string]interface{}{
 		w.GetID() + "_page":        page,

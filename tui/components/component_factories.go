@@ -29,10 +29,8 @@ func NewFooterComponent(config core.RenderConfig, id string) *FooterComponentWra
 		}
 	}
 	
-	model := NewFooterModel(props, id)
-	return &FooterComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewFooterComponentWrapper(props, id)
 }
 
 // NewInputComponent creates a new Input component wrapper
@@ -184,10 +182,8 @@ func NewListComponent(config core.RenderConfig, id string) *ListComponentWrapper
 		}
 	}
 	
-	model := NewListModel(props, id)
-	return &ListComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewListComponentWrapper(props, id)
 }
 
 // NewPaginatorComponent creates a new Paginator component wrapper
@@ -212,10 +208,8 @@ func NewPaginatorComponent(config core.RenderConfig, id string) *PaginatorCompon
 		}
 	}
 	
-	model := NewPaginatorModel(props, id)
-	return &PaginatorComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewPaginatorComponentWrapper(props, id)
 }
 
 // NewViewportComponent creates a new Viewport component wrapper
@@ -239,10 +233,8 @@ func NewViewportComponent(config core.RenderConfig, id string) *ViewportComponen
 		}
 	}
 	
-	model := NewViewportModel(props, id)
-	return &ViewportComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewViewportComponentWrapper(props, id)
 }
 
 // NewChatComponent creates a new Chat component wrapper
@@ -270,8 +262,8 @@ func NewChatComponent(config core.RenderConfig, id string) *ChatComponentWrapper
 		}
 	}
 
-	model := NewChatModel(props, id)
-	return NewChatComponentWrapper(&model)
+	// Directly call the unified wrapper constructor
+	return NewChatComponentWrapper(props, id)
 }
 
 // NewProgressComponent creates a new Progress component wrapper
@@ -302,10 +294,8 @@ func NewProgressComponent(config core.RenderConfig, id string) *ProgressComponen
 		props.Width = 40 // Default width
 	}
 	
-	model := NewProgressModel(props, id)
-	return &ProgressComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewProgressComponentWrapper(props, id)
 }
 
 // NewSpinnerComponent creates a new Spinner component wrapper
@@ -330,10 +320,8 @@ func NewSpinnerComponent(config core.RenderConfig, id string) *SpinnerComponentW
 		}
 	}
 	
-	model := NewSpinnerModel(props, id)
-	return &SpinnerComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewSpinnerComponentWrapper(props, id)
 }
 
 // NewTimerComponent creates a new Timer component wrapper
@@ -358,10 +346,8 @@ func NewTimerComponent(config core.RenderConfig, id string) *TimerComponentWrapp
 		}
 	}
 	
-	model := NewTimerModel(props, id)
-	return &TimerComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewTimerComponentWrapper(props, id)
 }
 
 // NewStopwatchComponent creates a new Stopwatch component wrapper
@@ -386,10 +372,8 @@ func NewStopwatchComponent(config core.RenderConfig, id string) *StopwatchCompon
 		}
 	}
 	
-	model := NewStopwatchModel(props, id)
-	return &StopwatchComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewStopwatchComponentWrapper(props, id)
 }
 
 // NewCursorComponent creates a new Cursor component wrapper
@@ -411,10 +395,8 @@ func NewCursorComponent(config core.RenderConfig, id string) *CursorComponentWra
 		}
 	}
 	
-	model := NewCursorModel(props, id)
-	return &CursorComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewCursorComponentWrapper(props, id)
 }
 
 // NewFilePickerComponent creates a new FilePicker component wrapper
@@ -440,10 +422,8 @@ func NewFilePickerComponent(config core.RenderConfig, id string) *FilePickerComp
 		}
 	}
 	
-	model := NewFilePickerModel(props, id)
-	return &FilePickerComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewFilePickerComponentWrapper(props, id)
 }
 
 // NewHelpComponent creates a new Help component wrapper
@@ -468,10 +448,8 @@ func NewHelpComponent(config core.RenderConfig, id string) *HelpComponentWrapper
 		}
 	}
 
-	model := NewHelpModel(props, id)
-	return &HelpComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewHelpComponentWrapper(props, id)
 }
 
 // NewKeyComponent creates a new Key component wrapper
@@ -496,9 +474,7 @@ func NewKeyComponent(config core.RenderConfig, id string) *KeyComponentWrapper {
 		}
 	}
 	
-	model := NewKeyModel(props, id)
-	return &KeyComponentWrapper{
-		model: &model,
-	}
+	// Directly call the unified wrapper constructor
+	return NewKeyComponentWrapper(props, id)
 }
 

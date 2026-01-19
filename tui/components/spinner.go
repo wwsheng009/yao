@@ -204,20 +204,53 @@ func (m *SpinnerModel) SetRunning(running bool) {
 	m.props.Running = running
 }
 
-// SpinnerComponentWrapper wraps SpinnerModel to implement ComponentInterface properly
+// SpinnerComponentWrapper wraps the native spinner.Model directly
 type SpinnerComponentWrapper struct {
-	model *SpinnerModel
+	model spinner.Model
+	props SpinnerProps
+	id    string
 }
 
 // NewSpinnerComponentWrapper creates a wrapper that implements ComponentInterface
-func NewSpinnerComponentWrapper(spinnerModel *SpinnerModel) *SpinnerComponentWrapper {
+func NewSpinnerComponentWrapper(props SpinnerProps, id string) *SpinnerComponentWrapper {
+	s := spinner.New()
+
+	// Set spinner style
+	if props.Style != "" {
+		s.Spinner = getSpinnerStyle(props.Style)
+	}
+
+	// Set custom frames if provided
+	if len(props.Frames) > 0 {
+		s.Spinner.Frames = props.Frames
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to spinner
+	s.Style = s.Style.Inherit(style)
+
 	return &SpinnerComponentWrapper{
-		model: spinnerModel,
+		model: s,
+		props: props,
+		id:    id,
 	}
 }
 
 func (w *SpinnerComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	if w.props.Running {
+		return func() tea.Msg {
+			return w.model.Tick()
+		}
+	}
+	return nil
 }
 
 func (w *SpinnerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -225,7 +258,7 @@ func (w *SpinnerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfac
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -233,12 +266,12 @@ func (w *SpinnerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfac
 
 	// For spinner, just update the model
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	// Publish spinner tick event if running
-	if w.model.props.Running {
-		eventCmd := core.PublishEvent(w.model.id, "SPINNER_TICK", map[string]interface{}{
-			"running": w.model.props.Running,
+	if w.props.Running {
+		eventCmd := core.PublishEvent(w.id, "SPINNER_TICK", map[string]interface{}{
+			"running": w.props.Running,
 		})
 		if cmd != nil {
 			return w, tea.Batch(cmd, eventCmd), core.Handled
@@ -250,11 +283,27 @@ func (w *SpinnerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfac
 }
 
 func (w *SpinnerComponentWrapper) View() string {
-	return w.model.View()
+	view := w.model.View()
+
+	// Handle label
+	if w.props.Label != "" {
+		switch w.props.LabelPosition {
+		case "left":
+			view = w.props.Label + " " + view
+		case "top":
+			view = w.props.Label + "\n" + view
+		case "bottom":
+			view = view + "\n" + w.props.Label
+		default: // "right" or default
+			view = view + " " + w.props.Label
+		}
+	}
+
+	return view
 }
 
 func (w *SpinnerComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *SpinnerComponentWrapper) SetFocus(focus bool) {
@@ -287,33 +336,47 @@ func getSpinnerStyle(styleName string) spinner.Spinner {
 	}
 }
 
-func (m *SpinnerModel) GetComponentType() string {
-	return "spinner"
-}
-
 func (w *SpinnerComponentWrapper) GetComponentType() string {
 	return "spinner"
 }
 
-func (m *SpinnerModel) Render(config core.RenderConfig) (string, error) {
+func (w *SpinnerComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("SpinnerModel: invalid data type")
+		return "", fmt.Errorf("SpinnerComponentWrapper: invalid data type")
 	}
 
 	// Parse spinner properties
 	props := ParseSpinnerProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
+
+	// Update spinner style if changed
+	if props.Style != "" {
+		w.model.Spinner = getSpinnerStyle(props.Style)
+	}
+
+	// Update custom frames if provided
+	if len(props.Frames) > 0 {
+		w.model.Spinner.Frames = props.Frames
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to spinner
+	w.model.Style = w.model.Style.Inherit(style)
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *SpinnerComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -327,7 +390,29 @@ func (w *SpinnerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) e
 	props := ParseSpinnerProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
+
+	// Update spinner style if changed
+	if props.Style != "" {
+		w.model.Spinner = getSpinnerStyle(props.Style)
+	}
+
+	// Update custom frames if provided
+	if len(props.Frames) > 0 {
+		w.model.Spinner.Frames = props.Frames
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if props.Color != "" {
+		style = style.Foreground(lipgloss.Color(props.Color))
+	}
+	if props.Background != "" {
+		style = style.Background(lipgloss.Color(props.Background))
+	}
+
+	// Apply style to spinner
+	w.model.Style = w.model.Style.Inherit(style)
 
 	return nil
 }
@@ -350,4 +435,3 @@ func (w *SpinnerComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-

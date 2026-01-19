@@ -184,15 +184,36 @@ func (m *CursorModel) SetVisible(visible bool) {
 	m.props.Visible = visible
 }
 
-// CursorComponentWrapper wraps CursorModel to implement ComponentInterface properly
+// CursorComponentWrapper wraps the native cursor.Model directly
 type CursorComponentWrapper struct {
-	model *CursorModel
+	model cursor.Model
+	props CursorProps
+	id    string
 }
 
 // NewCursorComponentWrapper creates a wrapper that implements ComponentInterface
-func NewCursorComponentWrapper(cursorModel *CursorModel) *CursorComponentWrapper {
+func NewCursorComponentWrapper(props CursorProps, id string) *CursorComponentWrapper {
+	c := cursor.New()
+
+	// Set cursor style
+	if props.Style != "" {
+		c.SetMode(getCursorMode(props.Style))
+	}
+
+	// Set blink speed
+	if props.BlinkSpeed > 0 {
+		c.BlinkSpeed = time.Duration(props.BlinkSpeed) * time.Millisecond
+	}
+
+	// Set cursor character
+	if props.Char != "" {
+		c.SetChar(props.Char)
+	}
+
 	return &CursorComponentWrapper{
-		model: cursorModel,
+		model: c,
+		props: props,
+		id:    id,
 	}
 }
 
@@ -205,7 +226,7 @@ func (w *CursorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -213,13 +234,13 @@ func (w *CursorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 
 	// For cursor, just update the model
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	// Publish cursor blink event
-	if w.model.props.Blink {
-		eventCmd := core.PublishEvent(w.model.id, "CURSOR_BLINK", map[string]interface{}{
-			"visible": w.model.props.Visible,
-			"style":   w.model.props.Style,
+	if w.props.Blink {
+		eventCmd := core.PublishEvent(w.id, "CURSOR_BLINK", map[string]interface{}{
+			"visible": w.props.Visible,
+			"style":   w.props.Style,
 		})
 		if cmd != nil {
 			return w, tea.Batch(cmd, eventCmd), core.Handled
@@ -231,11 +252,27 @@ func (w *CursorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface
 }
 
 func (w *CursorComponentWrapper) View() string {
-	return w.model.View()
+	if !w.props.Visible {
+		return ""
+	}
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		style = style.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		style = style.Background(lipgloss.Color(w.props.Background))
+	}
+
+	// Create cursor display
+	cursorChar := getCursorChar(w.props.Style, w.props.Char)
+
+	return style.Render(cursorChar)
 }
 
 func (w *CursorComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *CursorComponentWrapper) SetFocus(focus bool) {
@@ -246,41 +283,66 @@ func (w *CursorComponentWrapper) GetComponentType() string {
 	return "cursor"
 }
 
-func (m *CursorModel) UpdateRenderConfig(config core.RenderConfig) error {
+func (w *CursorComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("CursorModel: invalid data type")
+		return "", fmt.Errorf("CursorComponentWrapper: invalid data type")
 	}
 
 	// Parse cursor properties
 	props := ParseCursorProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
 
-	return nil
-}
+	// Update cursor style if changed
+	if props.Style != "" {
+		w.model.SetMode(getCursorMode(props.Style))
+	}
 
-func (m *CursorModel) Cleanup() {
-	// Cursor模型通常不需要清理资源
-	// 这是一个空操作
-}
+	// Update blink speed if changed
+	if props.BlinkSpeed > 0 {
+		w.model.BlinkSpeed = time.Duration(props.BlinkSpeed) * time.Millisecond
+	}
 
-func (m *CursorModel) Render(config core.RenderConfig) (string, error) {
-	// This method is kept for backward compatibility
-	// It now delegates to UpdateRenderConfig
-	_ = m.UpdateRenderConfig(config)
-	return m.View(), nil
-}
+	// Update cursor character if changed
+	if props.Char != "" {
+		w.model.SetChar(props.Char)
+	}
 
-func (w *CursorComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 func (w *CursorComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
-	// 委托给底层的 CursorModel
-	return w.model.UpdateRenderConfig(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("CursorComponentWrapper: invalid data type")
+	}
+
+	// Parse cursor properties
+	props := ParseCursorProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update cursor style if changed
+	if props.Style != "" {
+		w.model.SetMode(getCursorMode(props.Style))
+	}
+
+	// Update blink speed if changed
+	if props.BlinkSpeed > 0 {
+		w.model.BlinkSpeed = time.Duration(props.BlinkSpeed) * time.Millisecond
+	}
+
+	// Update cursor character if changed
+	if props.Char != "" {
+		w.model.SetChar(props.Char)
+	}
+
+	return nil
 }
 
 func (w *CursorComponentWrapper) Cleanup() {

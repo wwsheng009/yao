@@ -336,20 +336,24 @@ func (m *HelpModel) SetKeyMap(keyMap map[string]interface{}) {
 	m.props.KeyMap = keyMap
 }
 
-// HelpComponentWrapper wraps HelpModel to implement ComponentInterface properly
+// HelpComponentWrapper wraps the native help.Model directly
 type HelpComponentWrapper struct {
-	model *HelpModel
+	model help.Model
+	props HelpProps
+	id    string
 }
 
 // NewHelpComponentWrapper creates a wrapper that implements ComponentInterface
-func NewHelpComponentWrapper(helpModel *HelpModel) *HelpComponentWrapper {
+func NewHelpComponentWrapper(props HelpProps, id string) *HelpComponentWrapper {
 	return &HelpComponentWrapper{
-		model: helpModel,
+		model: help.New(),
+		props: props,
+		id:    id,
 	}
 }
 
 func (w *HelpComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	return nil
 }
 
 func (w *HelpComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -357,7 +361,7 @@ func (w *HelpComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -365,17 +369,71 @@ func (w *HelpComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 
 	// For help, just update the model
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	return w, cmd, core.Handled
 }
 
 func (w *HelpComponentWrapper) View() string {
-	return w.model.View()
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		style = style.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		style = style.Background(lipgloss.Color(w.props.Background))
+	}
+
+	// Set width if specified
+	if w.props.Width > 0 {
+		style = style.Width(w.props.Width)
+	}
+
+	// Apply padding
+	if len(w.props.Padding) > 0 {
+		switch len(w.props.Padding) {
+		case 1:
+			style = style.Padding(w.props.Padding[0])
+		case 2:
+			style = style.Padding(w.props.Padding[0], w.props.Padding[1])
+		case 4:
+			style = style.Padding(w.props.Padding[0], w.props.Padding[1], w.props.Padding[2], w.props.Padding[3])
+		}
+	}
+
+	// Add border if specified
+	if w.props.Border {
+		borderStyle := lipgloss.NewStyle()
+		if w.props.BorderColor != "" {
+			borderStyle = borderStyle.BorderForeground(lipgloss.Color(w.props.BorderColor))
+		}
+		style = style.BorderStyle(lipgloss.NormalBorder()).Inherit(borderStyle)
+	}
+
+	// Create help text based on style
+	// Auto-detect: if sections are provided, use sections style
+	effectiveStyle := w.props.Style
+	if effectiveStyle == "compact" && len(w.props.Sections) > 0 {
+		effectiveStyle = "sections"
+	}
+
+	var helpText string
+	switch effectiveStyle {
+	case "sections":
+		helpText = w.renderSections()
+	case "full":
+		helpText = "Navigation: ↑↓←→ • Select: Enter • Quit: Ctrl+C or Esc"
+	case "minimal":
+		helpText = "↑↓ Enter Esc"
+	default: // "compact"
+		helpText = "↑↓: Navigate • Enter: Select • Esc: Back"
+	}
+
+	return style.Render(helpText)
 }
 
 func (w *HelpComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *HelpComponentWrapper) SetFocus(focus bool) {
@@ -386,25 +444,21 @@ func (w *HelpComponentWrapper) GetComponentType() string {
 	return "help"
 }
 
-func (m *HelpModel) Render(config core.RenderConfig) (string, error) {
+func (w *HelpComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("HelpModel: invalid data type")
+		return "", fmt.Errorf("HelpComponentWrapper: invalid data type")
 	}
 
 	// Parse help properties
 	props := ParseHelpProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *HelpComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -418,7 +472,7 @@ func (w *HelpComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 	props := ParseHelpProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	return nil
 }
@@ -439,4 +493,45 @@ func (w *HelpComponentWrapper) GetSubscribedMessageTypes() []string {
 	return []string{
 		"core.TargetedMsg",
 	}
+}
+
+// renderSections renders help in sections format
+func (w *HelpComponentWrapper) renderSections() string {
+	if len(w.props.Sections) == 0 {
+		return "No help sections available"
+	}
+
+	var result string
+	separator := w.props.SectionSeparator
+	itemSeparator := w.props.ItemSeparator
+
+	for i, section := range w.props.Sections {
+		if i > 0 {
+			result += separator
+		}
+
+		// Render section title with style
+		titleStyle := lipgloss.NewStyle()
+		if w.props.SectionTitleColor != "" {
+			titleStyle = titleStyle.Foreground(lipgloss.Color(w.props.SectionTitleColor))
+		}
+		titleStyle = titleStyle.Bold(true)
+		result += titleStyle.Render(section.Title)
+		result += "\n"
+
+		// Render items
+		for j, item := range section.Items {
+			if j > 0 {
+				result += itemSeparator
+			}
+			result += fmt.Sprintf("  %-20s %s", item.Key, item.Description)
+		}
+	}
+
+	return result
+}
+
+// SetKeyMap sets the key bindings
+func (w *HelpComponentWrapper) SetKeyMap(keyMap map[string]interface{}) {
+	w.props.KeyMap = keyMap
 }

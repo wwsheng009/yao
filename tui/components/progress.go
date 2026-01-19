@@ -200,15 +200,47 @@ func (m *ProgressModel) SetPercent(percent float64) {
 	}
 }
 
-// ProgressComponentWrapper wraps ProgressModel to implement ComponentInterface properly
+// ProgressComponentWrapper wraps the native progress.Model directly
 type ProgressComponentWrapper struct {
-	model *ProgressModel
+	model progress.Model
+	props ProgressProps
+	id    string
 }
 
 // NewProgressComponentWrapper creates a wrapper that implements ComponentInterface
-func NewProgressComponentWrapper(progressModel *ProgressModel) *ProgressComponentWrapper {
+func NewProgressComponentWrapper(props ProgressProps, id string) *ProgressComponentWrapper {
+	p := progress.New()
+
+	// Set width
+	if props.Width > 0 {
+		p.Width = props.Width
+	}
+
+	// Apply colors
+	if props.Color != "" {
+		p.FullColor = props.Color
+	}
+
+	if props.EmptyColor != "" {
+		p.EmptyColor = props.EmptyColor
+	}
+
+	// Set custom characters
+	if props.FilledChar != "" && len(props.FilledChar) > 0 {
+		p.Full = rune(props.FilledChar[0])
+	}
+
+	if props.EmptyChar != "" && len(props.EmptyChar) > 0 {
+		p.Empty = rune(props.EmptyChar[0])
+	}
+
+	// Show percentage
+	p.ShowPercentage = props.ShowPercentage
+
 	return &ProgressComponentWrapper{
-		model: progressModel,
+		model: p,
+		props: props,
+		id:    id,
 	}
 }
 
@@ -221,7 +253,7 @@ func (w *ProgressComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -230,7 +262,7 @@ func (w *ProgressComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 		// Check if this is a progress update
 		if msg.Key == "percent" || msg.Key == "progress" {
 			if percent, ok := msg.Value.(float64); ok {
-				w.model.SetPercent(percent)
+				w.SetPercent(percent)
 				return w, nil, core.Handled
 			}
 		}
@@ -238,17 +270,24 @@ func (w *ProgressComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 
 	// For progress bar, just update the model
 	var cmd tea.Cmd
-	updatedModel, cmd := w.model.Model.Update(msg)
-	w.model.Model = updatedModel.(progress.Model)
+	updatedModel, cmd := w.model.Update(msg)
+	w.model = updatedModel.(progress.Model)
 	return w, cmd, core.Handled
 }
 
 func (w *ProgressComponentWrapper) View() string {
-	return w.model.View()
+	view := w.model.ViewAs(w.props.Percent / 100)
+
+	// Add label if provided
+	if w.props.Label != "" {
+		view = w.props.Label + " " + view
+	}
+
+	return view
 }
 
 func (w *ProgressComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *ProgressComponentWrapper) SetFocus(focus bool) {
@@ -257,41 +296,39 @@ func (w *ProgressComponentWrapper) SetFocus(focus bool) {
 
 // GetPercent returns the current progress percentage
 func (w *ProgressComponentWrapper) GetPercent() float64 {
-	return w.model.props.Percent
+	return w.props.Percent
 }
 
 // SetPercent sets the progress percentage
 func (w *ProgressComponentWrapper) SetPercent(percent float64) {
-	w.model.SetPercent(percent)
-}
-
-func (m *ProgressModel) GetComponentType() string {
-	return "progress"
+	if percent < 0 {
+		w.props.Percent = 0
+	} else if percent > 100 {
+		w.props.Percent = 100
+	} else {
+		w.props.Percent = percent
+	}
 }
 
 func (w *ProgressComponentWrapper) GetComponentType() string {
 	return "progress"
 }
 
-func (m *ProgressModel) Render(config core.RenderConfig) (string, error) {
+func (w *ProgressComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("ProgressModel: invalid data type")
+		return "", fmt.Errorf("ProgressComponentWrapper: invalid data type")
 	}
 
 	// Parse progress properties
 	props := ParseProgressProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *ProgressComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig updates the render configuration without recreating the instance
@@ -305,7 +342,20 @@ func (w *ProgressComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 	props := ParseProgressProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
+
+	// Update width if provided
+	if props.Width > 0 {
+		w.model.Width = props.Width
+	}
+
+	// Update colors if provided
+	if props.Color != "" {
+		w.model.FullColor = props.Color
+	}
+	if props.EmptyColor != "" {
+		w.model.EmptyColor = props.EmptyColor
+	}
 
 	return nil
 }
@@ -320,8 +370,8 @@ func (w *ProgressComponentWrapper) Cleanup() {
 func (w *ProgressComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Progress component may have state
 	return map[string]interface{}{
-		w.GetID() + "_percent": w.model.Model.Percent(),
-		w.GetID() + "_value":   w.model.Model.View(),
+		w.GetID() + "_percent": w.props.Percent,
+		w.GetID() + "_value":   w.View(),
 	}, true
 }
 
@@ -332,4 +382,3 @@ func (w *ProgressComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.StateUpdateMsg",
 	}
 }
-

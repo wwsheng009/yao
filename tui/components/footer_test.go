@@ -78,11 +78,8 @@ func TestRenderFooter(t *testing.T) {
 }
 
 func TestFooterModel_UpdateMsg(t *testing.T) {
-	// Create a footer model with proper props
-	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
-
 	// Create wrapper
-	wrapper := NewFooterComponentWrapper(&footerModel)
+	wrapper := NewFooterComponentWrapper(FooterProps{Text: "Test Footer"}, "test-footer")
 
 	// Test targeted message
 	targetedMsg := core.TargetedMsg{
@@ -103,24 +100,18 @@ func TestFooterModel_UpdateMsg(t *testing.T) {
 }
 
 func TestFooterModel_View(t *testing.T) {
-	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
-
-	wrapper := NewFooterComponentWrapper(&footerModel)
+	wrapper := NewFooterComponentWrapper(FooterProps{Text: "Test Footer"}, "test-footer")
 	result := wrapper.View()
 	assert.NotEmpty(t, result)
 }
 
 func TestFooterModel_GetID(t *testing.T) {
-	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
-
-	wrapper := NewFooterComponentWrapper(&footerModel)
+	wrapper := NewFooterComponentWrapper(FooterProps{Text: "Test Footer"}, "test-footer")
 	assert.Equal(t, "test-footer", wrapper.GetID())
 }
 
 func TestFooterModel_SetFocus(t *testing.T) {
-	footerModel := NewFooterModel(FooterProps{Text: "Test Footer"}, "test-footer")
-
-	wrapper := NewFooterComponentWrapper(&footerModel)
+	wrapper := NewFooterComponentWrapper(FooterProps{Text: "Test Footer"}, "test-footer")
 	// Should not panic
 	wrapper.SetFocus(true)
 	wrapper.SetFocus(false)

@@ -246,22 +246,71 @@ func (m *ViewportModel) GotoBottom() {
 	m.Model.GotoBottom()
 }
 
-// ViewportComponentWrapper wraps ViewportModel to implement ComponentInterface properly
+// ViewportComponentWrapper wraps the native viewport.Model directly
 type ViewportComponentWrapper struct {
-	model *ViewportModel
+	model viewport.Model
+	props ViewportProps
 	id    string
 }
 
 // NewViewportComponentWrapper creates a wrapper that implements ComponentInterface
-func NewViewportComponentWrapper(viewportModel *ViewportModel, id string) *ViewportComponentWrapper {
+func NewViewportComponentWrapper(props ViewportProps, id string) *ViewportComponentWrapper {
+	vp := viewport.New(0, 0) // width and height will be set later
+
+	// Set content
+	content := props.Content
+
+	// Apply Markdown rendering if enabled
+	if props.EnableGlamour {
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0), // Use viewport width for wrapping
+		)
+		if err == nil {
+			rendered, err := renderer.Render(content)
+			if err == nil {
+				content = rendered
+			}
+		}
+	}
+
+	vp.SetContent(content)
+
+	// Set dimensions
+	viewWidth := props.Width
+	if viewWidth <= 0 {
+		viewWidth = 80 // Default width
+	}
+
+	viewHeight := props.Height
+	if viewHeight <= 0 {
+		// Estimate height based on content if not specified
+		lineCount := strings.Count(content, "\n") + 1
+		if lineCount < 10 {
+			viewHeight = lineCount + 2 // Add some padding
+		} else {
+			viewHeight = 15 // Default height
+		}
+	}
+
+	vp.Width = viewWidth
+	vp.Height = viewHeight
+
+	// Apply styles
+	style := props.Style.GetStyle()
+	if style.String() != lipgloss.NewStyle().String() {
+		vp.Style = style
+	}
+
 	return &ViewportComponentWrapper{
-		model: viewportModel,
+		model: vp,
+		props: props,
 		id:    id,
 	}
 }
 
 func (w *ViewportComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	return nil
 }
 
 func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -279,14 +328,14 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 		switch msg.Type {
 		case tea.KeyUp, tea.KeyPgUp:
 			// Handle scroll up
-			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
-			w.model = &updatedModel
+			var cmd tea.Cmd
+			w.model, cmd = w.model.Update(msg)
 			return w, cmd, core.Handled
 
 		case tea.KeyDown, tea.KeyPgDown:
 			// Handle scroll down
-			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
-			w.model = &updatedModel
+			var cmd tea.Cmd
+			w.model, cmd = w.model.Update(msg)
 			return w, cmd, core.Handled
 
 		case tea.KeyHome:
@@ -305,8 +354,8 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 
 		default:
 			// For other key messages, update viewport
-			updatedModel, cmd := HandleViewportUpdate(msg, w.model)
-			w.model = &updatedModel
+			var cmd tea.Cmd
+			w.model, cmd = w.model.Update(msg)
 			return w, cmd, core.Handled
 		}
 
@@ -317,7 +366,7 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 			// Update content when data is loaded
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if content, ok := data["content"].(string); ok {
-					w.model.SetContent(content)
+					w.SetContent(content)
 					return w, nil, core.Handled
 				}
 			}
@@ -325,7 +374,7 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 			// Refresh content
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if content, ok := data["content"].(string); ok {
-					w.model.SetContent(content)
+					w.SetContent(content)
 					return w, nil, core.Handled
 				}
 			}
@@ -335,21 +384,21 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 	case tea.WindowSizeMsg:
 		// Handle window resize - update viewport dimensions
 		// Use new dimensions if not explicitly set
-		if w.model.props.Width <= 0 {
-			w.model.Model.Width = msg.Width
+		if w.props.Width <= 0 {
+			w.model.Width = msg.Width
 		}
-		if w.model.props.Height <= 0 {
-			w.model.Model.Height = msg.Height
+		if w.props.Height <= 0 {
+			w.model.Height = msg.Height
 		}
 		// Let viewport handle the resize
-		updatedModel, cmd := HandleViewportUpdate(msg, w.model)
-		w.model = &updatedModel
+		var cmd tea.Cmd
+		w.model, cmd = w.model.Update(msg)
 		return w, cmd, core.Handled
 	}
 
 	// For other messages, update viewport
-	updatedModel, cmd := HandleViewportUpdate(msg, w.model)
-	w.model = &updatedModel
+	var cmd tea.Cmd
+	w.model, cmd = w.model.Update(msg)
 	return w, cmd, core.Handled
 }
 
@@ -363,7 +412,28 @@ func (w *ViewportComponentWrapper) GetID() string {
 
 // SetContent updates the viewport content through the wrapper
 func (w *ViewportComponentWrapper) SetContent(content string) {
-	w.model.SetContent(content)
+	newContent := content
+
+	// Apply Markdown rendering if enabled
+	if w.props.EnableGlamour {
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(0),
+		)
+		if err == nil {
+			rendered, err := renderer.Render(content)
+			if err == nil {
+				newContent = rendered
+			}
+		}
+	}
+
+	w.model.SetContent(newContent)
+
+	// Auto-scroll to bottom if enabled
+	if w.props.AutoScroll {
+		w.model.GotoBottom()
+	}
 }
 
 // GotoTop scrolls to the top of the viewport through the wrapper
@@ -438,7 +508,39 @@ func (m *ViewportModel) Cleanup() {
 }
 
 func (w *ViewportComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("ViewportComponentWrapper: invalid data type")
+	}
+
+	// Parse viewport properties
+	props := ParseViewportProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update content if provided
+	if content, exists := propsMap["content"]; exists {
+		if contentStr, ok := content.(string); ok {
+			w.SetContent(contentStr)
+		}
+	}
+
+	// Update dimensions if provided
+	if width, exists := propsMap["width"]; exists {
+		if widthInt, ok := width.(int); ok && widthInt > 0 {
+			w.model.Width = widthInt
+		}
+	}
+	if height, exists := propsMap["height"]; exists {
+		if heightInt, ok := height.(int); ok && heightInt > 0 {
+			w.model.Height = heightInt
+		}
+	}
+
+	// Return rendered view
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -452,7 +554,7 @@ func (w *ViewportComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 	props := ParseViewportProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	// Update content if provided
 	if content, exists := propsMap["content"]; exists {
@@ -473,7 +575,7 @@ func (w *ViewportComponentWrapper) Cleanup() {
 func (w *ViewportComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Viewport component may have state (scroll position, etc.)
 	return map[string]interface{}{
-		w.GetID() + "_scroll_position": w.model.Model.GotoTop,
+		w.GetID() + "_offset": w.model.YOffset,
 	}, false
 }
 

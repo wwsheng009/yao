@@ -417,15 +417,9 @@ func (m *ChatModel) ClearMessages() {
 	m.updateHistoryText()
 }
 
-// GetModel returns the underlying model
-func (w *ChatComponentWrapper) GetModel() interface{} {
-	return w.model
-}
 
-// GetID returns the component ID
-func (w *ChatComponentWrapper) GetID() string {
-	return w.model.id
-}
+
+
 
 // PublishEvent creates and returns a command to publish an event
 func (w *ChatComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
@@ -438,35 +432,131 @@ func (w *ChatComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	return func() tea.Msg {
 		return core.ExecuteActionMsg{
 			Action:    action,
-			SourceID:  w.model.id,
+			SourceID:  w.id,
 			Timestamp: time.Now(),
 		}
 	}
 }
 
-// ChatComponentWrapper wraps ChatModel to implement ComponentInterface properly
+// ChatComponentWrapper wraps the native chat components directly
 type ChatComponentWrapper struct {
-	model     *ChatModel
-	bindings  []core.ComponentBinding
+	Viewport    viewport.Model
+	TextInput   textarea.Model
+	props       ChatProps
+	messages    []Message
+	historyText string
+	id          string
+	bindings    []core.ComponentBinding
 	stateHelper *core.ChatStateHelper
 }
 
 // NewChatComponentWrapper creates a wrapper that implements ComponentInterface
-func NewChatComponentWrapper(chatModel *ChatModel) *ChatComponentWrapper {
-	wrapper := &ChatComponentWrapper{
-		model:    chatModel,
-		bindings: chatModel.props.Bindings,
-		stateHelper: &core.ChatStateHelper{
-			InputValuer: chatModel,
-			Focuser:     chatModel,
-			ComponentID: chatModel.GetID(),
-		},
+func NewChatComponentWrapper(props ChatProps, id string) *ChatComponentWrapper {
+	cm := &ChatComponentWrapper{
+		props:    props,
+		messages: props.Messages,
+		id:       id,
+		bindings: props.Bindings,
 	}
-	return wrapper
+
+	// Initialize viewport
+	viewWidth := props.Width
+	if viewWidth <= 0 {
+		viewWidth = 80
+	}
+
+	viewHeight := props.Height
+	if viewHeight <= 0 {
+		viewHeight = 20
+	}
+
+	// Reserve space for input if shown
+	if props.ShowInput {
+		inputHeight := props.InputHeight
+		if inputHeight <= 0 {
+			inputHeight = 3
+		}
+		viewHeight -= inputHeight + 1
+	}
+
+	cm.Viewport = viewport.New(viewWidth, viewHeight)
+
+	// Initialize text input
+	cm.TextInput = textarea.New()
+	cm.TextInput.Placeholder = props.InputPlaceholder
+	if props.InputPlaceholder == "" {
+		cm.TextInput.Placeholder = "Type your message..."
+	}
+	cm.TextInput.ShowLineNumbers = false
+	cm.TextInput.Focus()
+
+	// Update history text
+	cm.updateHistoryText()
+
+	// Initialize state helper
+	cm.stateHelper = &core.ChatStateHelper{
+		InputValuer: cm,
+		Focuser:     cm,
+		ComponentID: cm.GetID(),
+	}
+
+	return cm
+}
+
+// updateHistoryText updates the history text based on current messages
+func (cm *ChatComponentWrapper) updateHistoryText() {
+	var historyText strings.Builder
+	for _, msg := range cm.messages {
+		// Format message based on role
+		var msgStyle lipgloss.Style
+		var prefix string
+
+		switch msg.Role {
+		case "user":
+			msgStyle = cm.props.UserMessageStyle.GetStyle()
+			prefix = "👤 You: "
+		case "assistant":
+			msgStyle = cm.props.AssistantMessageStyle.GetStyle()
+			prefix = "🤖 Assistant: "
+		default:
+			msgStyle = cm.props.UserMessageStyle.GetStyle()
+			prefix = fmt.Sprintf("%s: ", msg.Role)
+		}
+
+		// Apply Markdown rendering if enabled
+		content := msg.Content
+		if cm.props.EnableMarkdown {
+			renderer, err := glamour.NewTermRenderer(
+				glamour.WithStandardStyle(cm.props.GlamourStyle),
+				glamour.WithWordWrap(0),
+			)
+			if err == nil {
+				rendered, err := renderer.Render(content)
+				if err == nil {
+					content = rendered
+				}
+			}
+		}
+
+		// Format message
+		messageText := prefix + content
+		tsStyle := cm.props.TimestampStyle.GetStyle()
+		if tsStyle.GetBackground() != lipgloss.Color("") || tsStyle.GetForeground() != lipgloss.Color("") {
+			ts := msg.Timestamp.Format("15:04")
+			timestamp := tsStyle.Render(fmt.Sprintf("[%s]", ts))
+			messageText = timestamp + " " + messageText
+		}
+
+		historyText.WriteString(msgStyle.Render(messageText))
+		historyText.WriteString("\n\n")
+	}
+
+	cm.historyText = historyText.String()
+	cm.Viewport.SetContent(cm.historyText)
 }
 
 func (w *ChatComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	return nil
 }
 
 func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -499,8 +589,8 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmds []tea.Cmd
 	oldValue := ""
 
-	if w.model.TextInput.Focused() {
-		oldValue = w.model.TextInput.Value()
+	if w.TextInput.Focused() {
+		oldValue = w.TextInput.Value()
 	}
 
 	// 处理特定按键
@@ -510,31 +600,31 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 			// 检查是否按下了shift（用于多行输入）
 			if keyMsg.String() == "shift+enter" || keyMsg.Alt {
 				// 允许多行输入
-				w.model.TextInput, cmd = w.model.TextInput.Update(msg)
+				w.TextInput, cmd = w.TextInput.Update(msg)
 				return cmd
 			}
 
 			// 获取输入文本
-			inputText := w.model.TextInput.Value()
+			inputText := w.TextInput.Value()
 			if inputText == "" {
 				// 空输入，忽略
 				return nil
 			}
 
 			// 清空输入
-			w.model.TextInput.Reset()
+			w.TextInput.Reset()
 
 			// 添加用户消息
-			w.model.AddMessage("user", inputText)
+			w.AddMessage("user", inputText)
 
 			// 发布消息发送事件
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventChatMessageSent, map[string]interface{}{
+			cmds = append(cmds, core.PublishEvent(w.id, core.EventChatMessageSent, map[string]interface{}{
 				"role":    "user",
 				"content": inputText,
 			}))
 
 			// 发布输入回车事件
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputEnterPressed, map[string]interface{}{
+			cmds = append(cmds, core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
 				"value": inputText,
 			}))
 
@@ -545,8 +635,8 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 
 		case tea.KeyEsc:
 			// 失焦处理
-			w.model.TextInput.Blur()
-			cmd = core.PublishEvent(w.model.id, core.EventInputFocusChanged, map[string]interface{}{
+			w.TextInput.Blur()
+			cmd = core.PublishEvent(w.id, core.EventInputFocusChanged, map[string]interface{}{
 				"focused": false,
 			})
 			return cmd
@@ -557,14 +647,14 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 		}
 
 		// 对于其他按键消息，更新文本输入模型
-		w.model.TextInput, cmd = w.model.TextInput.Update(msg)
+		w.TextInput, cmd = w.TextInput.Update(msg)
 
 		// 检查值是否改变
-		newValue := w.model.TextInput.Value()
+		newValue := w.TextInput.Value()
 		if oldValue != newValue {
 			cmds = append(cmds, cmd)
 			// 发布值改变事件
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+			cmds = append(cmds, core.PublishEvent(w.id, core.EventInputValueChanged, map[string]interface{}{
 				"oldValue": oldValue,
 				"newValue": newValue,
 			}))
@@ -581,7 +671,7 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 			if data, ok := actionMsg.Data.(map[string]interface{}); ok {
 				if role, ok := data["role"].(string); ok {
 					if content, ok := data["content"].(string); ok {
-						w.model.AddMessage(role, content)
+						w.AddMessage(role, content)
 						return nil
 					}
 				}
@@ -592,15 +682,15 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	}
 
 	// 对于其他消息，更新视口和文本输入
-	updatedModel, chatCmd := HandleChatUpdate(msg, w.model)
-	w.model = &updatedModel
-	cmds = append(cmds, chatCmd)
+	var viewportCmd tea.Cmd
+	w.Viewport, viewportCmd = w.Viewport.Update(msg)
+	cmds = append(cmds, viewportCmd)
 
 	// 检查文本输入值是否改变
-	if w.model.TextInput.Focused() {
-		newValue := w.model.TextInput.Value()
+	if w.TextInput.Focused() {
+		newValue := w.TextInput.Value()
 		if oldValue != newValue {
-			cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged, map[string]interface{}{
+			cmds = append(cmds, core.PublishEvent(w.id, core.EventInputValueChanged, map[string]interface{}{
 				"oldValue": oldValue,
 				"newValue": newValue,
 			}))
@@ -610,7 +700,7 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	if len(cmds) > 0 {
 		return tea.Batch(cmds...)
 	}
-	return chatCmd
+	return viewportCmd
 }
 
 // 实现 StateCapturable 接口
@@ -630,8 +720,8 @@ func (w *ChatComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 		return nil, core.Ignored, true
 	case tea.KeyEscape:
 		// 失焦处理
-		w.model.TextInput.Blur()
-		cmd := core.PublishEvent(w.model.id, core.EventEscapePressed, nil)
+		w.TextInput.Blur()
+		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
 		return cmd, core.Ignored, true
 	}
 
@@ -641,45 +731,52 @@ func (w *ChatComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 
 // HasFocus returns whether the component currently has focus
 func (w *ChatComponentWrapper) HasFocus() bool {
-	return w.model.TextInput.Focused()
+	return w.TextInput.Focused()
 }
 
-// GetValue returns the current input value (for ChatStateHelper)
-func (m *ChatModel) GetValue() string {
-	return m.TextInput.Value()
+// GetValue returns the current input value (for ChatStateHelper and InputValuer interface)
+func (w *ChatComponentWrapper) GetValue() string {
+	return w.TextInput.Value()
 }
 
-// Focused returns whether the text input is focused (for ChatStateHelper)
-func (m *ChatModel) Focused() bool {
-	return m.TextInput.Focused()
+// Focused returns whether the text input is focused (for ChatStateHelper and Focuser interface)
+func (w *ChatComponentWrapper) Focused() bool {
+	return w.TextInput.Focused()
 }
 
 func (w *ChatComponentWrapper) View() string {
-	return w.model.View()
+	var sb strings.Builder
+
+	// Add viewport (chat history)
+	sb.WriteString(w.Viewport.View())
+
+	// Add input field if shown
+	if w.props.ShowInput {
+		sb.WriteString("\n")
+		sb.WriteString(w.TextInput.View())
+	}
+
+	return sb.String()
+}
+
+func (w *ChatComponentWrapper) GetID() string {
+	return w.id
 }
 
 
-// GetValue returns the current input value
-func (w *ChatComponentWrapper) GetValue() string {
-	return w.model.TextInput.Value()
-}
 
 // SetValue sets the input value
 func (w *ChatComponentWrapper) SetValue(value string) {
-	w.model.TextInput.SetValue(value)
+	w.TextInput.SetValue(value)
 }
 
 // SetFocus sets or removes focus from the chat component
-func (m *ChatModel) SetFocus(focus bool) {
-	if focus {
-		m.TextInput.Focus()
-	} else {
-		m.TextInput.Blur()
-	}
-}
-
 func (w *ChatComponentWrapper) SetFocus(focus bool) {
-	w.model.SetFocus(focus)
+	if focus {
+		w.TextInput.Focus()
+	} else {
+		w.TextInput.Blur()
+	}
 }
 
 func (w *ChatComponentWrapper) GetComponentType() string {
@@ -687,8 +784,53 @@ func (w *ChatComponentWrapper) GetComponentType() string {
 }
 
 func (w *ChatComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("ChatComponentWrapper: invalid data type")
+	}
+
+	// Parse chat properties
+	props := ParseChatProps(propsMap)
+
+	// Update component properties
+	w.props = props
+	w.messages = props.Messages
+	w.updateHistoryText()
+
+	return w.View(), nil
 }
+
+// AddMessage adds a new message to the chat
+func (w *ChatComponentWrapper) AddMessage(role, content string) {
+	msg := Message{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Role:      role,
+		Content:   content,
+		Timestamp: time.Now(),
+	}
+	w.messages = append(w.messages, msg)
+	w.updateHistoryText()
+	// Scroll to bottom to show new message
+	w.Viewport.GotoBottom()
+}
+
+// GetMessages returns all messages
+func (w *ChatComponentWrapper) GetMessages() []Message {
+	return w.messages
+}
+
+// ClearMessages clears all messages
+func (w *ChatComponentWrapper) ClearMessages() {
+	w.messages = []Message{}
+	w.updateHistoryText()
+}
+
+// GetModel returns the underlying model
+func (w *ChatComponentWrapper) GetModel() interface{} {
+	return w
+}
+
 
 // UpdateRenderConfig 更新渲染配置
 func (w *ChatComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
@@ -701,9 +843,9 @@ func (w *ChatComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 	props := ParseChatProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
-	w.model.messages = props.Messages
-	w.model.updateHistoryText()
+	w.props = props
+	w.messages = props.Messages
+	w.updateHistoryText()
 
 	return nil
 }
@@ -717,9 +859,9 @@ func (w *ChatComponentWrapper) Cleanup() {
 func (w *ChatComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Chat component stores its messages and current input value
 	return map[string]interface{}{
-		w.GetID() + "_messages": w.model.messages,
-		w.GetID() + "_input":    w.model.TextInput.Value(),
-	}, len(w.model.messages) > 0 || w.model.TextInput.Value() != ""
+		w.GetID() + "_messages": w.messages,
+		w.GetID() + "_input":    w.TextInput.Value(),
+	}, len(w.messages) > 0 || w.TextInput.Value() != ""
 }
 
 // GetSubscribedMessageTypes returns the message types this component subscribes to

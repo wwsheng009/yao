@@ -211,20 +211,29 @@ func (m *StopwatchModel) SetRunning(running bool) {
 	m.props.Running = running
 }
 
-// StopwatchComponentWrapper wraps StopwatchModel to implement ComponentInterface properly
+// StopwatchComponentWrapper wraps the native stopwatch.Model directly
 type StopwatchComponentWrapper struct {
-	model *StopwatchModel
+	model stopwatch.Model
+	props StopwatchProps
+	id    string
 }
 
 // NewStopwatchComponentWrapper creates a wrapper that implements ComponentInterface
-func NewStopwatchComponentWrapper(stopwatchModel *StopwatchModel) *StopwatchComponentWrapper {
+func NewStopwatchComponentWrapper(props StopwatchProps, id string) *StopwatchComponentWrapper {
+	sw := stopwatch.NewWithInterval(props.Interval)
+
 	return &StopwatchComponentWrapper{
-		model: stopwatchModel,
+		model: sw,
+		props: props,
+		id:    id,
 	}
 }
 
 func (w *StopwatchComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	if w.props.Running {
+		return w.model.Init()
+	}
+	return nil
 }
 
 func (w *StopwatchComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -232,7 +241,7 @@ func (w *StopwatchComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -240,13 +249,13 @@ func (w *StopwatchComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 
 	// For stopwatch, just update the model
 	var cmd tea.Cmd
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	// Publish stopwatch tick event if running
-	if w.model.props.Running {
-		eventCmd := core.PublishEvent(w.model.id, "STOPWATCH_TICK", map[string]interface{}{
+	if w.props.Running {
+		eventCmd := core.PublishEvent(w.id, "STOPWATCH_TICK", map[string]interface{}{
 			"elapsed": w.model.Elapsed().String(),
-			"running": w.model.props.Running,
+			"running": w.props.Running,
 		})
 		if cmd != nil {
 			return w, tea.Batch(cmd, eventCmd), core.Handled
@@ -258,11 +267,50 @@ func (w *StopwatchComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterf
 }
 
 func (w *StopwatchComponentWrapper) View() string {
-	return w.model.View()
+	// Format the stopwatch display
+	format := w.props.Format
+	if format == "" {
+		if w.props.ShowMilliseconds {
+			format = "15:04:05.000"
+		} else {
+			format = "15:04:05"
+		}
+	}
+
+	// Convert elapsed time to time.Time for formatting
+	elapsed := w.model.Elapsed()
+	hours := int(elapsed.Hours())
+	minutes := int(elapsed.Minutes()) % 60
+	seconds := int(elapsed.Seconds()) % 60
+	milliseconds := int(elapsed.Milliseconds()) % 1000
+
+	// Create a mock time for display
+	mockTime := time.Date(0, 1, 1, hours, minutes, seconds, milliseconds*int(time.Millisecond), time.UTC)
+	display := mockTime.Format(format)
+
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		style = style.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		style = style.Background(lipgloss.Color(w.props.Background))
+	}
+	if w.props.Bold {
+		style = style.Bold(true)
+	}
+	if w.props.Italic {
+		style = style.Italic(true)
+	}
+	if w.props.Underline {
+		style = style.Underline(true)
+	}
+
+	return style.Render(display)
 }
 
 func (w *StopwatchComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *StopwatchComponentWrapper) SetFocus(focus bool) {
@@ -273,25 +321,21 @@ func (w *StopwatchComponentWrapper) GetComponentType() string {
 	return "stopwatch"
 }
 
-func (m *StopwatchModel) Render(config core.RenderConfig) (string, error) {
+func (w *StopwatchComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("StopwatchModel: invalid data type")
+		return "", fmt.Errorf("StopwatchComponentWrapper: invalid data type")
 	}
 
 	// Parse stopwatch properties
 	props := ParseStopwatchProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *StopwatchComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -305,7 +349,7 @@ func (w *StopwatchComponentWrapper) UpdateRenderConfig(config core.RenderConfig)
 	props := ParseStopwatchProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
 
 	return nil
 }
@@ -313,15 +357,15 @@ func (w *StopwatchComponentWrapper) UpdateRenderConfig(config core.RenderConfig)
 // Cleanup 清理资源
 func (w *StopwatchComponentWrapper) Cleanup() {
 	// 停止秒表并清理相关资源
-	w.model.Model.Stop()
+	w.model.Stop()
 }
 
 // GetStateChanges returns the state changes from this component
 func (w *StopwatchComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Stopwatch component may have state
 	return map[string]interface{}{
-		w.GetID() + "_elapsed": w.model.Model.Elapsed(),
-		w.GetID() + "_running": w.model.Model.Running(),
+		w.GetID() + "_elapsed": w.model.Elapsed(),
+		w.GetID() + "_running": w.model.Running(),
 	}, true
 }
 
@@ -331,4 +375,3 @@ func (w *StopwatchComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.TargetedMsg",
 	}
 }
-

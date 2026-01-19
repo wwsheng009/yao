@@ -420,10 +420,8 @@ func TestMultiInstanceMessageConflict(t *testing.T) {
 	}
 
 	// Create table models and wrap them
-	table1Model := components.NewTableModel(table1Props, "table1")
-	table1Wrapper := components.NewTableComponentWrapper(&table1Model)
-	table2Model := components.NewTableModel(table2Props, "table2")
-	table2Wrapper := components.NewTableComponentWrapper(&table2Model)
+	table1Wrapper := components.NewTableComponentWrapper(table1Props, "table1")
+	table2Wrapper := components.NewTableComponentWrapper(table2Props, "table2")
 
 	// Register components
 	if model.Components == nil {
@@ -438,8 +436,8 @@ func TestMultiInstanceMessageConflict(t *testing.T) {
 
 	// Set focus to table1
 	model.CurrentFocus = "table1"
-	table1Model.SetFocus(true)
-	table2Model.SetFocus(false)
+	table1Wrapper.SetFocus(true)
+	table2Wrapper.SetFocus(false)
 
 	// Send a key message that should be handled by the focused table
 	msg := tea.KeyMsg{Type: tea.KeyDown}
@@ -556,10 +554,8 @@ func TestMessageIsolationBetweenSameTypeComponents(t *testing.T) {
 		},
 	}
 
-	table1Model := components.NewTableModel(table1Props, "table1")
-	table1Wrapper := components.NewTableComponentWrapper(&table1Model)
-	table2Model := components.NewTableModel(table2Props, "table2")
-	table2Wrapper := components.NewTableComponentWrapper(&table2Model)
+	table1Wrapper := components.NewTableComponentWrapper(table1Props, "table1")
+	table2Wrapper := components.NewTableComponentWrapper(table2Props, "table2")
 
 	if model.Components == nil {
 		model.Components = make(map[string]*core.ComponentInstance)
@@ -677,8 +673,7 @@ func TestTableEventPublishing(t *testing.T) {
 		Focused: true,
 	}
 
-	tableModel := components.NewTableModel(tableProps, "test-table")
-	tableWrapper := components.NewTableComponentWrapper(&tableModel)
+	tableWrapper := components.NewTableComponentWrapper(tableProps, "test-table")
 
 	if model.Components == nil {
 		model.Components = make(map[string]*core.ComponentInstance)
@@ -691,7 +686,7 @@ func TestTableEventPublishing(t *testing.T) {
 
 	// Set focus to table
 	model.CurrentFocus = "test-table"
-	tableModel.SetFocus(true)
+	tableWrapper.SetFocus(true)
 
 	// Send down arrow key to move selection
 	msg := tea.KeyMsg{Type: tea.KeyDown}

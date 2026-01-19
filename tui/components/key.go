@@ -324,20 +324,29 @@ func (m *KeyModel) SetEnabled(enabled bool) {
 	m.props.Enabled = enabled
 }
 
-// KeyComponentWrapper wraps KeyModel to implement ComponentInterface properly
+// KeyComponentWrapper wraps the native key.Binding directly
 type KeyComponentWrapper struct {
-	model *KeyModel
+	binding key.Binding
+	props   KeyProps
+	id      string
 }
 
 // NewKeyComponentWrapper creates a wrapper that implements ComponentInterface
-func NewKeyComponentWrapper(keyModel *KeyModel) *KeyComponentWrapper {
+func NewKeyComponentWrapper(props KeyProps, id string) *KeyComponentWrapper {
+	kb := key.NewBinding(
+		key.WithKeys(props.Keys...),
+		key.WithHelp(props.Shortcut, props.Description),
+	)
+
 	return &KeyComponentWrapper{
-		model: keyModel,
+		binding: kb,
+		props:   props,
+		id:      id,
 	}
 }
 
 func (w *KeyComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	return nil
 }
 
 func (w *KeyComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
@@ -345,7 +354,7 @@ func (w *KeyComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, t
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -353,12 +362,12 @@ func (w *KeyComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, t
 
 	// For key, check if this key was pressed
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(keyMsg, w.model.Binding) {
+		if key.Matches(keyMsg, w.binding) {
 			// Publish key pressed event
-			eventCmd := core.PublishEvent(w.model.id, "KEY_PRESSED", map[string]interface{}{
-				"keys":        w.model.props.Keys,
-				"description": w.model.props.Description,
-				"enabled":     w.model.props.Enabled,
+			eventCmd := core.PublishEvent(w.id, "KEY_PRESSED", map[string]interface{}{
+				"keys":        w.props.Keys,
+				"description": w.props.Description,
+				"enabled":     w.props.Enabled,
 			})
 			return w, eventCmd, core.Handled
 		}
@@ -368,11 +377,89 @@ func (w *KeyComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, t
 }
 
 func (w *KeyComponentWrapper) View() string {
-	return w.model.View()
+	// Batch mode: render multiple bindings
+	if len(w.props.Bindings) > 0 {
+		return w.renderBatchBindings()
+	}
+
+	// Single key mode: render one binding
+	return w.renderSingleKey()
+}
+
+// renderSingleKey renders a single key binding (original behavior)
+func (w *KeyComponentWrapper) renderSingleKey() string {
+	// Apply styles
+	style := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		style = style.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		style = style.Background(lipgloss.Color(w.props.Background))
+	}
+	if w.props.Bold {
+		style = style.Bold(true)
+	}
+	if w.props.Italic {
+		style = style.Italic(true)
+	}
+	if w.props.Underline {
+		style = style.Underline(true)
+	}
+
+	// Create key display
+	display := w.props.Shortcut
+	if display == "" && len(w.props.Keys) > 0 {
+		display = w.props.Keys[0]
+	}
+	if w.props.Description != "" {
+		display += " - " + w.props.Description
+	}
+
+	return style.Render(display)
+}
+
+// renderBatchBindings renders multiple key bindings in batch mode
+func (w *KeyComponentWrapper) renderBatchBindings() string {
+	// Create base style
+	baseStyle := lipgloss.NewStyle()
+	if w.props.Color != "" {
+		baseStyle = baseStyle.Foreground(lipgloss.Color(w.props.Color))
+	}
+	if w.props.Background != "" {
+		baseStyle = baseStyle.Background(lipgloss.Color(w.props.Background))
+	}
+	if w.props.Bold {
+		baseStyle = baseStyle.Bold(true)
+	}
+	if w.props.Italic {
+		baseStyle = baseStyle.Italic(true)
+	}
+	if w.props.Underline {
+		baseStyle = baseStyle.Underline(true)
+	}
+
+	// Determine spacing
+	spacing := w.props.Spacing
+	if spacing <= 0 {
+		spacing = 2 // Default spacing
+	}
+
+	// Render each binding
+	var bindings []string
+	for _, binding := range w.props.Bindings {
+		display := binding.Key
+		if w.props.ShowLabels && binding.Action != "" {
+			display += " - " + binding.Action
+		}
+		bindings = append(bindings, display)
+	}
+
+	// Join with newlines (vertical layout)
+	return baseStyle.Render(lipgloss.JoinVertical(lipgloss.Left, bindings...))
 }
 
 func (w *KeyComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *KeyComponentWrapper) SetFocus(focus bool) {
@@ -383,25 +470,27 @@ func (w *KeyComponentWrapper) GetComponentType() string {
 	return "key"
 }
 
-func (m *KeyModel) Render(config core.RenderConfig) (string, error) {
+func (w *KeyComponentWrapper) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("KeyModel: invalid data type")
+		return "", fmt.Errorf("KeyComponentWrapper: invalid data type")
 	}
 
 	// Parse key properties
 	props := ParseKeyProps(propsMap)
 
 	// Update component properties
-	m.props = props
+	w.props = props
+
+	// Update key binding if needed
+	w.binding = key.NewBinding(
+		key.WithKeys(props.Keys...),
+		key.WithHelp(props.Shortcut, props.Description),
+	)
 
 	// Return rendered view
-	return m.View(), nil
-}
-
-func (w *KeyComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
+	return w.View(), nil
 }
 
 // UpdateRenderConfig 更新渲染配置
@@ -415,7 +504,13 @@ func (w *KeyComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error
 	props := ParseKeyProps(propsMap)
 
 	// Update component properties
-	w.model.props = props
+	w.props = props
+
+	// Update key binding if needed
+	w.binding = key.NewBinding(
+		key.WithKeys(props.Keys...),
+		key.WithHelp(props.Shortcut, props.Description),
+	)
 
 	return nil
 }
@@ -437,4 +532,9 @@ func (w *KeyComponentWrapper) GetSubscribedMessageTypes() []string {
 		"tea.KeyMsg",
 		"core.TargetedMsg",
 	}
+}
+
+// SetEnabled sets the key enabled state
+func (w *KeyComponentWrapper) SetEnabled(enabled bool) {
+	w.props.Enabled = enabled
 }

@@ -14,8 +14,7 @@ func TestViewportComponentWrapper_UpdateMsg_TargetedMsg(t *testing.T) {
 		Width:        80,
 		Height:       20,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Test targeted message to this component
 	innerMsg := tea.KeyMsg{Type: tea.KeyUp}
@@ -53,8 +52,7 @@ func TestViewportComponentWrapper_UpdateMsg_ScrollKeys(t *testing.T) {
 		Width:        50,
 		Height:       10,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	testCases := []struct {
 		name     string
@@ -85,8 +83,7 @@ func TestViewportComponentWrapper_UpdateMsg_ActionMsg(t *testing.T) {
 		Content:      "Original content",
 		ShowScrollbar: true,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Test EventDataLoaded action
 	actionMsg := core.ActionMsg{
@@ -102,7 +99,7 @@ func TestViewportComponentWrapper_UpdateMsg_ActionMsg(t *testing.T) {
 	}
 
 	// Verify content was updated
-	if wrapper.model.props.Content != "Original content" {
+	if wrapper.props.Content != "Original content" {
 		t.Error("Expected props.Content to remain unchanged")
 	}
 	// Note: The actual viewport content is updated via SetContent
@@ -128,8 +125,7 @@ func TestViewportComponentWrapper_UpdateMsg_WindowSize(t *testing.T) {
 		Width:        0, // Auto
 		Height:       0, // Auto
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Test window resize
 	windowSizeMsg := tea.WindowSizeMsg{
@@ -142,11 +138,11 @@ func TestViewportComponentWrapper_UpdateMsg_WindowSize(t *testing.T) {
 	}
 
 	// Verify viewport dimensions were updated
-	if wrapper.model.Model.Width != 100 {
-		t.Errorf("Expected width 100, got %d", wrapper.model.Model.Width)
+	if wrapper.model.Width != 100 {
+		t.Errorf("Expected width 100, got %d", wrapper.model.Width)
 	}
-	if wrapper.model.Model.Height != 30 {
-		t.Errorf("Expected height 30, got %d", wrapper.model.Model.Height)
+	if wrapper.model.Height != 30 {
+		t.Errorf("Expected height 30, got %d", wrapper.model.Height)
 	}
 }
 
@@ -156,8 +152,7 @@ func TestViewportComponentWrapper_SetContent(t *testing.T) {
 		ShowScrollbar: true,
 		EnableGlamour: false,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Update content
 	newContent := "Updated content line 1\nUpdated content line 2\nUpdated content line 3"
@@ -179,8 +174,7 @@ func TestViewportComponentWrapper_GotoTop(t *testing.T) {
 		Height:       10,
 		ShowScrollbar: true,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Scroll to bottom first
 	wrapper.GotoBottom()
@@ -189,8 +183,8 @@ func TestViewportComponentWrapper_GotoTop(t *testing.T) {
 	wrapper.GotoTop()
 
 	// Verify viewport is at top
-	if wrapper.model.Model.YOffset != 0 {
-		t.Errorf("Expected YOffset 0 after GotoTop, got %d", wrapper.model.Model.YOffset)
+	if wrapper.model.YOffset != 0 {
+		t.Errorf("Expected YOffset 0 after GotoTop, got %d", wrapper.model.YOffset)
 	}
 }
 
@@ -202,14 +196,13 @@ func TestViewportComponentWrapper_GotoBottom(t *testing.T) {
 		Height:       10,
 		ShowScrollbar: true,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// Scroll to bottom
 	wrapper.GotoBottom()
 
 	// Verify viewport is at or near bottom (should be > 0)
-	if wrapper.model.Model.YOffset == 0 {
+	if wrapper.model.YOffset == 0 {
 		t.Error("Expected YOffset > 0 after GotoBottom")
 	}
 }
@@ -219,8 +212,7 @@ func TestViewportComponentWrapper_SetFocus(t *testing.T) {
 		Content:      "Test content",
 		ShowScrollbar: true,
 	}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-viewport")
+	wrapper := NewViewportComponentWrapper(props, "test-viewport")
 
 	// SetFocus should not panic for viewport
 	wrapper.SetFocus(true)
@@ -357,8 +349,7 @@ func TestViewportModel_GotoBottom(t *testing.T) {
 
 func TestViewportComponentWrapper_GetID(t *testing.T) {
 	props := ViewportProps{Content: "Test content"}
-	viewportModel := NewViewportModel(props, "test-viewport")
-	wrapper := NewViewportComponentWrapper(&viewportModel, "test-id-456")
+	wrapper := NewViewportComponentWrapper(props, "test-id-456")
 
 	if wrapper.GetID() != "test-id-456" {
 		t.Errorf("Expected id 'test-id-456', got '%s'", wrapper.GetID())

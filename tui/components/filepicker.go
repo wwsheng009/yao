@@ -175,15 +175,41 @@ func (m *FilePickerModel) SetCurrentDirectory(dir string) {
 	m.CurrentDirectory = dir
 }
 
-// FilePickerComponentWrapper wraps FilePickerModel to implement ComponentInterface properly
+// FilePickerComponentWrapper wraps the native filepicker.Model directly
 type FilePickerComponentWrapper struct {
-	model *FilePickerModel
+	model filepicker.Model
+	props FilePickerProps
+	id    string
 }
 
 // NewFilePickerComponentWrapper creates a wrapper that implements ComponentInterface
-func NewFilePickerComponentWrapper(filePickerModel *FilePickerModel) *FilePickerComponentWrapper {
+func NewFilePickerComponentWrapper(props FilePickerProps, id string) *FilePickerComponentWrapper {
+	fp := filepicker.New()
+
+	// Set current directory
+	if props.CurrentDirectory != "" {
+		fp.CurrentDirectory = props.CurrentDirectory
+	} else {
+		// Use current working directory
+		if cwd, err := os.Getwd(); err == nil {
+			fp.CurrentDirectory = cwd
+		}
+	}
+
+	// Set allowed file types
+	if len(props.AllowedFileTypes) > 0 {
+		fp.AllowedTypes = props.AllowedFileTypes
+	}
+
+	// Set height
+	if props.Height > 0 {
+		fp.SetHeight(props.Height)
+	}
+
 	return &FilePickerComponentWrapper{
-		model: filePickerModel,
+		model: fp,
+		props: props,
+		id:    id,
 	}
 }
 
@@ -196,7 +222,7 @@ func (w *FilePickerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInter
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
-		if msg.TargetID == w.model.id {
+		if msg.TargetID == w.id {
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
@@ -206,14 +232,14 @@ func (w *FilePickerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInter
 	var cmd tea.Cmd
 	oldPath := w.model.Path
 
-	w.model.Model, cmd = w.model.Model.Update(msg)
+	w.model, cmd = w.model.Update(msg)
 
 	newPath := w.model.Path
 
 	// Check if selection changed
 	if oldPath != newPath {
-		eventCmd := core.PublishEvent(w.model.id, "FILE_SELECTION_CHANGED", map[string]interface{}{
-			"selectedFiles":    w.model.GetSelectedFiles(),
+		eventCmd := core.PublishEvent(w.id, "FILE_SELECTION_CHANGED", map[string]interface{}{
+			"selectedFiles":    w.GetSelectedFiles(),
 			"currentDirectory": w.model.CurrentDirectory,
 		})
 		if cmd != nil {
@@ -230,7 +256,7 @@ func (w *FilePickerComponentWrapper) View() string {
 }
 
 func (w *FilePickerComponentWrapper) GetID() string {
-	return w.model.id
+	return w.id
 }
 
 func (w *FilePickerComponentWrapper) SetFocus(focus bool) {
@@ -239,6 +265,104 @@ func (w *FilePickerComponentWrapper) SetFocus(focus bool) {
 
 func (w *FilePickerComponentWrapper) GetComponentType() string {
 	return "filepicker"
+}
+
+func (w *FilePickerComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("FilePickerComponentWrapper: invalid data type")
+	}
+
+	// Parse filepicker properties
+	props := ParseFilePickerProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update current directory if changed
+	if props.CurrentDirectory != "" {
+		w.model.CurrentDirectory = props.CurrentDirectory
+	}
+
+	// Update allowed file types if changed
+	if len(props.AllowedFileTypes) > 0 {
+		w.model.AllowedTypes = props.AllowedFileTypes
+	}
+
+	// Update height if changed
+	if props.Height > 0 {
+		w.model.SetHeight(props.Height)
+	}
+
+	return w.View(), nil
+}
+
+func (w *FilePickerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	// Parse configuration data
+	propsMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("FilePickerComponentWrapper: invalid data type")
+	}
+
+	// Parse filepicker properties
+	props := ParseFilePickerProps(propsMap)
+
+	// Update component properties
+	w.props = props
+
+	// Update current directory if changed
+	if props.CurrentDirectory != "" {
+		w.model.CurrentDirectory = props.CurrentDirectory
+	}
+
+	// Update allowed file types if changed
+	if len(props.AllowedFileTypes) > 0 {
+		w.model.AllowedTypes = props.AllowedFileTypes
+	}
+
+	// Update height if changed
+	if props.Height > 0 {
+		w.model.SetHeight(props.Height)
+	}
+
+	return nil
+}
+
+
+
+
+
+// GetSelectedFiles returns the selected files
+func (w *FilePickerComponentWrapper) GetSelectedFiles() []string {
+	// FilePicker doesn't have SelectedFiles field, return current selection
+	if w.model.Path != "" {
+		return []string{w.model.Path}
+	}
+	return []string{}
+}
+
+// SetCurrentDirectory sets the current directory
+func (w *FilePickerComponentWrapper) SetCurrentDirectory(dir string) {
+	w.model.CurrentDirectory = dir
+}
+
+func (w *FilePickerComponentWrapper) Cleanup() {
+	// FilePicker组件通常不需要清理资源
+	// 这是一个空操作
+}
+
+// GetStateChanges returns the state changes from this component
+func (w *FilePickerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	// FilePicker component state tracking
+	return nil, false
+}
+
+// GetSubscribedMessageTypes returns the message types this component subscribes to
+func (w *FilePickerComponentWrapper) GetSubscribedMessageTypes() []string {
+	return []string{
+		"core.TargetedMsg",
+	}
 }
 
 func (m *FilePickerModel) UpdateRenderConfig(config core.RenderConfig) error {
@@ -269,29 +393,6 @@ func (m *FilePickerModel) Render(config core.RenderConfig) (string, error) {
 	return m.View(), nil
 }
 
-func (w *FilePickerComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.model.Render(config)
-}
 
-func (w *FilePickerComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
-	// 委托给底层的 FilePickerModel
-	return w.model.UpdateRenderConfig(config)
-}
 
-func (w *FilePickerComponentWrapper) Cleanup() {
-	// FilePicker组件通常不需要清理资源
-	// 这是一个空操作
-}
 
-// GetStateChanges returns the state changes from this component
-func (w *FilePickerComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	// FilePicker component state tracking
-	return nil, false
-}
-
-// GetSubscribedMessageTypes returns the message types this component subscribes to
-func (w *FilePickerComponentWrapper) GetSubscribedMessageTypes() []string {
-	return []string{
-		"core.TargetedMsg",
-	}
-}

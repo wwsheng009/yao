@@ -14,8 +14,7 @@ func TestChatComponentWrapper_UpdateMsg_KeyEnter(t *testing.T) {
 		ShowInput:       true,
 		EnableMarkdown:   false,
 	}
-	chatModel := NewChatModel(props, "test-chat")
-	wrapper := NewChatComponentWrapper(&chatModel)
+	wrapper := NewChatComponentWrapper(props, "test-chat")
 
 	// Test Enter key with empty input
 	msg := tea.KeyMsg{Type: tea.KeyEnter, Runes: []rune{'\n'}}
@@ -41,7 +40,7 @@ func TestChatComponentWrapper_UpdateMsg_KeyEnter(t *testing.T) {
 	}
 
 	// Check that message was added
-	messages := wrapper.model.GetMessages()
+	messages := wrapper.GetMessages()
 	if len(messages) != 1 {
 		t.Errorf("Expected 1 message, got %d", len(messages))
 	}
@@ -66,8 +65,7 @@ func TestChatComponentWrapper_UpdateMsg_TargetedMsg(t *testing.T) {
 		InputPlaceholder: "Type a message...",
 		ShowInput:       true,
 	}
-	chatModel := NewChatModel(props, "test-chat")
-	wrapper := NewChatComponentWrapper(&chatModel)
+	wrapper := NewChatComponentWrapper(props, "test-chat")
 
 	// Test targeted message to this component
 	innerMsg := tea.KeyMsg{Type: tea.KeyEnter}
@@ -153,18 +151,17 @@ func TestChatComponentWrapper_SetFocus(t *testing.T) {
 		InputPlaceholder: "Type a message...",
 		ShowInput:       true,
 	}
-	chatModel := NewChatModel(props, "test-chat")
-	wrapper := NewChatComponentWrapper(&chatModel)
+	wrapper := NewChatComponentWrapper(props, "test-chat")
 
 	// Set focus
 	wrapper.SetFocus(true)
-	if !chatModel.TextInput.Focused() {
+	if !wrapper.TextInput.Focused() {
 		t.Error("Expected TextInput to be focused")
 	}
 
 	// Remove focus
 	wrapper.SetFocus(false)
-	if chatModel.TextInput.Focused() {
+	if wrapper.TextInput.Focused() {
 		t.Error("Expected TextInput to be blurred")
 	}
 }
@@ -174,8 +171,7 @@ func TestChatComponentWrapper_ActionMsg(t *testing.T) {
 		InputPlaceholder: "Type a message...",
 		ShowInput:       true,
 	}
-	chatModel := NewChatModel(props, "test-chat")
-	wrapper := NewChatComponentWrapper(&chatModel)
+	wrapper := NewChatComponentWrapper(props, "test-chat")
 
 	// Test EventChatMessageReceived action
 	actionMsg := core.ActionMsg{
@@ -192,7 +188,7 @@ func TestChatComponentWrapper_ActionMsg(t *testing.T) {
 	}
 
 	// Verify message was added
-	messages := wrapper.model.GetMessages()
+	messages := wrapper.GetMessages()
 	if len(messages) != 1 {
 		t.Errorf("Expected 1 message, got %d", len(messages))
 	}
