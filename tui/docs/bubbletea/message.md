@@ -21,11 +21,22 @@ Update 函数的签名：
 
 ```go
 func (m Model) Update(msg Msg) (Model, Cmd)
+
+
+```
+
+Cmd 的类型定义：一个异步执行的函数，返回一个 Msg，返回的msg又会传给Update函数，
+
+Update函数又可以返回一个Cmd，这样就形成了一个闭环
+
+```go
+type Cmd func() Msg
 ```
 
 典型使用方式：
 
 ```go
+// msg接受任何格式的数据
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
 
@@ -45,6 +56,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     default:
         return m, nil
     }
+
+    //返回模型，下一步会调用模型的View()方法渲染
+    // 返回执行函数，如果有异步操作需要处理
+}
+```
+tee framework process the eventloop
+```go
+// eventLoop is the central message loop. It receives and handles the default
+// Bubble Tea messages, update the model and triggers redraws.
+func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
+	for {
+		select {
+		case <-p.ctx.Done():
+			return model, nil
+
+		case err := <-p.errs:
+			return model, err
+
+		case msg := <-p.msgs:
+			// Filter messages.
+			if p.filter != nil {
+				msg = p.filter(model, msg)
+			}
+			if msg == nil {
+				continue
+			}
+
+			///....
+            
+			var cmd Cmd
+			model, cmd = model.Update(msg) // run update
+
+			select {
+			case <-p.ctx.Done():
+				return model, nil
+			case cmds <- cmd: // process command (if any)
+			}
+
+			p.renderer.write(model.View()) // send view to renderer
+		}
+	}
 }
 ```
 
@@ -130,3 +182,204 @@ for {
 开发者在 Update 中返回 Cmd → 框架异步执行它 → 得到 Msg 后再次调用 Update → 形成完整的事件闭环。这正是 Bubble Tea 保持终端界面响应迅速的核心机制。
 
 如果您有具体场景（例如想实现某种定时刷新、HTTP 长轮询、子进程交互等），可以进一步说明，我可以提供更针对性的实现模式。
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Bubble Tea 消息处理流程                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────┐
+    │  启动   │
+    └────┬────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     主事件循环                                   │
+│                     (Event Loop)                                │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+    ┌─────────┐     ┌─────────────────────────────────────────┐
+    │ msgs    │────▶│ 1. 从消息通道接收 Msg                    │
+    │ channel │     │    - 键盘输入 (KeyMsg)                   │
+    └─────────┘     │    - 窗口大小变化                        │
+                    │    - 定时器到期                           │
+                    │    - 用户自定义消息                       │
+                    └─────────────────────────────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────────────────────┐
+                    │ 2. 消息过滤 (Filter)                    │
+                    │    if p.filter != nil                   │
+                    └─────────────────────────────────────────┘
+                                 │
+                         (msg == nil?)
+                          /         \
+                        Yes           No
+                         │             │
+                    ┌────┴────┐   ┌────▼────┐
+                    │ continue │   │  执行    │
+                    └─────────┘   │  Filter  │
+                                  └────┬────┘
+                                       │
+                                       ▼
+                    ┌─────────────────────────────────────────┐
+                    │ 3. 调用 Update 函数                      │
+                    │    newModel, cmd := model.Update(msg)   │
+                    │                                          │
+                    │    Update 处理逻辑：                     │
+                    │    ├─ 根据消息类型匹配                   │
+                    │    ├─ 更新模型状态                       │
+                    │    ├─ 返回新的 model                     │
+                    │    └─ 返回 cmd (可能为 nil)              │
+                    └─────────────────────────────────────────┘
+                                       │
+                                       ▼
+                    ┌─────────────────────────────────────────┐
+                    │ 4. 处理返回的 Cmd                        │
+                    └─────────────────────────────────────────┘
+                                       │
+                          ┌────────────┴────────────┐
+                          │                         │
+                     (cmd == nil?)              (cmd != nil?)
+                          │                         │
+                    ┌─────┴─────┐           ┌──────▼──────┐
+                    │  跳过 Cmd  │           │ 异步执行   │
+                    └─────┬─────┘           │ goroutine  │
+                          │                 └──────┬──────┘
+                          │                        │
+                          │                        ▼
+                          │           ┌─────────────────────────────────┐
+                          │           │ 执行 Cmd 函数                   │
+                          │           │    resultMsg := cmd()           │
+                          │           │                                  │
+                          │           │   Cmd 可能执行：                 │
+                          │           │   - HTTP 请求                   │
+                          │           │   - 文件读写                     │
+                          │           │   - 定时器等待                   │
+                          │           │   - 子进程交互                    │
+                          │           └────────────┬────────────────────┘
+                          │                        │
+                          │                        ▼
+                          │           ┌─────────────────────────────────┐
+                          │           │ 发送结果 Msg 到消息通道           │
+                          │           │    msgs <- resultMsg             │
+                          │           │                                  │
+                          │           │ (触发下一次 Update 调用)         │
+                          │           └─────────────────────────────────┘
+                          │
+                          ▼
+                    ┌─────────────────────────────────────────┐
+                    │ 5. 渲染视图                              │
+                    │    p.renderer.write(newModel.View())    │
+                    │                                          │
+                    │   View() 返回字符串，写入终端             │
+                    └─────────────────────────────────────────┘
+                                       │
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    │                                       │
+                    ▼                                       ▼
+             ┌──────────────┐                        ┌──────────────┐
+             │ 检查是否退出 │                        │  继续循环     │
+             │  (tea.Quit) │                        │ (等待下一个)  │
+             └──────┬───────┘                        └──────────────┘
+                    │
+               (退出?)
+               /      \
+            Yes        No
+             │          │
+             ▼          │
+         ┌────────┐     │
+         │  结束  │     │
+         └────────┘     │
+                       │
+                       └─────► 返回循环开始
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           线程模型说明                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐                                                        │
+│  │  主 goroutine   │  ◀─ Update 和 View 必须快速执行，否则界面卡顿         │
+│  │                 │                                                        │
+│  │  - 处理消息     │                                                        │
+│  │  - 更新模型     │                                                        │
+│  │  - 渲染界面     │                                                        │
+│  └─────────────────┘                                                        │
+│           │                                                                  │
+│           │ 创建                                                             │
+│           ▼                                                                  │
+│  ┌─────────────────┐                                                        │
+│  │  Cmd goroutine │  ◀─ 执行耗时操作，不阻塞主循环                        │
+│  │                 │                                                        │
+│  │  - 网络请求     │                                                        │
+│  │  - 文件IO       │                                                        │
+│  │  - 定时等待     │                                                        │
+│  └─────────────────┘                                                        │
+│           │                                                                  │
+│           │ 返回 Msg                                                         │
+│           ▼                                                                  │
+│  主循环消息通道                                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Update 函数典型实现                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {                 │
+│      switch msg := msg.(type) {                                             │
+│                                                                             │
+│      case tea.KeyMsg:                 ← 键盘消息                            │
+│          if msg.String() == "ctrl+c" {                                     │
+│              return m, tea.Quit          ← 特殊 Cmd                         │
+│          }                                                                 │
+│          m.someField = newValue                                              │
+│          return m, nil                   ← 无异步操作                        │
+│                                                                             │
+│      case tea.WindowSizeMsg:          ← 窗口大小变化                        │
+│          m.width = msg.Width                                                  │
+│          m.height = msg.Height                                                │
+│          return m, nil                                                       │
+│                                                                             │
+│      case customResultMsg:            ← 自定义异步完成消息                   │
+│          m.data = msg.Result                                                  │
+│          m.loading = false                                                   │
+│          return m, nil                                                       │
+│                                                                             │
+      │      case tickMsg:                     ← 定时器消息                     │
+│          return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {        │
+│              return tickMsg{t}                                               │
+│          })                                                                 │
+│                                                                             │
+│      default:                                                                 │
+│          return m, nil                                                       │
+│      }                                                                       │
+│  }                                                                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Cmd 创建模式                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  func fetchData(url string) tea.Cmd {                                     │
+│      return func() tea.Msg {            ← 返回匿名函数                       │
+│          // 执行耗时操作                                                     │
+│          resp, err := http.Get(url)                                          │
+│          if err != nil {                                                     │
+│              return fetchErrorMsg{err}    ← 错误消息                         │
+│          }                                                                   │
+│          defer resp.Body.Close()                                             │
+│          body, _ := io.ReadAll(resp.Body)                                    │
+│          return fetchSuccessMsg{body: body}  ← 成功消息                       │
+│      }                                                                       │
+│  }                                                                           │
+│                                                                             │
+│  在 Update 中使用：                                                         │
+│      return m, fetchData("https://api.example.com")  ← 返回 Cmd            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘

@@ -18,6 +18,11 @@ type InputComponentWrapper struct {
 	stateHelper *core.InputStateHelper
 }
 
+// GetFocus implements [core.InteractiveBehavior].
+func (w *InputComponentWrapper) GetFocus() bool {
+	panic("unimplemented")
+}
+
 // InputProps defines the properties for the Input component
 type InputProps struct {
 	Placeholder string `json:"placeholder"`
@@ -187,12 +192,17 @@ type ListComponentWrapper struct {
 	// 模拟 List 组件的字段
 }
 
+// GetFocus implements [core.InteractiveBehavior].
+func (w *ListComponentWrapper) GetFocus() bool {
+	return w.HasFocus()
+}
+
 // 使用统一消息处理工具重构后的 list 组件示例
 // (注意：这是示例代码，实际实现在 tui/components/list.go)
 func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                   // 实现了 InteractiveBehavior 接口的组件
+		w, // 实现了 InteractiveBehavior 接口的组件
 		msg,
 		w.getBindings,       // 获取按键绑定的函数
 		w.handleBinding,     // 处理按键绑定的函数
