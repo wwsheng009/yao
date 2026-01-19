@@ -13,9 +13,10 @@
 3. [分层拦截策略](#分层拦截策略)
 4. [组件按键绑定系统](#组件按键绑定系统)
 5. [统一消息处理工具](#统一消息处理工具)
-6. [各组件优化方案](#各组件优化方案)
-7. [测试验证指南](#测试验证指南)
-8. [TODO 列表](#todo-列表)
+6. [统一包装器入口优化](#统一包装器入口优化)
+7. [各组件优化方案](#各组件优化方案)
+8. [测试验证指南](#测试验证指南)
+9. [TODO 列表](#todo-列表)
 
 ---
 
@@ -1321,204 +1322,22 @@ func DefaultInteractiveUpdateMsg(
 
 ---
 
-## 重构前后对比
+## 各组件优化方案
 
-### 代码量对比
+### 组件优化总体思路
 
-| 组件类型 | 重构前行数 | 重构后行数 | 减少量 | 减少比例 |
-|----------|------------|------------|--------|----------|
-| Input    | 70+        | ~20        | ~50行  | ~70%     |
-| List     | 60+        | ~18        | ~42行  | ~70%     |
-| Table    | 80+        | ~22        | ~58行  | ~72%     |
-| Menu     | 90+        | ~25        | ~65行  | ~72%     |
-| Chat     | 75+        | ~20        | ~55行  | ~73%     |
+所有交互组件统一使用**统一消息处理工具**进行重构，这是当前优化工作的核心，遵循以下原则：
 
-### 功能对比
+1. **实现 InteractiveBehavior 接口**，定义组件的特定行为
+2. **使用 StateHelper** 统一状态变化检测逻辑
+3. **调用 DefaultInteractiveUpdateMsg** 模板处理消息
+4. **仅实现组件特定的逻辑**，其他全部委托
 
-| 功能 | 重构前 | 重构后 |
-|------|--------|--------|
-| Layer 1: 定向消息处理 | 手动实现 | 统一函数 |
-| Layer 0: 组件绑定检查 | 手动实现 | 统一函数 |
-| Layer 2.1: 焦点检查 | 手动实现 | 统一函数 |
-| Layer 2.2: 特殊按键处理 | 手动实现 | 标准化接口 |
-| Layer 2.3: 委托原组件 | 手动实现 | 标准化接口 |
-| Layer 3: 非按键消息 | 手动实现 | 统一函数 |
-| 状态变化检测 | 重复代码 | 统一助手类 |
-| 事件发布 | 分散实现 | 统一函数 |
-| 按键绑定集成 | 硬编码 | 灵活配置 |
-
-### 维护性对比
-
-| 维护方面 | 重构前 | 重构后 |
-|----------|--------|--------|
-| Bug修复 | 需要在每个组件中单独修复 | 只需修复一次 |
-| 新功能添加 | 需要更新每个组件 | 统一添加 |
-| 代码一致性 | 难以保证 | 自动保证 |
-| 学习成本 | 每个组件逻辑不同 | 统一模式 |
-| 扩展性 | 受限于每个组件的实现 | 易于扩展 |
-
-### 使用示例
-
-#### 重构前（传统方式）
-
-```go
-// 重构前的 input 组件 UpdateMsg 方法示例（约 70 行）
-func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息处理
-    if msg, ok := msg.(core.TargetedMsg); ok {
-        if msg.TargetID == w.model.id {
-            // 需要递归处理内部消息
-            updatedModel, cmd := w.model.Model.Update(msg.InnerMsg)
-            w.model.Model = updatedModel.(textinput.Model)
-            
-            // 检测状态变化并发布事件
-            oldValue := w.model.Model.Value()
-            newValue := w.model.Model.Value()
-            if oldValue != newValue {
-                eventCmd := core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
-                    "oldValue": oldValue,
-                    "newValue": newValue,
-                })
-                if cmd != nil {
-                    return w, tea.Batch(cmd, eventCmd), core.Handled
-                }
-                return w, eventCmd, core.Handled
-            }
-            
-            return w, cmd, core.Handled
-        } else {
-            // 不是发给本组件的消息
-            return w, nil, core.Ignored
-        }
-    }
-    
-    // 处理键盘消息
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // 检查组件绑定（如果有）
-        if w.model.props.Bindings != nil {
-            for _, binding := range w.model.props.Bindings {
-                if keyMsg.String() == binding.Key {
-                    if binding.UseDefault {
-                        // 使用默认行为，继续处理
-                        break
-                    } else if binding.Action != nil {
-                        // 执行绑定的动作
-                        actionCmd := w.executeAction(binding.Action)
-                        return w, actionCmd, core.Handled
-                    } else if binding.Event != "" {
-                        // 发布绑定的事件
-                        eventCmd := core.PublishEvent(w.model.id, binding.Event, nil)
-                        return w, eventCmd, core.Handled
-                    }
-                }
-            }
-        }
-        
-        // Layer 2.1: 焦点检查
-        if !w.model.Model.Focused() {
-            return w, nil, core.Ignored
-        }
-        
-        // Layer 2.2: 特殊按键拦截
-        switch keyMsg.Type {
-        case tea.KeyEnter:
-            // 发布输入提交事件
-            eventCmd := core.PublishEvent(w.model.id, "INPUT_ENTER_PRESSED", map[string]interface{}{
-                "value": w.model.Model.Value(),
-            })
-            return w, eventCmd, core.Handled
-        case tea.KeyEscape:
-            // 失焦处理
-            w.model.Model.Blur()
-            eventCmd := core.PublishEvent(w.model.id, "INPUT_ESCAPE_PRESSED", nil)
-            return w, eventCmd, core.Handled
-        case tea.KeyTab:
-            // Tab 键，忽略（允许焦点转移）
-            return w, nil, core.Ignored
-        }
-        
-        // Layer 2.3: 委托给原组件
-        oldValue := w.model.Model.Value()
-        updatedModel, cmd := w.model.Model.Update(msg)
-        w.model.Model = updatedModel.(textinput.Model)
-        
-        // 检测并发布状态变化
-        newValue := w.model.Model.Value()
-        if oldValue != newValue {
-            eventCmd := core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
-                "oldValue": oldValue,
-                "newValue": newValue,
-            })
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
-        }
-        
-        return w, cmd, core.Handled
-    }
-    
-    // Layer 3: 非按键消息处理
-    oldValue := w.model.Model.Value()
-    updatedModel, cmd := w.model.Model.Update(msg)
-    w.model.Model = updatedModel.(textinput.Model)
-    
-    // 检测并发布状态变化
-    newValue := w.model.Model.Value()
-    if oldValue != newValue {
-        eventCmd := core.PublishEvent(w.model.id, "INPUT_VALUE_CHANGED", map[string]interface{}{
-            "oldValue": oldValue,
-            "newValue": newValue,
-        })
-        if cmd != nil {
-            return w, tea.Batch(cmd, eventCmd), core.Handled
-        }
-        return w, eventCmd, core.Handled
-    }
-    
-    return w, cmd, core.Handled
-}
-```
-
-#### 重构后（使用统一消息处理工具）
-
-```go
-// 重构后的 input 组件 UpdateMsg 方法（约 20 行）
-func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // 使用通用模板
-    cmd, response := core.DefaultInteractiveUpdateMsg(
-        w,                           // 实现了 InteractiveBehavior 接口的组件
-        msg,                         // 接收的消息
-        w.getBindings,              // 获取按键绑定的函数
-        w.handleBinding,            // 处理按键绑定的函数
-        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
-    )
-
-    return w, cmd, response
-}
-
-// 辅助函数
-func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
-    return w.model.props.Bindings
-}
-
-func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
-    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
-    return cmd, response, handled
-}
-
-func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
-    updatedModel, cmd := w.model.Model.Update(msg)
-    w.model.Model = updatedModel.(textinput.Model)
-    return cmd
-}
-```
+**重要**: 所有新开发或重构的组件都应该使用这个统一的消息处理工具，以确保代码的一致性和可维护性。
 
 ---
 
-## 各组件优化方案
-
-### 1. Input 组件 (P0 - 高优先级)
+### 1. Input 组件实现示例 (P0 - 高优先级)
 
 **文件**: `tui/components/input.go`
 
@@ -1564,103 +1383,105 @@ func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) {
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *InputComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 焦点检查
-        if !w.model.Focused() {
-            return w, nil, core.Ignored
-        }
+    return w, cmd, response
+}
 
-        // Layer 2.2: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyEsc:
-            // ESC: 原生 textinput 不处理，安全拦截
-            w.model.Blur()
-            eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged,
-                map[string]interface{}{"focused": false})
-            return w, eventCmd, core.Handled
+// 辅助函数
+func (w *InputComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
 
-        case tea.KeyEnter:
-            // Enter: 委托给原组件（textinput 处理 Enter）
-            // 发布 Enter 按下事件用于表单提交
-            oldValue := w.model.Value()
-            var cmd tea.Cmd
-            w.model.Model, cmd = w.model.Model.Update(keyMsg)
-            newValue := w.model.Value()
-            
-            eventCmds := []tea.Cmd{
-                core.PublishEvent(w.model.id, core.EventInputEnterPressed,
-                    map[string]interface{}{"value": newValue}),
-            }
-            
-            if oldValue != newValue {
-                eventCmds = append(eventCmds,
-                    core.PublishEvent(w.model.id, core.EventInputValueChanged,
-                        map[string]interface{}{
-                            "oldValue": oldValue,
-                            "newValue": newValue,
-                        }))
-            }
-            
-            return w, tea.Batch(append([]tea.Cmd{cmd}, eventCmds...)...), core.Handled
+func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
 
-        case tea.KeyTab:
-            // Tab: 返回 Ignored 让上层处理导航
-            return w, nil, core.Ignored
-        }
+func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel.(textinput.Model)
+    return cmd
+}
 
-        // Layer 2.3: 委托给原组件（所有其他按键）
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *InputComponentWrapper) HasFocus() bool {
+    return w.model.Focused()
+}
+
+func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEsc:
+        // ESC: 原生 textinput 不处理，安全拦截
+        w.model.Blur()
+        eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{"focused": false})
+        return eventCmd, core.Handled, true
+    case tea.KeyEnter:
+        // Enter: 委托给原组件（textinput 处理 Enter），但发布事件
         oldValue := w.model.Value()
         var cmd tea.Cmd
         w.model.Model, cmd = w.model.Model.Update(keyMsg)
         newValue := w.model.Value()
         
-        // 检测值变化
-        if oldValue != newValue {
-            eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged,
-                map[string]interface{}{
-                    "oldValue": oldValue,
-                    "newValue": newValue,
-                })
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
+        eventCmds := []tea.Cmd{
+            core.PublishEvent(w.model.id, core.EventInputEnterPressed,
+                map[string]interface{}{"value": newValue}),
         }
         
-        return w, cmd, core.Handled
-    }
-
-    // Layer 3: 非按键消息
-    oldValue := w.model.Value()
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
-    newValue := w.model.Value()
-    
-    if oldValue != newValue {
-        eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged,
-            map[string]interface{}{
-                "oldValue": oldValue,
-                "newValue": newValue,
-            })
-        if cmd != nil {
-            return w, tea.Batch(cmd, eventCmd), core.Handled
+        if oldValue != newValue {
+            eventCmds = append(eventCmds,
+                core.PublishEvent(w.model.id, core.EventInputValueChanged,
+                    map[string]interface{}{
+                        "oldValue": oldValue,
+                        "newValue": newValue,
+                    }))
         }
-        return w, eventCmd, core.Handled
+        
+        return tea.Batch(append([]tea.Cmd{cmd}, eventCmds...)...), core.Handled, true
+    case tea.KeyTab:
+        // Tab: 返回 Ignored 让上层处理导航
+        return nil, core.Ignored, true
     }
     
-    return w, cmd, core.Handled
+    return nil, core.Handled, false
+}
+
+func (w *InputComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "value":   w.model.Value(),
+        "focused": w.model.Focused(),
+    }
+}
+
+func (w *InputComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    if oldState["value"] != newState["value"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged,
+            map[string]interface{}{
+                "oldValue": oldState["value"],
+                "newValue": newState["value"],
+            }))
+    }
+    
+    if oldState["focused"] != newState["focused"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{
+                "focused": newState["focused"],
+            }))
+    }
+    
+    return cmds
 }
 ```
 
@@ -1704,88 +1525,85 @@ func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) {
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 焦点检查
-        // list.Model 没有 Focused() 方法，使用 props.Focused
-        if !w.model.props.Focused {
-            return w, nil, core.Ignored
-        }
+    return w, cmd, response
+}
 
-        // Layer 2.2: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyEnter:
-            // Enter: 发布选择事件
-            if selectedItem := w.model.SelectedItem(); selectedItem != nil {
-                item := selectedItem.(ListItem)
-                eventCmd := core.PublishEvent(w.model.id, core.EventMenuItemSelected,
-                    map[string]interface{}{
-                        "item":  item,
-                        "index": w.model.Index(),
-                        "title": item.Title,
-                        "value": item.Value,
-                    })
-                return w, eventCmd, core.Handled
-            }
-            return w, nil, core.Handled
+// 辅助函数
+func (w *ListComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
 
-        case tea.KeyTab:
-            // Tab: 返回 Ignored 让上层处理导航
-            return w, nil, core.Ignored
-        }
+func (w *ListComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
 
-        // Layer 2.3: 委托给原组件
-        oldIndex := w.model.Index()
-        var cmd tea.Cmd
-        w.model.Model, cmd = w.model.Model.Update(keyMsg)
-        newIndex := w.model.Index()
-        
-        // 检测选择变化
-        if oldIndex != newIndex {
-            eventCmd := core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED",
+func (w *ListComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *ListComponentWrapper) HasFocus() bool {
+    return w.model.props.Focused
+}
+
+func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEnter:
+        // Enter: 发布选择事件
+        if selectedItem := w.model.SelectedItem(); selectedItem != nil {
+            item := selectedItem.(ListItem)
+            eventCmd := core.PublishEvent(w.model.id, core.EventMenuItemSelected,
                 map[string]interface{}{
-                    "oldIndex": oldIndex,
-                    "newIndex": newIndex,
+                    "item":  item,
+                    "index": w.model.Index(),
+                    "title": item.Title,
+                    "value": item.Value,
                 })
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
+            return eventCmd, core.Handled, true
         }
-        
-        return w, cmd, core.Handled
+        return nil, core.Handled, true
+    case tea.KeyTab:
+        // Tab: 返回 Ignored 让上层处理导航
+        return nil, core.Ignored, true
     }
+    
+    return nil, core.Handled, false
+}
 
-    // Layer 3: 非按键消息
-    oldIndex := w.model.Index()
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
-    newIndex := w.model.Index()
+func (w *ListComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "index": w.model.Index(),
+        "selected": w.model.SelectedItem(),
+        "focused": w.model.props.Focused,
+    }
+}
+
+func (w *ListComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
     
-    if oldIndex != newIndex {
-        eventCmd := core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED",
+    if oldState["index"] != newState["index"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, "LIST_SELECTION_CHANGED",
             map[string]interface{}{
-                "oldIndex": oldIndex,
-                "newIndex": newIndex,
-            })
-        if cmd != nil {
-            return w, tea.Batch(cmd, eventCmd), core.Handled
-        }
-        return w, eventCmd, core.Handled
+                "oldIndex": oldState["index"],
+                "newIndex": newState["index"],
+            }))
     }
     
-    return w, cmd, core.Handled
+    return cmds
 }
 ```
 
@@ -1807,86 +1625,137 @@ func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现（简化版）
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *MenuComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.ID {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 焦点检查
-        if !w.model.focused {
-            return w, nil, core.Ignored
-        }
+    return w, cmd, response
+}
 
-        // Layer 2.2: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyEsc:
-            // ESC: 失焦并返回父菜单
-            if w.model.CurrentLevel > 0 {
-                // 返回父菜单逻辑...
-                eventCmd := core.PublishEvent(w.model.ID, core.EventMenuSubmenuExited,
+// 辅助函数
+func (w *MenuComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
+
+func (w *MenuComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
+
+func (w *MenuComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *MenuComponentWrapper) HasFocus() bool {
+    return w.model.focused
+}
+
+func (w *MenuComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEsc:
+        // ESC: 失焦并返回父菜单
+        if w.model.CurrentLevel > 0 {
+            // 返回父菜单逻辑...
+            eventCmd := core.PublishEvent(w.model.ID, core.EventMenuSubmenuExited,
+                map[string]interface{}{
+                    "previousPath": w.model.Path,
+                    "currentPath": w.model.Path[:len(w.model.Path)-1],
+                    "level": w.model.CurrentLevel - 1,
+                })
+            return eventCmd, core.Handled, true
+        }
+        return nil, core.Handled, true
+    case tea.KeyEnter:
+        // Enter: 处理选择或进入子菜单
+        selectedItem := w.model.Model.SelectedItem()
+        if menuItem, ok := selectedItem.(MenuItem); ok {
+            if menuItem.HasSubmenu() {
+                // 进入子菜单
+                w.model.Path = append(w.model.Path, menuItem.Title)
+                w.model.CurrentLevel++
+                // 加载子菜单...
+                eventCmd := core.PublishEvent(w.model.ID, core.EventMenuSubmenuEntered,
                     map[string]interface{}{
-                        "previousPath": w.model.Path,
-                        "currentPath": w.model.Path[:len(w.model.Path)-1],
-                        "level": w.model.CurrentLevel - 1,
+                        "item": menuItem,
+                        "parentPath": w.model.Path[:len(w.model.Path)-1],
+                        "currentPath": w.model.Path,
+                        "level": w.model.CurrentLevel,
                     })
-                return w, eventCmd, core.Handled
+                return eventCmd, core.Handled, true
+            } else {
+                // 叶子项选择
+                eventCmd := core.PublishEvent(w.model.ID, core.EventMenuItemSelected,
+                    map[string]interface{}{
+                        "item": menuItem,
+                        "action": menuItem.Action,
+                        "path": w.model.Path,
+                        "level": w.model.CurrentLevel,
+                    })
+                return eventCmd, core.Handled, true
             }
-            return w, nil, core.Handled
-
-        case tea.KeyEnter:
-            // Enter: 处理选择或进入子菜单
-            selectedItem := w.model.Model.SelectedItem()
-            if menuItem, ok := selectedItem.(MenuItem); ok {
-                if menuItem.HasSubmenu() {
-                    // 进入子菜单
-                    w.model.Path = append(w.model.Path, menuItem.Title)
-                    w.model.CurrentLevel++
-                    // 加载子菜单...
-                    eventCmd := core.PublishEvent(w.model.ID, core.EventMenuSubmenuEntered,
-                        map[string]interface{}{
-                            "item": menuItem,
-                            "parentPath": w.model.Path[:len(w.model.Path)-1],
-                            "currentPath": w.model.Path,
-                            "level": w.model.CurrentLevel,
-                        })
-                    return w, eventCmd, core.Handled
-                } else {
-                    // 叶子项选择
-                    eventCmd := core.PublishEvent(w.model.ID, core.EventMenuItemSelected,
-                        map[string]interface{}{
-                            "item": menuItem,
-                            "action": menuItem.Action,
-                            "path": w.model.Path,
-                            "level": w.model.CurrentLevel,
-                        })
-                    return w, eventCmd, core.Handled
-                }
-            }
-            return w, nil, core.Handled
-
-        case tea.KeyTab:
-            // Tab: 返回 Ignored 让上层处理导航
-            return w, nil, core.Ignored
         }
-
-        // Layer 2.3: 委托给原组件（导航键）
-        var cmd tea.Cmd
-        w.model.Model, cmd = w.model.Model.Update(keyMsg)
-        return w, cmd, core.Handled
+        return nil, core.Handled, true
+    case tea.KeyTab:
+        // Tab: 返回 Ignored 让上层处理导航
+        return nil, core.Ignored, true
     }
+    
+    return nil, core.Handled, false
+}
 
-    // Layer 3: 非按键消息
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
-    return w, cmd, core.Handled
+func (w *MenuComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "currentIndex": w.model.Model.Index(),
+        "currentPath": w.model.Path,
+        "currentLevel": w.model.CurrentLevel,
+        "focused": w.model.focused,
+    }
+}
+
+func (w *MenuComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    // 检测菜单状态变化并发布相应事件
+    if oldState["currentIndex"] != newState["currentIndex"] {
+        // 选择项变化
+        cmds = append(cmds, core.PublishEvent(w.model.ID, "MENU_SELECTION_CHANGED",
+            map[string]interface{}{
+                "oldIndex": oldState["currentIndex"],
+                "newIndex": newState["currentIndex"],
+                "path": newState["currentPath"],
+            }))
+    }
+    
+    if oldState["currentLevel"] != newState["currentLevel"] {
+        // 级别变化
+        if oldState["currentLevel"].(int) < newState["currentLevel"].(int) {
+            // 进入子菜单
+            cmds = append(cmds, core.PublishEvent(w.model.ID, "MENU_ENTER_SUBMENU",
+                map[string]interface{}{
+                    "path": newState["currentPath"],
+                    "level": newState["currentLevel"],
+                }))
+        } else {
+            // 返回父菜单
+            cmds = append(cmds, core.PublishEvent(w.model.ID, "MENU_EXIT_SUBMENU",
+                map[string]interface{}{
+                    "path": newState["currentPath"],
+                    "level": newState["currentLevel"],
+                }))
+        }
+    }
+    
+    return cmds
 }
 ```
 
@@ -1902,87 +1771,105 @@ func (w *MenuComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 焦点检查
-        if !w.model.Model.Focused() {
-            return w, nil, core.Ignored
-        }
+    return w, cmd, response
+}
 
-        // Layer 2.2: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyTab:
-            // Tab: 返回 Ignored 让上层处理导航
-            return w, nil, core.Ignored
+// 辅助函数
+func (w *TableComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
 
-        case tea.KeyEnter:
-            // Enter: 发布双击/确认事件
-            currentSelectedRow := w.model.Model.Cursor()
-            if currentSelectedRow >= 0 {
-                rows := w.model.Model.Rows()
-                var rowData interface{}
-                if currentSelectedRow < len(rows) {
-                    rowData = rows[currentSelectedRow]
-                }
-                eventCmd := core.PublishEvent(w.model.id, core.EventRowDoubleClicked,
-                    map[string]interface{}{
-                        "rowIndex": currentSelectedRow,
-                        "rowData": rowData,
-                        "tableID": w.model.id,
-                        "trigger": "enter_key",
-                    })
-                return w, eventCmd, core.Handled
-            }
-            return w, nil, core.Handled
-        }
+func (w *TableComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
 
-        // Layer 2.3: 委托给原组件
-        prevSelectedRow := w.model.Model.Cursor()
-        var cmd tea.Cmd
-        w.model.Model, cmd = w.model.Model.Update(keyMsg)
+func (w *TableComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *TableComponentWrapper) HasFocus() bool {
+    return w.model.Model.Focused()
+}
+
+func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyTab:
+        // Tab: 返回 Ignored 让上层处理导航
+        return nil, core.Ignored, true
+    case tea.KeyEnter:
+        // Enter: 发布双击/确认事件
         currentSelectedRow := w.model.Model.Cursor()
-        
-        // 检测选择变化
-        if prevSelectedRow != currentSelectedRow {
-            var rowData interface{}
+        if currentSelectedRow >= 0 {
             rows := w.model.Model.Rows()
-            if currentSelectedRow >= 0 && currentSelectedRow < len(rows) {
+            var rowData interface{}
+            if currentSelectedRow < len(rows) {
                 rowData = rows[currentSelectedRow]
             }
-            
-            eventCmd := core.PublishEvent(w.model.id, core.EventRowSelected,
+            eventCmd := core.PublishEvent(w.model.id, core.EventRowDoubleClicked,
                 map[string]interface{}{
                     "rowIndex": currentSelectedRow,
-                    "prevRowIndex": prevSelectedRow,
                     "rowData": rowData,
                     "tableID": w.model.id,
-                    "navigationKey": keyMsg.String(),
+                    "trigger": "enter_key",
                 })
-            
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
+            return eventCmd, core.Handled, true
+        }
+        return nil, core.Handled, true
+    }
+    
+    return nil, core.Handled, false
+}
+
+func (w *TableComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "cursor": w.model.Model.Cursor(),
+        "rows": w.model.Model.Rows(),
+        "focused": w.model.Model.Focused(),
+    }
+}
+
+func (w *TableComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    // 检测选择行变化
+    if oldState["cursor"] != newState["cursor"] {
+        var rowData interface{}
+        rows := newState["rows"].([][]string)
+        currentRow := newState["cursor"].(int)
+        if currentRow >= 0 && currentRow < len(rows) {
+            rowData = rows[currentRow]
         }
         
-        return w, cmd, core.Handled
+        prevRow := oldState["cursor"].(int)
+        
+        eventCmd := core.PublishEvent(w.model.id, core.EventRowSelected,
+            map[string]interface{}{
+                "rowIndex": currentRow,
+                "prevRowIndex": prevRow,
+                "rowData": rowData,
+                "tableID": w.model.id,
+                "navigationKey": "arrow_keys", // 假设是通过箭头键导航
+            })
+        
+        cmds = append(cmds, eventCmd)
     }
-
-    // Layer 3: 非按键消息
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
-    return w, cmd, core.Handled
+    
+    return cmds
 }
 ```
 
@@ -1998,59 +1885,76 @@ func (w *TableComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface,
 
 **优化方案**:
 ```go
-// ✅ 优化后的 UpdateMsg 方法
+// ✅ 优化后的 UpdateMsg 方法（使用统一消息处理模板）
 func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 焦点检查（检查 textarea）
-        if !w.model.TextInput.Focused() {
-            return w, nil, core.Ignored
-        }
+    return w, cmd, response
+}
 
-        // Layer 2.2: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyEsc:
-            // ESC: 失焦
-            w.model.TextInput.Blur()
-            eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged,
-                map[string]interface{}{"focused": false})
-            return w, eventCmd, core.Handled
+// 辅助函数
+func (w *ChatComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
 
-        case tea.KeyEnter:
-            // Enter: 处理发送消息
-            if msg.String() == "shift+enter" || msg.Alt {
-                // Shift+Enter 或 Alt+Enter: 允许多行输入
-                oldValue := w.model.TextInput.Value()
-                var cmd tea.Cmd
-                w.model.TextInput, cmd = w.model.TextInput.Update(msg)
-                newValue := w.model.TextInput.Value()
-                
-                if oldValue != newValue {
-                    eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged,
-                        map[string]interface{}{
-                            "oldValue": oldValue,
-                            "newValue": newValue,
-                        })
-                    return w, tea.Batch(cmd, eventCmd), core.Handled
-                }
-                return w, cmd, core.Handled
+func (w *ChatComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
+
+func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.TextInput.Update(msg)
+    w.model.TextInput = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *ChatComponentWrapper) HasFocus() bool {
+    return w.model.TextInput.Focused()
+}
+
+func (w *ChatComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEsc:
+        // ESC: 失焦
+        w.model.TextInput.Blur()
+        eventCmd := core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{"focused": false})
+        return eventCmd, core.Handled, true
+    case tea.KeyEnter:
+        // Enter: 处理发送消息
+        if keyMsg.String() == "shift+enter" || keyMsg.Alt {
+            // Shift+Enter 或 Alt+Enter: 允许多行输入
+            oldValue := w.model.TextInput.Value()
+            var cmd tea.Cmd
+            w.model.TextInput, cmd = w.model.TextInput.Update(keyMsg)
+            newValue := w.model.TextInput.Value()
+            
+            eventCmds := []tea.Cmd{}
+            if oldValue != newValue {
+                eventCmds = append(eventCmds, core.PublishEvent(w.model.id, core.EventInputValueChanged,
+                    map[string]interface{}{
+                        "oldValue": oldValue,
+                        "newValue": newValue,
+                    }))
             }
-
-            // 普通 Enter: 发送消息
-            inputText := w.model.TextInput.Value()
-            if inputText == "" {
-                return w, nil, core.Handled
+            
+            if len(eventCmds) > 0 {
+                return tea.Batch(append([]tea.Cmd{cmd}, eventCmds...)...), core.Handled, true
             }
+            return cmd, core.Handled, true
+        }
 
+        // 普通 Enter: 发送消息
+        inputText := w.model.TextInput.Value()
+        if inputText != "" {
             // 清空输入
             w.model.TextInput.Reset()
 
@@ -2070,34 +1974,50 @@ func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
                     }),
             }
 
-            return w, tea.Batch(eventCmds...), core.Handled
+            return tea.Batch(eventCmds...), core.Handled, true
         }
-
-        // Layer 2.3: 委托给原组件
-        oldValue := w.model.TextInput.Value()
-        var cmd tea.Cmd
-        w.model.TextInput, cmd = w.model.TextInput.Update(keyMsg)
-        newValue := w.model.TextInput.Value()
-        
-        if oldValue != newValue {
-            eventCmd := core.PublishEvent(w.model.id, core.EventInputValueChanged,
-                map[string]interface{}{
-                    "oldValue": oldValue,
-                    "newValue": newValue,
-                })
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
-        }
-        
-        return w, cmd, core.Handled
+        return nil, core.Handled, true
     }
+    
+    return nil, core.Handled, false
+}
 
-    // Layer 3: 非按键消息
-    var cmd tea.Cmd
-    w.model.TextInput, cmd = w.model.TextInput.Update(msg)
-    return w, cmd, core.Handled
+func (w *ChatComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "value": w.model.TextInput.Value(),
+        "focused": w.model.TextInput.Focused(),
+        "messages": len(w.model.Messages),
+    }
+}
+
+func (w *ChatComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    if oldState["value"] != newState["value"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputValueChanged,
+            map[string]interface{}{
+                "oldValue": oldState["value"],
+                "newValue": newState["value"],
+            }))
+    }
+    
+    if oldState["focused"] != newState["focused"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, core.EventInputFocusChanged,
+            map[string]interface{}{
+                "focused": newState["focused"],
+            }))
+    }
+    
+    if oldState["messages"] != newState["messages"] {
+        // 消息数量变化
+        cmds = append(cmds, core.PublishEvent(w.model.id, "CHAT_MESSAGES_CHANGED",
+            map[string]interface{}{
+                "count": newState["messages"],
+                "change": newState["messages"].(int) - oldState["messages"].(int),
+            }))
+    }
+    
+    return cmds
 }
 ```
 
@@ -2113,48 +2033,75 @@ func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
+
+    return w, cmd, response
+}
+
+// 辅助函数
+func (w *ViewportComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
+
+func (w *ViewportComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
+
+func (w *ViewportComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *ViewportComponentWrapper) HasFocus() bool {
+    // Viewport 通常不处理焦点，返回 true 表示总是可以接收消息
+    return true
+}
+
+func (w *ViewportComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    switch keyMsg.Type {
+    case tea.KeyEsc:
+        // ESC: 返回 Ignored 让上层处理焦点管理
+        return nil, core.Ignored, true
     }
+    
+    // 对于其他按键，不进行特殊处理，返回 false 表示未处理
+    return nil, core.Handled, false
+}
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 拦截特殊按键
-        switch keyMsg.Type {
-        case tea.KeyEsc:
-            // ESC: 返回 Ignored 让上层处理焦管理
-            return w, nil, core.Ignored
-
-        case tea.KeyHome:
-            // Home: 委托给原组件（viewport 支持）
-            var cmd tea.Cmd
-            w.model.Model, cmd = w.model.Model.Update(keyMsg)
-            return w, cmd, core.Handled
-
-        case tea.KeyEnd:
-            // End: 委托给原组件
-            var cmd tea.Cmd
-            w.model.Model, cmd = w.model.Model.Update(keyMsg)
-            return w, cmd, core.Handled
-        }
-
-        // Layer 2.2: 委托给原组件（所有其他滚动键）
-        var cmd tea.Cmd
-        w.model.Model, cmd = w.model.Model.Update(keyMsg)
-        return w, cmd, core.Handled
+func (w *ViewportComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "offsetY": w.model.Model.YOffset,
+        "contentHeight": w.model.Model.ContentHeight(),
+        "viewportHeight": w.model.Model.Height,
     }
+}
 
-    // Layer 3: 非按键消息
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
-    return w, cmd, core.Handled
+func (w *ViewportComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
+    
+    // 检测滚动位置变化
+    if oldState["offsetY"] != newState["offsetY"] {
+        cmds = append(cmds, core.PublishEvent(w.id, "VIEWPORT_SCROLL_CHANGED",
+            map[string]interface{}{
+                "oldOffsetY": oldState["offsetY"],
+                "newOffsetY": newState["offsetY"],
+                "direction": "vertical",
+            }))
+    }
+    
+    return cmds
 }
 ```
 
@@ -2170,51 +2117,69 @@ func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterfa
 
 **优化方案**:
 ```go
-// ✅ 优化后的实现
+// ✅ 优化后的实现（使用统一消息处理模板）
 func (w *PaginatorComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-    // Layer 1: 定向消息
-    switch msg := msg.(type) {
-    case core.TargetedMsg:
-        if msg.TargetID == w.model.id {
-            return w.UpdateMsg(msg.InnerMsg)
-        }
-        return w, nil, core.Ignored
-    }
+    // 使用通用模板
+    cmd, response := core.DefaultInteractiveUpdateMsg(
+        w,                           // 实现了 InteractiveBehavior 接口的组件
+        msg,                         // 接收的消息
+        w.getBindings,              // 获取按键绑定的函数
+        w.handleBinding,            // 处理按键绑定的函数
+        w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+    )
 
-    // Layer 2: 按键消息分层
-    if keyMsg, ok := msg.(tea.KeyMsg); ok {
-        // Layer 2.1: 记录旧状态
-        oldPage := w.model.Page
-        var cmd tea.Cmd
-        
-        // Layer 2.2: 委托给原组件（paginator 处理左右键）
-        w.model.Model, cmd = w.model.Model.Update(keyMsg)
-        newPage := w.model.Page
-        
-        // Layer 2.3: 检测变化并发布事件
-        if oldPage != newPage {
-            eventCmd := core.PublishEvent(w.model.id, "PAGINATOR_PAGE_CHANGED",
-                map[string]interface{}{
-                    "oldPage": oldPage + 1,
-                    "newPage": newPage + 1,
-                })
-            if cmd != nil {
-                return w, tea.Batch(cmd, eventCmd), core.Handled
-            }
-            return w, eventCmd, core.Handled
-        }
-        
-        return w, cmd, core.Handled
-    }
+    return w, cmd, response
+}
 
-    // Layer 3: 非按键消息
-    var cmd tea.Cmd
-    w.model.Model, cmd = w.model.Model.Update(msg)
+// 辅助函数
+func (w *PaginatorComponentWrapper) getBindings() []core.ComponentBinding {
+    return w.model.props.Bindings
+}
+
+func (w *PaginatorComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+    cmd, response, handled := core.HandleBinding(keyMsg, binding, w.GetID())
+    return cmd, response, handled
+}
+
+func (w *PaginatorComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
+    updatedModel, cmd := w.model.Model.Update(msg)
+    w.model.Model = updatedModel
+    return cmd
+}
+
+// 实现 InteractiveBehavior 接口的其他方法
+func (w *PaginatorComponentWrapper) HasFocus() bool {
+    // Paginator 通常不处理焦点，返回 true 表示总是可以接收消息
+    return true
+}
+
+func (w *PaginatorComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+    // Paginator 不处理特殊按键，直接返回未处理
+    return nil, core.Handled, false
+}
+
+func (w *PaginatorComponentWrapper) CaptureState() map[string]interface{} {
+    return map[string]interface{}{
+        "page": w.model.Model.Page,
+        "totalPages": w.model.Model.TotalPages,
+        "perPage": w.model.Model.PerPage,
+    }
+}
+
+func (w *PaginatorComponentWrapper) DetectStateChanges(oldState, newState map[string]interface{}) []tea.Cmd {
+    var cmds []tea.Cmd
     
     // 检测页码变化
-    // ...
+    if oldState["page"] != newState["page"] {
+        cmds = append(cmds, core.PublishEvent(w.model.id, "PAGINATOR_PAGE_CHANGED",
+            map[string]interface{}{
+                "oldPage": oldState["page"].(int) + 1,
+                "newPage": newState["page"].(int) + 1,
+                "totalPages": newState["totalPages"],
+            }))
+    }
     
-    return w, cmd, core.Handled
+    return cmds
 }
 ```
 

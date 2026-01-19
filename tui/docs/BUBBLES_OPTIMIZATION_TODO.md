@@ -18,6 +18,16 @@
 
 **总体进度**: 2/7 阶段 | 0/16 组件
 
+## 核心目标
+
+使用统一消息处理工具重构所有组件的 `UpdateMsg` 函数，以实现：
+
+- **代码一致性**: 所有组件使用相同的处理模式
+- **减少重复**: 通过统一工具消除 60-70% 的重复代码
+- **易于维护**: 集中管理消息处理逻辑
+- **功能完整性**: 保持所有原生 bubbles 功能
+- **扩展性**: 通过组件绑定系统提供灵活的按键配置
+
 ---
 
 ## 阶段 0: 组件按键绑定系统实现
@@ -771,6 +781,13 @@ Documentation:
 **预计时间**: 6-8 小时
 **状态**: [x] 已完成
 
+### 0.5.10 统一组件包装器入口优化
+
+**文件**: `tui/components/*.go`, `tui/docs/UNIFIED_WRAPPER_ENTRY_GUIDE.md`  
+**优先级**: P0 - 高（架构重构）  
+**预计时间**: 2-3 小时
+**状态**: [x] 已完成（Menu 组件示例）
+
 ### 背景
 
 经过对所有组件的消息处理逻辑分析，发现高度共同性：
@@ -1245,6 +1262,11 @@ Next Steps:
   ```
 
  - [ ] 1.1.2 重构 `UpdateMsg` 方法（第 233-316 行）
+   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+   - [ ] 实现 `InteractiveBehavior` 接口
+   - [ ] 实现 `getBindings` 方法（获取组件绑定）
+   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
    - [ ] 添加 Layer 1: 定向消息处理
    - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
    - [ ] 添加 Layer 2: 按键消息分层
@@ -1347,6 +1369,11 @@ Next Steps:
   ```
 
  - [ ] 1.2.2 重构 `UpdateMsg` 方法（第 244-313 行）
+   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+   - [ ] 实现 `InteractiveBehavior` 接口
+   - [ ] 实现 `getBindings` 方法（获取组件绑定）
+   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
    - [ ] 添加 Layer 1: 定向消息处理
    - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
    - [ ] 添加 Layer 2: 按键消息分层
@@ -1424,6 +1451,11 @@ Next Steps:
   ```
 
  - [ ] 1.3.2 重构 `UpdateMsg` 方法（第 787-834 行）
+   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+   - [ ] 实现 `InteractiveBehavior` 接口
+   - [ ] 实现 `getBindings` 方法（获取组件绑定）
+   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
    - [ ] 添加 Layer 1: 定向消息处理
    - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
    - [ ] 添加 Layer 2: 按键消息分层
@@ -1502,6 +1534,11 @@ Next Steps:
   ```
 
  - [ ] 1.4.2 重构 `UpdateMsg` 方法（第 477-611 行）
+   - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+   - [ ] 实现 `InteractiveBehavior` 接口
+   - [ ] 实现 `getBindings` 方法（获取组件绑定）
+   - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+   - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
    - [ ] 添加 Layer 1: 定向消息处理
    - [ ] 添加 Layer 0: 组件绑定检查（在按键消息前）
    - [ ] 添加 Layer 2: 按键消息分层
@@ -1577,6 +1614,11 @@ Next Steps:
   ```
 
 - [ ] 1.5.2 重构 `UpdateMsg` 方法（第 433-573 行）
+  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+  - [ ] 实现 `InteractiveBehavior` 接口
+  - [ ] 实现 `getBindings` 方法（获取组件绑定）
+  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
   - [ ] 添加 Layer 1: 定向消息处理
   - [ ] 添加 Layer 2: 按键消息分层
   - [ ] 实现焦检查（Layer 2.1）
@@ -1649,6 +1691,11 @@ Next Steps:
   ```
 
 - [ ] 2.1.2 重构 `UpdateMsg` 方法（第 264-351 行）
+  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+  - [ ] 实现 `InteractiveBehavior` 接口
+  - [ ] 实现 `getBindings` 方法（获取组件绑定）
+  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
   - [ ] 添加 Layer 1: 定向消息处理
   - [ ] 添加 Layer 2: 按键消息分层
   - [ ] 实现特殊按键拦截（Layer 2.1）
@@ -1695,6 +1742,11 @@ Next Steps:
   ```
 
 - [ ] 2.2.2 重构 `UpdateMsg` 方法（第 244-311 行）
+  - [ ] 使用 `DefaultInteractiveUpdateMsg` 统一消息处理工具
+  - [ ] 实现 `InteractiveBehavior` 接口
+  - [ ] 实现 `getBindings` 方法（获取组件绑定）
+  - [ ] 实现 `handleBinding` 方法（处理按键绑定）
+  - [ ] 实现 `delegateToBubbles` 方法（委托给原组件）
   - [ ] 添加 Layer 1: 定向消息处理
   - [ ] 添加 Layer 2: 按键消息分层
   - [ ] 移除手动 Left/Right 键处理
@@ -2013,17 +2065,23 @@ Next Steps:
    cat tui/docs/BUBBLES_COMPONENTS_OPTIMIZATION_GUIDE.md
    ```
 
-2. **从简单组件开始**
+2. **理解统一消息处理工具**
+   - 重点阅读 "统一消息处理工具" 部分
+   - 了解 `DefaultInteractiveUpdateMsg` 函数的使用
+   - 理解 `InteractiveBehavior` 接口的作用
+   - 学习如何实现必要的辅助方法（`getBindings`, `handleBinding`, `delegateToBubbles`）
+
+3. **从简单组件开始**
    - 建议从 `input.go` 或 `list.go` 开始
    - 这些组件逻辑相对简单
-   - 可以快速熟悉优化模式
+   - 可以快速熟悉优化模式和统一工具的使用
 
-3. **按步骤执行**
+4. **按步骤执行**
    - 严格按照 TODO 列表的步骤执行
    - 每完成一个步骤，打勾标记
    - 遇到问题，记录下来并寻求帮助
 
-4. **测试验证**
+5. **测试验证**
    - 每次优化后立即测试
    - 确保功能正常，没有退化
    - 运行所有单元测试
