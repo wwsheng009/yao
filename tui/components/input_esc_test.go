@@ -9,7 +9,7 @@ import (
 	"github.com/yaoapp/yao/tui/core"
 )
 
-func TestFrameworkESCHandling(t *testing.T) {
+func TestInputComponentWrapperESCHandling(t *testing.T) {
 	// 测试框架层的 ESC 处理是否正确工作
 	props := InputProps{
 		Placeholder: "Test input...",

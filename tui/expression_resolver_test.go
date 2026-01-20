@@ -9,6 +9,7 @@ import (
 )
 
 func TestPreprocessExpression(t *testing.T) {
+	t.Parallel()
 	state := map[string]interface{}{
 		"user": map[string]interface{}{
 			"name": "Alice",
@@ -121,6 +122,7 @@ func TestPreprocessExpression(t *testing.T) {
 }
 
 func TestNotNilFunction(t *testing.T) {
+	t.Parallel()
 	t.Run("NotNil with nil value", func(t *testing.T) {
 		env := map[string]interface{}{
 			"value": nil,
@@ -213,6 +215,7 @@ func TestNotNilFunction(t *testing.T) {
 }
 
 func TestIndexFunctionWithNil(t *testing.T) {
+	t.Parallel()
 	t.Run("index function with nil object", func(t *testing.T) {
 		env := map[string]interface{}{
 			"item": nil,
@@ -285,6 +288,7 @@ func TestIndexFunctionWithNil(t *testing.T) {
 }
 
 func TestApplyStateWithConditionalExpressions(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Data: map[string]interface{}{
@@ -340,6 +344,7 @@ func TestApplyStateWithConditionalExpressions(t *testing.T) {
 }
 
 func TestPreprocessExpressionEdgeCases(t *testing.T) {
+	t.Parallel()
 	state := map[string]interface{}{
 		"features.0": "Feature 0",
 		"features":   []interface{}{"A", "B"},
@@ -387,6 +392,7 @@ func TestPreprocessExpressionEdgeCases(t *testing.T) {
 }
 
 func TestExpressionResolverIntegration(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Data: map[string]interface{}{

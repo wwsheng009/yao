@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseInputProps(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		props    map[string]interface{}
@@ -65,6 +66,7 @@ func TestParseInputProps(t *testing.T) {
 }
 
 func TestRenderInput(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Placeholder: "Enter text",
 		Value:       "test",
@@ -77,6 +79,7 @@ func TestRenderInput(t *testing.T) {
 }
 
 func TestNewInputComponentWrapper(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Placeholder: "Enter text",
 		Value:       "test value",
@@ -100,6 +103,7 @@ func TestNewInputComponentWrapper(t *testing.T) {
 }
 
 func TestInputComponentWrapperMethods(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value: "initial value",
 	}
@@ -135,6 +139,7 @@ func TestInputComponentWrapperMethods(t *testing.T) {
 }
 
 func TestInputComponentWrapperUpdateBehavior(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value: "test",
 	}
@@ -156,6 +161,7 @@ func TestInputComponentWrapperUpdateBehavior(t *testing.T) {
 }
 
 func TestInputComponentWrapper(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value: "initial value",
 	}
@@ -202,6 +208,7 @@ func TestInputComponentWrapper(t *testing.T) {
 }
 
 func TestInputComponentWrapperUpdateMsg(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value: "initial value",
 	}
@@ -277,6 +284,7 @@ func TestInputComponentWrapperUpdateMsg(t *testing.T) {
 }
 
 func TestInputComponentWrapperUpdateMsgEdgeCases(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value: "initial value",
 	}
@@ -340,6 +348,7 @@ func TestInputComponentWrapperUpdateMsgEdgeCases(t *testing.T) {
 }
 
 func TestInputComponentWrapperUpdateRenderConfig(t *testing.T) {
+	t.Parallel()
 	props := InputProps{
 		Value:       "initial value",
 		Placeholder: "Enter text",

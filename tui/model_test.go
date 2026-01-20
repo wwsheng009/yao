@@ -11,6 +11,7 @@ import (
 )
 
 func TestNewModel(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		ID:   "test",
 		Name: "Test TUI",
@@ -33,6 +34,7 @@ func TestNewModel(t *testing.T) {
 }
 
 func TestModelInit(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -48,6 +50,7 @@ func TestModelInit(t *testing.T) {
 }
 
 func TestModelUpdateWindowSize(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -73,6 +76,7 @@ func TestModelUpdateWindowSize(t *testing.T) {
 }
 
 func TestModelUpdateStateUpdate(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -96,6 +100,7 @@ func TestModelUpdateStateUpdate(t *testing.T) {
 }
 
 func TestModelUpdateStateBatchUpdate(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -156,6 +161,7 @@ func TestModelHandleKeyPress(t *testing.T) {
 }
 
 func TestModelHandleProcessResult(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -182,6 +188,7 @@ func TestModelHandleProcessResult(t *testing.T) {
 }
 
 func TestModelHandleStreamChunk(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -213,6 +220,7 @@ func TestModelHandleStreamChunk(t *testing.T) {
 }
 
 func TestModelHandleStreamDone(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -236,6 +244,7 @@ func TestModelHandleStreamDone(t *testing.T) {
 }
 
 func TestModelHandleError(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Layout: Layout{
@@ -286,6 +295,7 @@ func TestModelView(t *testing.T) {
 }
 
 func TestModelGetState(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		Name: "Test",
 		Data: map[string]interface{}{
