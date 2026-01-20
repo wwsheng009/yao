@@ -361,12 +361,8 @@ func (w *CursorComponentWrapper) DetectStateChanges(old, new map[string]interfac
 }
 
 func (w *CursorComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyEscape:
-		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
-		return cmd, core.Handled, true
-	}
-
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
 }
 
@@ -413,10 +409,6 @@ func (w *CursorComponentWrapper) GetValue() string {
 }
 
 func (w *CursorComponentWrapper) Focused() bool {
-	return w.props.Visible
-}
-
-func (w *CursorComponentWrapper) HasFocus() bool {
 	return w.props.Visible
 }
 

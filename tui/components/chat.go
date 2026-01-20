@@ -421,10 +421,6 @@ func (m *ChatModel) ClearMessages() {
 	m.updateHistoryText()
 }
 
-
-
-
-
 // PublishEvent creates and returns a command to publish an event
 func (w *ChatComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
 	return core.PublishEvent(sourceID, eventName, payload)
@@ -570,11 +566,11 @@ func (w *ChatComponentWrapper) Init() tea.Cmd {
 func (w *ChatComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -640,14 +636,6 @@ func (w *ChatComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 				return tea.Batch(cmds...)
 			}
 			return nil
-
-		case tea.KeyEsc:
-			// 失焦处理
-			w.TextInput.Blur()
-			cmd = core.PublishEvent(w.id, core.EventInputFocusChanged, map[string]interface{}{
-				"focused": false,
-			})
-			return cmd
 
 		case tea.KeyCtrlC:
 			// 让 Ctrl+C 透传以处理退出
@@ -722,24 +710,9 @@ func (w *ChatComponentWrapper) DetectStateChanges(old, new map[string]interface{
 
 // 实现 HandleSpecialKey 方法
 func (w *ChatComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让 Tab 键冒泡以处理组件导航
-		return nil, core.Ignored, true
-	case tea.KeyEscape:
-		// 失焦处理
-		w.TextInput.Blur()
-		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
-		return cmd, core.Ignored, true
-	}
-
-	// 其他按键不由这个函数处理
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
-}
-
-// HasFocus returns whether the component currently has focus
-func (w *ChatComponentWrapper) HasFocus() bool {
-	return w.TextInput.Focused()
 }
 
 // GetValue returns the current input value (for ChatStateHelper and InputValuer interface)
@@ -770,8 +743,6 @@ func (w *ChatComponentWrapper) View() string {
 func (w *ChatComponentWrapper) GetID() string {
 	return w.id
 }
-
-
 
 // SetValue sets the input value
 func (w *ChatComponentWrapper) SetValue(value string) {
@@ -842,7 +813,6 @@ func (w *ChatComponentWrapper) ClearMessages() {
 func (w *ChatComponentWrapper) GetModel() interface{} {
 	return w
 }
-
 
 // UpdateRenderConfig 更新渲染配置
 func (w *ChatComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {

@@ -44,7 +44,7 @@ type ViewportProps struct {
 
 	// AutoScroll determines if viewport automatically scrolls to bottom
 	AutoScroll bool `json:"autoScroll"`
-	
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
@@ -249,10 +249,10 @@ func (m *ViewportModel) GotoBottom() {
 
 // ViewportComponentWrapper wraps the native viewport.Model directly
 type ViewportComponentWrapper struct {
-	model    viewport.Model
-	props    ViewportProps
-	id       string
-	bindings []core.ComponentBinding
+	model       viewport.Model
+	props       ViewportProps
+	id          string
+	bindings    []core.ComponentBinding
 	stateHelper *core.ViewportStateHelper
 }
 
@@ -327,11 +327,11 @@ func (w *ViewportComponentWrapper) Init() tea.Cmd {
 func (w *ViewportComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -384,22 +384,9 @@ func (w *ViewportComponentWrapper) DetectStateChanges(old, new map[string]interf
 
 // 实现 HandleSpecialKey 方法
 func (w *ViewportComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
-	case tea.KeyEscape:
-		// ESC键返回Ignored，让其冒泡
-		return nil, core.Ignored, true
-	}
-	// 其他按键不由这个函数处理
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
-}
-
-// HasFocus returns whether the component currently has focus
-func (w *ViewportComponentWrapper) HasFocus() bool {
-	// Viewport 组件总是被认为是有焦点的，因为它处理滚动键
-	return true
 }
 
 // SetContent updates the viewport content through the wrapper
@@ -602,4 +589,3 @@ func (w *ViewportComponentWrapper) GetSubscribedMessageTypes() []string {
 		"tea.WindowSizeMsg",
 	}
 }
-

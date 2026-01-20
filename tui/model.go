@@ -216,7 +216,7 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 	// Check if component lost focus after processing message
 	// This handles ESC key to clear focus from components
 	keyMsg, isKeyMsg := msg.(tea.KeyMsg)
-	isESC := isKeyMsg && (keyMsg.Type == tea.KeyEsc || keyMsg.Type == tea.KeyEscape)
+	isESC := isKeyMsg && keyMsg.Type == tea.KeyEsc
 	componentWasFocused := m.CurrentFocus == componentID
 
 	// For ESC key, always check focus state regardless of response
@@ -225,11 +225,8 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 
 	if shouldCheckFocus {
 		// Check if this component lost focus
-		switch comp := updatedComp.(type) {
-		case interface{ HasFocus() bool }:
-			if !comp.HasFocus() {
-				m.clearFocus()
-			}
+		if !comp.Instance.GetFocus() {
+			m.clearFocus()
 		}
 	}
 

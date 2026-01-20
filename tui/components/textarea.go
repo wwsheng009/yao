@@ -48,7 +48,7 @@ type TextareaProps struct {
 
 	// EnterSubmits determines if Enter key submits the form (true) or inserts newline (false)
 	EnterSubmits bool `json:"enterSubmits"`
-	
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
@@ -264,13 +264,6 @@ func (m *TextareaModel) GetFocus() bool {
 	return m.Model.Focused()
 }
 
-// HasFocus returns whether the textarea model currently has focus
-func (m *TextareaModel) HasFocus() bool {
-	return m.Model.Focused()
-}
-
-
-
 // GetModel returns the underlying model
 func (w *TextareaComponentWrapper) GetModel() interface{} {
 	return w.model
@@ -293,8 +286,6 @@ func (w *TextareaComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 	}
 }
 
-
-
 // TextareaStateHelper implements StateCapturable interface for textarea components
 type TextareaStateHelper struct {
 	component *TextareaComponentWrapper
@@ -305,7 +296,7 @@ func (h *TextareaStateHelper) CaptureState() map[string]interface{} {
 	if h.component == nil {
 		return map[string]interface{}{}
 	}
-	
+
 	return map[string]interface{}{
 		"value":     h.component.model.Value(),
 		"focused":   h.component.model.Focused(),
@@ -317,11 +308,11 @@ func (h *TextareaStateHelper) CaptureState() map[string]interface{} {
 // DetectStateChanges implements StateCapturable interface
 func (h *TextareaStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
 	var cmds []tea.Cmd
-	
+
 	if old == nil || new == nil {
 		return cmds
 	}
-	
+
 	// 检查值变化
 	if oldValue, oldOk := old["value"].(string); oldOk {
 		if newValue, newOk := new["value"].(string); newOk && oldValue != newValue {
@@ -331,7 +322,7 @@ func (h *TextareaStateHelper) DetectStateChanges(old, new map[string]interface{}
 			}))
 		}
 	}
-	
+
 	// 检查焦点变化
 	if oldFocused, oldOk := old["focused"].(bool); oldOk {
 		if newFocused, newOk := new["focused"].(bool); newOk && oldFocused != newFocused {
@@ -340,15 +331,15 @@ func (h *TextareaStateHelper) DetectStateChanges(old, new map[string]interface{}
 			}))
 		}
 	}
-	
+
 	return cmds
 }
 
 // TextareaComponentWrapper wraps the native textarea.Model to implement ComponentInterface properly
 type TextareaComponentWrapper struct {
-	model       textarea.Model  // Directly use the native model
-	props       TextareaProps // Component properties
-	id          string        // Component ID
+	model       textarea.Model // Directly use the native model
+	props       TextareaProps  // Component properties
+	id          string         // Component ID
 	bindings    []core.ComponentBinding
 	stateHelper *TextareaStateHelper
 }
@@ -397,11 +388,11 @@ func (w *TextareaComponentWrapper) SetFocusWithCmd() tea.Cmd {
 func (w *TextareaComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -425,19 +416,19 @@ func (w *TextareaComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	// 如果是Enter键且EnterSubmits为true，则发布Enter按下事件
 	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter && w.props.EnterSubmits {
 		w.model, cmd = w.model.Update(msg)
-		
+
 		// 发布Enter按下事件
 		enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
 			"value": w.model.Value(),
 		})
-		
+
 		// 如果原始命令存在，批处理两个命令
 		if cmd != nil {
 			return tea.Batch(enterCmd, cmd)
 		}
 		return enterCmd
 	}
-	
+
 	w.model, cmd = w.model.Update(msg)
 	return cmd
 }
@@ -453,24 +444,9 @@ func (w *TextareaComponentWrapper) DetectStateChanges(old, new map[string]interf
 
 // 实现 HandleSpecialKey 方法
 func (w *TextareaComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
-	case tea.KeyEscape:
-		// 失焦处理
-		w.model.Blur()
-		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
-		return cmd, core.Ignored, true
-	}
-
-	// 其他按键不由这个函数处理
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
-}
-
-// HasFocus returns whether the component currently has focus
-func (w *TextareaComponentWrapper) HasFocus() bool {
-	return w.model.Focused()
 }
 
 func (w *TextareaComponentWrapper) View() string {
@@ -683,5 +659,5 @@ func applyTextareaConfigDirect(textarea *textarea.Model, props TextareaProps) {
 	// Disable if needed
 	if props.Disabled {
 		textarea.Blur()
-	} 
+	}
 }

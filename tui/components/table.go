@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -761,17 +760,9 @@ func (w *TableComponentWrapper) DetectStateChanges(old, new map[string]interface
 	return w.stateHelper.DetectStateChanges(old, new)
 }
 
-// 实现 HasFocus 方法
-func (w *TableComponentWrapper) HasFocus() bool {
-	return w.model.Focused()
-}
-
 // 实现 HandleSpecialKey 方法
 func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
 	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
 	case tea.KeyEnter:
 		// Handle Enter key for row selection confirmation
 		currentSelectedRow := w.model.Cursor()
@@ -798,16 +789,10 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 			return eventCmd, core.Handled, true
 		}
 		return nil, core.Handled, true
-	case tea.KeyEsc:
-		// Handle ESC key - blur the table component
-		// This allows ESC to release focus from table
-		w.model.Blur()
-		log.Trace("TUI: Table %s blur called via ESC", w.id)
-		// Return Ignored to let the message bubble up
-		return nil, core.Ignored, true
 	}
 
-	// 其他按键不由这个函数处理
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
 }
 

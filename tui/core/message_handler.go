@@ -23,9 +23,6 @@ type InteractiveBehavior interface {
 	// 必须实现的状态捕获
 	StateCapturable
 
-	// 可选实现的焦点检查（支持无焦点组件）
-	HasFocus() bool
-
 	// 可选实现的自定义按键处理（返回是否已处理）
 	HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, Response, bool)
 }
@@ -124,7 +121,7 @@ func DefaultInteractiveUpdateMsg(
 		}
 
 		// Layer 2.1: 焦点检查（交互组件必需）
-		if !w.HasFocus() {
+		if !w.GetFocus() {
 			return nil, Ignored
 		}
 
@@ -133,7 +130,17 @@ func DefaultInteractiveUpdateMsg(
 			return cmd, response
 		}
 
-		// Layer 2.3: 委托给原组件处理
+		// Layer 2.3: 统一的默认特殊键处理
+		switch keyMsg.Type {
+		case tea.KeyEsc:
+			// 统一处理 ESC 键：失焦
+			return handleDefaultEscape(w)
+		case tea.KeyTab:
+			// 统一处理 Tab 键：让冒泡处理组件导航
+			return nil, Ignored
+		}
+
+		// Layer 2.4: 委托给原组件处理
 		return HandleStateChanges(w, delegateUpdate(keyMsg)), Handled
 	}
 
@@ -236,6 +243,19 @@ func (h *ChatStateHelper) DetectStateChanges(old, new map[string]interface{}) []
 	}
 
 	return cmds
+}
+
+// handleDefaultEscape 处理默认的 ESC 键行为
+func handleDefaultEscape(w InteractiveBehavior) (tea.Cmd, Response) {
+	// 发布 ESC 事件
+	eventCmd := PublishEvent(w.GetID(), EventEscapePressed, nil)
+
+	// 如果组件实现了 SetFocus(false) 方法，调用失焦
+	if focuser, ok := w.(interface{ SetFocus(bool) }); ok {
+		focuser.SetFocus(false)
+	}
+
+	return eventCmd, Ignored
 }
 
 // ViewportStateHelper 视口组件状态捕获助手

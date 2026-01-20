@@ -68,7 +68,7 @@ type ListProps struct {
 
 	// Background specifies the background color
 	Background string `json:"background"`
-	
+
 	// Bindings define custom key bindings for the component (optional)
 	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
@@ -235,10 +235,10 @@ func (m *ListModel) GetFocus() bool {
 
 // ListComponentWrapper wraps the native list.Model to implement ComponentInterface properly
 type ListComponentWrapper struct {
-	model    list.Model  // Directly use the native model
-	props    ListProps   // Component properties
-	id       string      // Component ID
-	bindings []core.ComponentBinding
+	model       list.Model // Directly use the native model
+	props       ListProps  // Component properties
+	id          string     // Component ID
+	bindings    []core.ComponentBinding
 	stateHelper *core.ListStateHelper
 }
 
@@ -297,8 +297,8 @@ func NewListComponentWrapper(props ListProps, id string) *ListComponentWrapper {
 
 	// stateHelper uses wrapper itself as the implementation
 	wrapper.stateHelper = &core.ListStateHelper{
-		Indexer:     wrapper,  // wrapper implements Index() method
-		Selector:    wrapper,  // wrapper implements SelectedItem() method
+		Indexer:     wrapper, // wrapper implements Index() method
+		Selector:    wrapper, // wrapper implements SelectedItem() method
 		Focused:     props.Focused,
 		ComponentID: id,
 	}
@@ -313,11 +313,11 @@ func (w *ListComponentWrapper) Init() tea.Cmd {
 func (w *ListComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                           // 实现了 InteractiveBehavior 接口的组件
-		msg,                         // 接收的消息
-		w.getBindings,              // 获取按键绑定的函数
-		w.handleBinding,            // 处理按键绑定的函数
-		w.delegateToBubbles,        // 委托给原 bubbles 组件的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
 	return w, cmd, response
@@ -350,11 +350,6 @@ func (w *ListComponentWrapper) DetectStateChanges(old, new map[string]interface{
 	return w.stateHelper.DetectStateChanges(old, new)
 }
 
-// 实现 HasFocus 方法
-func (w *ListComponentWrapper) HasFocus() bool {
-	return w.props.Focused
-}
-
 // 实现 HandleSpecialKey 方法
 func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
 	switch keyMsg.Type {
@@ -370,12 +365,10 @@ func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 			})
 			return cmd, core.Handled, true
 		}
-	case tea.KeyTab:
-		// 让 Tab 键冒泡以处理组件导航
-		return nil, core.Ignored, true
 	}
-	
-	// 其他按键不由这个函数处理
+
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
 }
 
@@ -383,6 +376,7 @@ func (w *ListComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 func (w *ListComponentWrapper) Index() int {
 	return w.model.Index()
 }
+
 // SelectedItem returns the currently selected item
 func (w *ListComponentWrapper) SelectedItem() interface{} {
 	return w.model.SelectedItem()

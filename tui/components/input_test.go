@@ -128,10 +128,10 @@ func TestInputComponentWrapperMethods(t *testing.T) {
 
 	// Test SetFocus
 	wrapper.SetFocus(true)
-	assert.True(t, wrapper.HasFocus())
+	assert.True(t, wrapper.GetFocus())
 
 	wrapper.SetFocus(false)
-	assert.False(t, wrapper.HasFocus())
+	assert.False(t, wrapper.GetFocus())
 }
 
 func TestInputComponentWrapperUpdateBehavior(t *testing.T) {
@@ -143,7 +143,7 @@ func TestInputComponentWrapperUpdateBehavior(t *testing.T) {
 	wrapper.SetFocus(true)
 
 	// Test ESC key behavior through UpdateMsg
-	escMsg := tea.KeyMsg{Type: tea.KeyEscape}
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
 	updatedWrapper, _, _ := wrapper.UpdateMsg(escMsg)
 	assert.NotNil(t, updatedWrapper)
 	// ESC handling varies by implementation

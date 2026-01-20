@@ -79,7 +79,7 @@ func TestCheckComponentBindings_NoMatch(t *testing.T) {
 	}
 
 	// Test non-matching key
-	escMsg := tea.KeyMsg{Type: tea.KeyEscape}
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
 	matched, binding, handled := CheckComponentBindings(escMsg, bindings, "test")
 	assert.False(t, matched)
 	assert.Nil(t, binding)
@@ -188,7 +188,7 @@ func TestCheckComponentBindings_KeyMatching(t *testing.T) {
 		},
 		{
 			name:            "ESC matches",
-			keyMsg:          tea.KeyMsg{Type: tea.KeyEscape},
+			keyMsg:          tea.KeyMsg{Type: tea.KeyEsc},
 			expectedEvent:   "cancel",
 			shouldMatch:     true,
 			shouldBeHandled: true,

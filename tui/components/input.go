@@ -334,35 +334,14 @@ func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 
 	// 处理按键消息
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		// 跳过已在 HandleSpecialKey 中处理的键
-		switch keyMsg.Type {
-		case tea.KeyTab, tea.KeyEsc:
-			// 这些键已由 HandleSpecialKey 处理，跳过委托
-			return nil
-		case tea.KeyEnter:
-			// 特殊处理Enter键
-			w.model, cmd = w.model.Update(msg)
-
-			// 发布Enter按下事件
-			enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
-				"value": w.model.Value(),
-			})
-
-			// 合并命令（如果有的话）
-			if cmd != nil {
-				return tea.Batch(enterCmd, cmd)
-			}
-			return enterCmd
-		default:
-			// 处理其他按键（包括字符输入）
-			w.model, cmd = w.model.Update(msg)
-			return cmd // 可能为 nil
-		}
+		// 直接委托给底层组件处理（所有按键，包括 Enter）
+		w.model, cmd = w.model.Update(msg)
+		return cmd
 	}
 
-	// 处理非按键消息
+	// 非按键消息
 	w.model, cmd = w.model.Update(msg)
-	return cmd // 可能为 nil
+	return cmd
 }
 
 // 实现 StateCapturable 接口
@@ -376,18 +355,21 @@ func (w *InputComponentWrapper) DetectStateChanges(old, new map[string]interface
 
 // 实现 HandleSpecialKey 方法
 func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
-	case tea.KeyEsc:
-		// 失焦处理
-		w.model.Blur()
-		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
-		return cmd, core.Ignored, true
+	// 特殊处理 Enter 键
+	if keyMsg.Type == tea.KeyEnter {
+		// 更新模型状态
+		w.model, _ = w.model.Update(keyMsg)
+
+		// 发布 Enter 按下事件
+		enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
+			"value": w.model.Value(),
+		})
+
+		// 返回已处理，阻止消息继续传递
+		return enterCmd, core.Handled, true
 	}
 
-	// 其他按键不由这个函数处理
+	// 其他特殊键（ESC、Tab等）由框架层统一处理
 	return nil, core.Ignored, false
 }
 
@@ -398,11 +380,6 @@ func (w *InputComponentWrapper) View() string {
 // SetValue sets the value of the input component
 func (w *InputComponentWrapper) SetValue(value string) {
 	w.model.SetValue(value)
-}
-
-// HasFocus returns whether the input component currently has focus
-func (w *InputComponentWrapper) HasFocus() bool {
-	return w.model.Focused()
 }
 
 func (w *InputComponentWrapper) GetComponentType() string {

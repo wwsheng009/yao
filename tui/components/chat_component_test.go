@@ -16,6 +16,9 @@ func TestChatComponentWrapper_UpdateMsg_KeyEnter(t *testing.T) {
 	}
 	wrapper := NewChatComponentWrapper(props, "test-chat")
 
+	// Set focus manually for testing
+	wrapper.SetFocus(true)
+
 	// Test Enter key with empty input
 	msg := tea.KeyMsg{Type: tea.KeyEnter, Runes: []rune{'\n'}}
 	_, _, response := wrapper.UpdateMsg(msg)

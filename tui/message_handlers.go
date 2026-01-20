@@ -305,20 +305,16 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				log.Trace("TUI: ESC key handled by component %s, checking focus state", m.CurrentFocus)
 				comp, exists := updatedModel.(*Model).Components[m.CurrentFocus]
 				if exists {
-					// Check if component has focus interface and verify focus state
-					if focusChecker, ok := comp.Instance.(interface{ HasFocus() bool }); ok {
-						hasFocus := focusChecker.HasFocus()
-						log.Trace("TUI: Component %s HasFocus()=%v", m.CurrentFocus, hasFocus)
-						if !hasFocus {
-							// Component lost focus, clear global focus state
-							log.Trace("TUI: Component lost focus, clearing CurrentFocus")
-							updatedModel.(*Model).CurrentFocus = ""
-							log.Trace("TUI: ESC pressed, component %s lost focus, cleared CurrentFocus", m.CurrentFocus)
-						} else {
-							log.Trace("TUI: Component still has focus after ESC, CurrentFocus remains")
-						}
+					// Check component focus state using GetFocus()
+					hasFocus := comp.Instance.GetFocus()
+					log.Trace("TUI: Component %s GetFocus()=%v", m.CurrentFocus, hasFocus)
+					if !hasFocus {
+						// Component lost focus, clear global focus state
+						log.Trace("TUI: Component lost focus, clearing CurrentFocus")
+						updatedModel.(*Model).CurrentFocus = ""
+						log.Trace("TUI: ESC pressed, component %s lost focus, cleared CurrentFocus", m.CurrentFocus)
 					} else {
-						log.Trace("TUI: Component %s does not implement HasFocus() interface", m.CurrentFocus)
+						log.Trace("TUI: Component still has focus after ESC, CurrentFocus remains")
 					}
 				} else {
 					log.Trace("TUI: Component %s not found in updated model", m.CurrentFocus)

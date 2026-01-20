@@ -702,8 +702,6 @@ type MenuComponentWrapper struct {
 	stateHelper *MenuStateHelper
 }
 
-
-
 // NewMenuComponentWrapper creates a wrapper that implements ComponentInterface
 func NewMenuComponentWrapper(props MenuProps, id string) *MenuComponentWrapper {
 	// Create menu model with props
@@ -714,10 +712,10 @@ func NewMenuComponentWrapper(props MenuProps, id string) *MenuComponentWrapper {
 		model:    menuModel,
 		bindings: props.Bindings,
 	}
-	
+
 	// MenuInteractiveModel 已经实现了所需接口，直接使用
 	wrapper.stateHelper = &MenuStateHelper{
-		Indexer:     wrapper,  // wrapper自己实现Indexer接口
+		Indexer:     wrapper, // wrapper自己实现Indexer接口
 		Selector:    wrapper, // wrapper自己实现Selector接口
 		Focuser:     wrapper, // wrapper自己实现Focuser接口
 		ComponentID: id,
@@ -764,10 +762,10 @@ func (w *MenuComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
 func (w *MenuComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// 使用通用消息处理模板（最小化封装，最大化委托）
 	cmd, response := core.DefaultInteractiveUpdateMsg(
-		w,                // 实现了 InteractiveBehavior 接口的组件
-		msg,              // 接收的消息
-		w.getBindings,     // 获取按键绑定的函数
-		w.handleBinding,   // 处理按键绑定的函数
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
 		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
 	)
 
@@ -807,18 +805,9 @@ func (w *MenuComponentWrapper) DetectStateChanges(old, new map[string]interface{
 	return w.stateHelper.DetectStateChanges(old, new)
 }
 
-// 实现 HasFocus 方法
-func (w *MenuComponentWrapper) HasFocus() bool {
-	return w.model.focused
-}
-
 // 实现 HandleSpecialKey 方法（仅处理Menu特定逻辑）
 func (w *MenuComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
 	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
-
 	case tea.KeyEnter:
 		// 处理回车键：检查是否需要进入子菜单或选择叶子项
 		selectedItem := w.model.Model.SelectedItem()
@@ -857,20 +846,10 @@ func (w *MenuComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, cor
 			}
 		}
 		return nil, core.Handled, true
-
-	case tea.KeyEscape:
-		// 处理ESC键：返回父菜单或失焦
-		if w.model.CurrentLevel > 0 && len(w.model.Path) > 0 {
-			// 返回父菜单
-			return w.model.ExitSubmenu(), core.Handled, true
-		}
-		// 已经在顶层，失焦
-		w.model.focused = false
-		cmd := core.PublishEvent(w.model.ID, core.EventEscapePressed, nil)
-		return cmd, core.Handled, true
 	}
 
-	// 其他按键不由这个函数处理，委托给原组件
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Handled, false
 }
 

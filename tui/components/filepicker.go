@@ -227,6 +227,14 @@ func (w *FilePickerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInter
 			return w.UpdateMsg(msg.InnerMsg)
 		}
 		return w, nil, core.Ignored
+	case tea.KeyMsg:
+		// Handle ESC key for blur
+		if msg.Type == tea.KeyEsc && w.focus {
+			// Release focus when ESC is pressed
+			w.focus = false
+			eventCmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)
+			return w, eventCmd, core.Ignored
+		}
 	}
 
 	// For file picker, update the model

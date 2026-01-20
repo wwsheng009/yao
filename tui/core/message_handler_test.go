@@ -70,10 +70,6 @@ func (m *MockComponent) DetectStateChanges(old, new map[string]interface{}) []te
 	return []tea.Cmd{}
 }
 
-func (m *MockComponent) HasFocus() bool {
-	return m.hasFocus
-}
-
 func (m *MockComponent) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, Response, bool) {
 	if m.specialKey != nil {
 		return m.specialKey(keyMsg)
@@ -327,4 +323,55 @@ func TestHandleStateChanges_WithoutUpdateMsgAndWithEventCmds(t *testing.T) {
 	msg := cmd()
 	// updateMsg 是 nil，所以最终消息应该是 nil（因为 eventCmds 也是返回 nil 的 PublishEvent）
 	assert.Nil(t, msg)
+}
+
+// TestHandleDefaultEscape 测试 handleDefaultEscape 函数
+func TestHandleDefaultEscape(t *testing.T) {
+	// 创建一个模拟组件
+	mockComponent := &MockComponent{
+		id:       "test-component",
+		hasFocus: true,
+	}
+
+	// 调用 handleDefaultEscape
+	cmd, response := handleDefaultEscape(mockComponent)
+
+	// 验证返回值
+	assert.NotNil(t, cmd)
+	assert.Equal(t, Ignored, response)
+
+	// 验证事件被发布（通过执行命令）
+	msg := cmd()
+	assert.NotNil(t, msg)
+
+	// 检查消息类型
+	eventMsg, ok := msg.(ActionMsg)
+	assert.True(t, ok, "应该返回 ActionMsg 类型")
+	assert.Equal(t, EventEscapePressed, eventMsg.Action)
+	assert.Equal(t, "test-component", eventMsg.ID)
+}
+
+// TestHandleDefaultEscape_WithoutBlur 测试没有 Blur 方法的组件
+func TestHandleDefaultEscape_WithoutBlur(t *testing.T) {
+	// 创建一个没有实现 Blur 方法的模拟组件
+	mockComponent := &MockComponent{
+		id:       "test-component-no-blur",
+		hasFocus: true,
+	}
+
+	// 调用 handleDefaultEscape
+	cmd, response := handleDefaultEscape(mockComponent)
+
+	// 验证返回值
+	assert.NotNil(t, cmd)
+	assert.Equal(t, Ignored, response)
+
+	// 验证事件被发布
+	msg := cmd()
+	assert.NotNil(t, msg)
+
+	eventMsg, ok := msg.(ActionMsg)
+	assert.True(t, ok, "应该返回 ActionMsg 类型")
+	assert.Equal(t, EventEscapePressed, eventMsg.Action)
+	assert.Equal(t, "test-component-no-blur", eventMsg.ID)
 }

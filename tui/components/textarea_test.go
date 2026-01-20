@@ -17,15 +17,15 @@ func TestTextareaComponentWrapperHasFocus(t *testing.T) {
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Initially focused
-	assert.True(t, wrapper.HasFocus(), "Textarea should be initially focused")
+	assert.True(t, wrapper.GetFocus(), "Textarea should be initially focused")
 
 	// Remove focus
 	wrapper.SetFocus(false)
-	assert.False(t, wrapper.HasFocus(), "Textarea should not be focused after SetFocus(false)")
+	assert.False(t, wrapper.GetFocus(), "Textarea should not be focused after SetFocus(false)")
 
 	// Add focus back
 	wrapper.SetFocus(true)
-	assert.True(t, wrapper.HasFocus(), "Textarea should be focused after SetFocus(true)")
+	assert.True(t, wrapper.GetFocus(), "Textarea should be focused after SetFocus(true)")
 }
 
 func TestTextareaComponentWrapperUpdateMsg(t *testing.T) {
@@ -42,7 +42,7 @@ func TestTextareaComponentWrapperUpdateMsg(t *testing.T) {
 	assert.NotNil(t, cmd)
 	assert.Equal(t, core.Ignored, response)
 	updatedWrapperTyped := updatedWrapper.(*TextareaComponentWrapper)
-	assert.False(t, updatedWrapperTyped.HasFocus(), "Textarea should lose focus on ESC")
+	assert.False(t, updatedWrapperTyped.GetFocus(), "Textarea should lose focus on ESC")
 
 	// Test that regular keys are handled when focused
 	wrapper.SetFocus(true)
@@ -75,15 +75,15 @@ func TestTextareaModelHasFocus(t *testing.T) {
 	model := NewTextareaModel(props, "test-textarea")
 
 	// Initially focused (because !Disabled)
-	assert.True(t, model.HasFocus(), "Model should be initially focused when not disabled")
+	assert.True(t, model.GetFocus(), "Model should be initially focused when not disabled")
 
 	// Remove focus
 	model.SetFocus(false)
-	assert.False(t, model.HasFocus(), "Model should not be focused after SetFocus(false)")
+	assert.False(t, model.GetFocus(), "Model should not be focused after SetFocus(false)")
 
 	// Add focus back
 	model.SetFocus(true)
-	assert.True(t, model.HasFocus(), "Model should be focused after SetFocus(true)")
+	assert.True(t, model.GetFocus(), "Model should be focused after SetFocus(true)")
 }
 
 func TestTextareaModelDisabled(t *testing.T) {
@@ -94,7 +94,7 @@ func TestTextareaModelDisabled(t *testing.T) {
 	model := NewTextareaModel(props, "test-textarea")
 
 	// Should not be focused when disabled
-	assert.False(t, model.HasFocus(), "Model should not be focused when disabled")
+	assert.False(t, model.GetFocus(), "Model should not be focused when disabled")
 }
 
 // TestTextareaMultilineEditing tests multiline editing functionality

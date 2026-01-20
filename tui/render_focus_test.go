@@ -61,7 +61,7 @@ func TestRenderComponent_SetFocusNotCalledRepeatedly(t *testing.T) {
 	model.setFocus("test-input")
 
 	// Verify component is focused
-	if !inputWrapper.HasFocus() {
+	if !inputWrapper.GetFocus() {
 		t.Error("Expected input component to be focused")
 	}
 
@@ -83,7 +83,7 @@ func TestRenderComponent_SetFocusNotCalledRepeatedly(t *testing.T) {
 	// Verify the cursor model hasn't been reset (i.e., Focus() wasn't called again)
 	// We can't directly check the blink timer, but we can verify that
 	// the component is still focused and LastFocusState hasn't changed
-	if !inputWrapper.HasFocus() {
+	if !inputWrapper.GetFocus() {
 		t.Error("Input component lost focus after multiple renders")
 	}
 
@@ -263,8 +263,8 @@ func TestUpdateInputFocusStates_avoidsRedundantCalls(t *testing.T) {
 // is initialized to false for new component instances.
 func TestComponentInstance_LastFocusState_initialization(t *testing.T) {
 	instance := core.ComponentInstance{
-		ID:   "test-component",
-		Type:  "input",
+		ID:       "test-component",
+		Type:     "input",
 		Instance: &components.InputComponentWrapper{},
 	}
 

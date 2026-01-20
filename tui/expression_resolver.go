@@ -144,6 +144,12 @@ var exprOptions = []expr.Option{
 		}
 		return false, nil
 	}),
+	expr.Function("NotNil", func(params ...interface{}) (interface{}, error) {
+		if len(params) == 0 {
+			return false, nil
+		}
+		return params[0] != nil, nil
+	}),
 	expr.AllowUndefinedVariables(),
 }
 

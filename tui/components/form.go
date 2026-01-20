@@ -514,20 +514,10 @@ func (w *FormComponentWrapper) DetectStateChanges(old, new map[string]interface{
 	return w.stateHelper.DetectStateChanges(old, new)
 }
 
-// 实现 HasFocus 方法
-func (w *FormComponentWrapper) HasFocus() bool {
-	return w.model.focused
-}
-
 // 实现 HandleSpecialKey 方法
 func (w *FormComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	switch keyMsg.Type {
-	case tea.KeyTab:
-		// 让Tab键冒泡以处理组件导航
-		return nil, core.Ignored, true
-	}
-
-	// 其他按键不由这个函数处理
+	// ESC 和 Tab 现在由框架层统一处理，这里不处理
+	// 如果有其他特殊的键处理需求，可以在这里添加
 	return nil, core.Ignored, false
 }
 

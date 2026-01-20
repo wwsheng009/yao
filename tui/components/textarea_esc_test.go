@@ -16,8 +16,11 @@ func TestTextareaESCAndQuitKeys(t *testing.T) {
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
+	// Manually set focus for testing
+	wrapper.SetFocus(true)
+
 	// Initially focused
-	assert.True(t, wrapper.HasFocus(), "Textarea should be initially focused")
+	assert.True(t, wrapper.GetFocus(), "Textarea should be initially focused")
 
 	// Test ESC key - should return command and Ignored and blur
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -26,11 +29,11 @@ func TestTextareaESCAndQuitKeys(t *testing.T) {
 	assert.NotNil(t, cmd)
 	assert.Equal(t, core.Ignored, response)
 	updatedWrapperTyped := updatedWrapper.(*TextareaComponentWrapper)
-	assert.False(t, updatedWrapperTyped.HasFocus(), "Textarea should lose focus on ESC")
+	assert.False(t, updatedWrapperTyped.GetFocus(), "Textarea should lose focus on ESC")
 
 	// Test that when blurred, 'q' key returns Ignored (allows global binding)
 	wrapper.SetFocus(true) // Refocus
-	assert.True(t, wrapper.HasFocus(), "Textarea should be focused")
+	assert.True(t, wrapper.GetFocus(), "Textarea should be focused")
 
 	qMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
 	_, _, response2 := wrapper.UpdateMsg(qMsg)
@@ -71,7 +74,7 @@ func TestTextAreaIgnoresKeysWhenBlurred(t *testing.T) {
 
 	// Blur the textarea
 	wrapper.SetFocus(false)
-	assert.False(t, wrapper.HasFocus(), "Textarea should not be focused")
+	assert.False(t, wrapper.GetFocus(), "Textarea should not be focused")
 
 	// Test that all keys are ignored when blurred
 	oldValue := wrapper.GetValue()

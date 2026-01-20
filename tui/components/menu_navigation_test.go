@@ -633,7 +633,7 @@ func TestMenuAdvancedFeatures(t *testing.T) {
 	// The view will show filtered results, but the exact behavior depends on the underlying list implementation
 	
 	// Reset the filter by simulating escape
-	escMsg := tea.KeyMsg{Type: tea.KeyEscape}
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
 	model, _ = HandleMenuUpdate(escMsg, &model)
 	
 	// Test with another filter
@@ -967,7 +967,7 @@ func TestMenuExitHandling(t *testing.T) {
 	// We expect tea.Quit command to be returned, but we can't easily test it without executing it
 	
 	// Test ESC key exit
-	escMsg := tea.KeyMsg{Type: tea.KeyEscape}
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
 	_, _ = HandleMenuUpdate(escMsg, &model)
 	// Similar expectation for ESC key
 	
