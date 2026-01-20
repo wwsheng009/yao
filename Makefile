@@ -75,6 +75,84 @@ unit-test-core:
 		fi; \
 	done
 
+# TUI Unit Test
+.PHONY: unit-test-tui
+unit-test-tui:
+	echo "mode: count" > coverage.out
+	for d in $$(go list ./tui/...); do \
+		$(GO) test -tags $(TESTTAGS) -v -parallel 8 -covermode=count -coverprofile=profile.out -coverpkg=$$(echo $$d | sed "s/\/test$$$$//g") $$d > tmp.out; \
+		cat tmp.out; \
+		if grep -q "^--- FAIL" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "build failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "setup failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "runtime error" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		fi; \
+		if [ -f profile.out ]; then \
+			cat profile.out | grep -v "mode:" >> coverage.out; \
+			rm profile.out; \
+		fi; \
+	done
+
+# TUI Components Unit Test
+.PHONY: unit-test-tui-components
+unit-test-tui-components:
+	echo "mode: count" > coverage.out
+	for d in $$(go list ./tui/components/...); do \
+		$(GO) test -tags $(TESTTAGS) -v -parallel 8 -covermode=count -coverprofile=profile.out -coverpkg=$$(echo $$d | sed "s/\/test$$$$//g") $$d > tmp.out; \
+		cat tmp.out; \
+		if grep -q "^--- FAIL" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "build failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "setup failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "runtime error" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		fi; \
+		if [ -f profile.out ]; then \
+			cat profile.out | grep -v "mode:" >> coverage.out; \
+			rm profile.out; \
+		fi; \
+	done
+
+# TUI Core Unit Test
+.PHONY: unit-test-tui-core
+unit-test-tui-core:
+	echo "mode: count" > coverage.out
+	for d in $$(go list ./tui/core/...); do \
+		$(GO) test -tags $(TESTTAGS) -v -parallel 8 -covermode=count -coverprofile=profile.out -coverpkg=$$(echo $$d | sed "s/\/test$$$$//g") $$d > tmp.out; \
+		cat tmp.out; \
+		if grep -q "^--- FAIL" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "build failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "setup failed" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		elif grep -q "runtime error" tmp.out; then \
+			rm tmp.out; \
+			exit 1; \
+		fi; \
+		if [ -f profile.out ]; then \
+			cat profile.out | grep -v "mode:" >> coverage.out; \
+			rm profile.out; \
+		fi; \
+	done
+
 # AI Unit Test (agent, aigc) - excludes TestE2E* (run separately in unit-test-robot-e2e)
 .PHONY: unit-test-ai
 unit-test-ai:
