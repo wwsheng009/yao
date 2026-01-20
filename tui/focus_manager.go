@@ -10,7 +10,7 @@ func (m *Model) focusNextInput() {
 	// Find all input component IDs from Components map
 	inputIDs := []string{}
 	for id, comp := range m.Components {
-		if comp.Type == "input" {
+		if comp.Type == string(InputComponent) {
 			inputIDs = append(inputIDs, id)
 		}
 	}
@@ -45,7 +45,7 @@ func (m *Model) focusPrevInput() {
 	// Find all input component IDs from Components map
 	inputIDs := []string{}
 	for id, comp := range m.Components {
-		if comp.Type == "input" {
+		if comp.Type == string(InputComponent) {
 			inputIDs = append(inputIDs, id)
 		}
 	}
@@ -228,21 +228,13 @@ func (m *Model) focusPrevComponent() {
 }
 
 // getFocusableComponentIDs returns IDs of all focusable components
+// Uses the global component registry to determine which component types are focusable
 func (m *Model) getFocusableComponentIDs() []string {
-	// Define which component types are focusable
-	focusableTypes := map[string]bool{
-		"input":    true,
-		"textarea": true,
-		"menu":     true,
-		"form":     true,
-		"table":    true,
-		"crud":     true,
-		"chat":     true,
-	}
-
+	registry := GetGlobalRegistry()
 	ids := []string{}
 	for id, comp := range m.Components {
-		if focusableTypes[comp.Type] {
+		// Check if component type is registered as focusable
+		if registry.IsFocusable(ComponentType(comp.Type)) {
 			ids = append(ids, id)
 		}
 	}
@@ -302,7 +294,7 @@ func (m *Model) isMenuFocused() bool {
 		return false
 	}
 	if comp, exists := m.Components[m.CurrentFocus]; exists {
-		return comp.Type == "menu"
+		return comp.Type == string(MenuComponent)
 	}
 	return false
 }

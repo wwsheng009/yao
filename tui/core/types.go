@@ -58,6 +58,13 @@ type ComponentInterface interface {
 	GetSubscribedMessageTypes() []string // 返回组件关心的消息类型（字符串形式）
 }
 
+// FocusableComponent 接口标记一个组件是否可聚焦
+// 组件可以选择实现此接口来自动声明其聚焦能力
+type FocusableComponent interface {
+	ComponentInterface
+	IsFocusable() bool
+}
+
 // TargetedMsg 用于定向消息投递
 type TargetedMsg struct {
 	TargetID string

@@ -43,8 +43,9 @@ type ComponentFactory func(config core.RenderConfig, id string) core.ComponentIn
 
 // ComponentRegistry holds all registered component factories
 type ComponentRegistry struct {
-	mutex     sync.RWMutex
-	factories map[ComponentType]ComponentFactory
+	mutex          sync.RWMutex
+	factories      map[ComponentType]ComponentFactory
+	focusableTypes map[ComponentType]bool // Tracks which component types are focusable
 }
 
 // Global registry instance
@@ -154,12 +155,24 @@ func (r *ComponentRegistry) RegisterBuiltInComponents() {
 	r.factories[CRUDComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
 		return components.NewCRUDComponentWrapper(config, id)
 	}
+
+	// Register focusable component types
+	// Components can be focusable if they support user interaction
+	r.focusableTypes[InputComponent] = true
+	r.focusableTypes[TextareaComponent] = true
+	r.focusableTypes[MenuComponent] = true
+	r.focusableTypes[FormComponent] = true
+	r.focusableTypes[TableComponent] = true
+	r.focusableTypes[ChatComponent] = true
+	r.focusableTypes[FilePickerComponent] = true
+	r.focusableTypes[CRUDComponent] = true
 }
 
 // NewComponentRegistry creates a new component registry
 func NewComponentRegistry() *ComponentRegistry {
 	return &ComponentRegistry{
-		factories: make(map[ComponentType]ComponentFactory),
+		factories:      make(map[ComponentType]ComponentFactory),
+		focusableTypes: make(map[ComponentType]bool),
 	}
 }
 
@@ -217,4 +230,38 @@ func (r *ComponentRegistry) GetComponentFactory(componentType ComponentType) (Co
 
 	factory, exists := r.factories[componentType]
 	return factory, exists
+}
+
+// RegisterFocusableComponent marks a component type as focusable
+// This allows components to declare their focus capability during registration
+func (r *ComponentRegistry) RegisterFocusableComponent(componentType ComponentType) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.focusableTypes[componentType] = true
+}
+
+// UnregisterFocusableComponent removes focusable flag from a component type
+func (r *ComponentRegistry) UnregisterFocusableComponent(componentType ComponentType) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	delete(r.focusableTypes, componentType)
+}
+
+// IsFocusable checks if a component type is focusable
+func (r *ComponentRegistry) IsFocusable(componentType ComponentType) bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	return r.focusableTypes[componentType]
+}
+
+// GetFocusableComponentTypes returns all focusable component types
+func (r *ComponentRegistry) GetFocusableComponentTypes() []ComponentType {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	types := make([]ComponentType, 0, len(r.focusableTypes))
+	for compType := range r.focusableTypes {
+		types = append(types, compType)
+	}
+	return types
 }

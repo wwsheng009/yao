@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
@@ -248,7 +250,14 @@ func getMsgTypeName(msg tea.Msg) string {
 	case core.MenuActionTriggered:
 		return "MenuActionTriggered"
 	default:
-		return "unknown"
+		// For unknown message types, return the actual type name for better debugging
+		// This helps identify messages from components that are not in the switch
+		// For example: bubbletea cursor.BlinkMsg, etc.
+		if msg == nil {
+			return "nil"
+		}
+		// Use the full type name including package path for maximum clarity
+		return fmt.Sprintf("%T", msg)
 	}
 }
 
