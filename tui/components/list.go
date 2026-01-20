@@ -84,7 +84,8 @@ type ListProps struct {
 	Width int `json:"width"`
 
 	// Focused determines if the list is focused (for selection)
-	Focused bool `json:"focused"`
+	// This is managed internally via SetFocus(), not from config
+	Focused bool `json:"-"`
 
 	// ShowTitle shows/hides the list title
 	ShowTitle bool `json:"showTitle"`
@@ -315,7 +316,11 @@ func (c *ListComponent) UpdateRenderConfig(config core.RenderConfig) error {
 	}
 
 	props := ParseListPropsWithBinding(propsMap)
+
+	// Preserve the focused state - don't overwrite it with render config
+	oldFocused := c.props.Focused
 	c.props = props
+	c.props.Focused = oldFocused
 
 	// Update items
 	if props.Items != nil {
@@ -339,7 +344,11 @@ func (c *ListComponent) Render(config core.RenderConfig) (string, error) {
 	}
 
 	props := ParseListPropsWithBinding(propsMap)
+
+	// Preserve the focused state - don't overwrite it with render config
+	oldFocused := c.props.Focused
 	c.props = props
+	c.props.Focused = oldFocused
 
 	// Update items
 	if props.Items != nil {

@@ -220,17 +220,27 @@ func ProcessSuspendAction(model *Model, action *core.Action) (interface{}, error
 // ProcessInputEscapeAction handles escaping from input component
 // Usage: Called internally by executeProcessAction
 func ProcessInputEscapeAction(model *Model, action *core.Action, inputID string) (interface{}, error) {
-	// Blur the specified input component to exit edit mode
+	// Blur the specified input component to exit edit mode via message-driven approach
 	if comp, exists := model.Components[inputID]; exists && comp.Type == "input" {
-		// Use the model's clearFocus() method to ensure consistent focus management
-		// Only clear focus if this is the currently focused component
+		// Message-driven: Send FocusMsg to component
 		if model.CurrentFocus == inputID {
-			model.clearFocus()
+			// This is the currently focused component, use model.clearFocus()
+			// which returns a tea.Cmd that sends FocusMsg
+			if cmd := model.clearFocus(); cmd != nil && model.Program != nil {
+				model.Program.Send(cmd())
+			}
 		} else {
 			// If this input is not the current focus, just blur it without affecting model.CurrentFocus
-			// Only call SetFocus if the component actually has focus
-			if comp.Instance.GetFocus() {
-				comp.Instance.SetFocus(false)
+			// Send FocusLost message via message-driven approach
+			if comp.Instance.GetFocus() && model.Program != nil {
+				model.Program.Send(core.TargetedMsg{
+					TargetID: inputID,
+					InnerMsg: core.FocusMsg{
+						Type:   core.FocusLost,
+						Reason: "ACTION_ESCAPE",
+						ToID:   "",
+					},
+				})
 			}
 		}
 		return map[string]interface{}{

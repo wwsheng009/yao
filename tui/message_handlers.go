@@ -66,22 +66,12 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		case core.EventFocusPrev:
 			// Move focus to previous input component via message-driven approach
 			return model, model.focusPrevInput()
-		case core.EventFocusChanged:
-			// NOTE: Focus changes should be driven by FocusMsg, not ActionMsg
-			// Components should send FocusMsg directly to notify focus changes
-			// This action is deprecated in favor of FocusMsg-based approach
-			log.Trace("TUI: EventFocusChanged is deprecated, use FocusMsg instead")
-			// Update focus based on data (legacy compatibility)
-			if data, ok := actionMsg.Data.(map[string]interface{}); ok {
-				if focused, ok := data["focused"].(bool); ok && focused {
-					// Set focus to the component that sent this message
-					return model, model.setFocus(actionMsg.ID)
-				} else {
-					// Clear focus if focused is false
-					return model, model.clearFocus()
-				}
-			}
-			return model, nil
+	case core.EventFocusChanged:
+		// DEPRECATED: Focus changes should be driven by FocusMsg only
+		// Components no longer publish EventFocusChanged to avoid infinite loops
+		// This event is ignored - all focus changes are handled via FocusMsg
+		log.Trace("TUI: EventFocusChanged is deprecated and ignored, use FocusMsg instead")
+		return model, nil
 		default:
 			// For other actions, publish to EventBus for component communication
 			model.EventBus.Publish(actionMsg)

@@ -604,13 +604,17 @@ func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemp
 		}
 
 		if targetID != "" {
-			// Focus specific component
+			// Focus specific component via message-driven approach
 			if _, exists := model.Components[targetID]; exists {
-				// Use the model's setFocus() method to ensure consistent focus management
-				model.setFocus(targetID)
+				// Use the model's setFocus() method which returns tea.Cmd
+				// Send the command via Program to ensure message-driven flow
+				if cmd := model.setFocus(targetID); cmd != nil && model.Program != nil {
+					// Execute the command which sends FocusMsg
+					model.Program.Send(cmd())
+				}
 			}
 		} else {
-			// Original logic: cycle through inputs
+			// Original logic: cycle through inputs via message-driven approach
 			currentFocus := model.CurrentFocus
 
 			// Find all input component IDs in the layout
@@ -630,20 +634,45 @@ func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemp
 				}
 			}
 
-			// Move to next input, wrap around if needed
+			// Move to next input via message-driven approach
 			if currentIndex >= 0 && currentIndex < len(inputIDs)-1 {
-				model.CurrentFocus = inputIDs[currentIndex+1]
+				nextFocus := inputIDs[currentIndex+1]
+				// Send FocusMsg to component via message
+				if model.Program != nil {
+					model.Program.Send(core.TargetedMsg{
+						TargetID: currentFocus,
+						InnerMsg: core.FocusMsg{
+							Type:   core.FocusLost,
+							Reason: "JS_API",
+							ToID:   nextFocus,
+						},
+					})
+					model.Program.Send(core.TargetedMsg{
+						TargetID: nextFocus,
+						InnerMsg: core.FocusMsg{
+							Type:   core.FocusGranted,
+							Reason: "JS_API",
+							FromID: currentFocus,
+						},
+					})
+					// Update CurrentFocus for routing purposes
+					model.CurrentFocus = nextFocus
+				}
 			} else if len(inputIDs) > 0 {
-				model.CurrentFocus = inputIDs[0] // Wrap to first
-			}
-
-			// Publish focus change event - components listen to this to update their state
-			if model.EventBus != nil && model.CurrentFocus != "" {
-				model.EventBus.Publish(core.ActionMsg{
-					ID:     model.CurrentFocus,
-					Action: core.EventFocusChanged,
-					Data:   map[string]interface{}{"focused": true},
-				})
+				nextFocus := inputIDs[0]
+				// No current focus, send FocusGranted to first input
+				if model.Program != nil {
+					model.Program.Send(core.TargetedMsg{
+						TargetID: nextFocus,
+						InnerMsg: core.FocusMsg{
+							Type:   core.FocusGranted,
+							Reason: "JS_API",
+							FromID: "",
+						},
+					})
+					// Update CurrentFocus for routing purposes
+					model.CurrentFocus = nextFocus
+				}
 			}
 		}
 
@@ -781,12 +810,19 @@ func tuiSetFocusMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
 
 		targetID := args[0].String()
 
-		// Use the model's setFocus() method to ensure consistent focus management
+		// Message-driven approach: Use model's setFocus() which returns tea.Cmd
+		// Send the command via Program to ensure message-driven flow
 		if _, exists := model.Components[targetID]; exists {
-			model.setFocus(targetID)
+			if cmd := model.setFocus(targetID); cmd != nil && model.Program != nil {
+				// Execute the command which sends FocusMsg
+				model.Program.Send(cmd())
+			}
 		} else {
-			// If component doesn't exist, clear all focus
-			model.clearFocus()
+			// If component doesn't exist, clear all focus via message-driven approach
+			if cmd := model.clearFocus(); cmd != nil && model.Program != nil {
+				// Execute the command which sends FocusMsg
+				model.Program.Send(cmd())
+			}
 		}
 
 		return v8go.Undefined(iso)

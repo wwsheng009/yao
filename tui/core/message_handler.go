@@ -190,15 +190,10 @@ func handleFocusMessage(w InteractiveBehavior, msg FocusMsg) (tea.Cmd, Response)
 		}
 	}
 
-	// 组件可以发布状态变化事件（但不是必须的）
-	eventCmd := PublishEvent(w.GetID(), EventFocusChanged, map[string]interface{}{
-		"focused": msg.Type == FocusGranted,
-		"reason":  msg.Reason,
-		"fromID":  msg.FromID,
-		"toID":    msg.ToID,
-	})
-
-	return eventCmd, Handled
+	// 不再发布 EventFocusChanged 事件以避免循环
+	// FocusMsg 本身就是通知机制，不需要重复的事件发布
+	// 组件间的焦点变化完全通过 FocusMsg 消息传递
+	return nil, Handled
 }
 
 // InputStateHelper 输入组件状态捕获助手
