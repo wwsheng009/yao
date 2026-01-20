@@ -267,13 +267,9 @@ func (w *InputComponentWrapper) SetFocusWithCmd(focus bool) tea.Cmd {
 }
 
 func (w *InputComponentWrapper) Init() tea.Cmd {
-	// If component is not disabled, return Focus Cmd to start cursor blinking
-	if !w.props.Disabled {
-		currentFocus := w.model.Focused()
-		if !currentFocus {
-			return w.model.Focus()
-		}
-	}
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
 	return nil
 }
 
@@ -363,7 +359,9 @@ func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 
 	// ESC 键：组件自己处理失去焦点
 	if keyMsg.Type == tea.KeyEsc && w.model.Focused() {
-		// 发送 FocusLost 消息给自己，完全消息驱动
+		// 直接设置焦点状态
+		w.SetFocus(false)
+		// 发送 FocusLost 消息给外部框架，保持一致性
 		cmd := func() tea.Msg {
 			return core.TargetedMsg{
 				TargetID: w.id,
@@ -437,8 +435,11 @@ func (w *InputComponentWrapper) Cleanup() {
 // GetStateChanges returns the state changes from this component
 func (w *InputComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// For input components, we always sync the current value
+	// This ensures the global state is kept in sync with the component state
+	currentValue := w.GetValue()
+	key := w.GetID()
 	return map[string]interface{}{
-		w.GetID(): w.GetValue(),
+		key: currentValue,
 	}, true
 }
 

@@ -423,22 +423,19 @@ func NewFormComponentWrapper(props FormProps, id string) *FormComponentWrapper {
 }
 
 func (w *FormComponentWrapper) Init() tea.Cmd {
-	var cmds []tea.Cmd
-
-	// Collect Init Cmds from all child input fields
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
+	// 注意：我们仍需要调用子字段的Init方法来初始化它们的状态，
+	// 但不应该让它们在初始化时获取焦点
 	for _, field := range w.inputFields {
 		if field != nil {
-			if cmd := field.Init(); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+			// 调用子字段的Init方法进行初始化，但忽略返回的命令
+			field.Init()
 		}
 	}
 
-	if len(cmds) == 0 {
-		return nil
-	}
-
-	return tea.Batch(cmds...)
+	return nil
 }
 
 func (w *FormComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {

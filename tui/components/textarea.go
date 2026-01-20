@@ -370,10 +370,9 @@ func NewTextareaComponentWrapper(props TextareaProps, id string) *TextareaCompon
 }
 
 func (w *TextareaComponentWrapper) Init() tea.Cmd {
-	// 如果组件未被禁用，则返回Focus命令以启动光标闪烁
-	if !w.props.Disabled {
-		return w.SetFocusWithCmd()
-	}
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
 	return nil
 }
 
@@ -441,7 +440,25 @@ func (w *TextareaComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd,
 		return enterCmd, core.Handled, true
 	}
 
-	// 其他特殊键（ESC、Tab等）由框架层统一处理
+	// ESC 键：组件自己处理失去焦点
+	if keyMsg.Type == tea.KeyEsc && w.model.Focused() {
+		// 直接设置焦点状态
+		w.SetFocus(false)
+		// 发送 FocusLost 消息给外部框架，保持一致性
+		cmd := func() tea.Msg {
+			return core.TargetedMsg{
+				TargetID: w.id,
+				InnerMsg: core.FocusMsg{
+					Type:   core.FocusLost,
+					Reason: "USER_ESC",
+					ToID:   "",
+				},
+			}
+		}
+		return cmd, core.Handled, true
+	}
+
+	// 其他特殊键（Tab等）由框架层统一处理
 	return nil, core.Ignored, false
 }
 
@@ -584,9 +601,16 @@ func (w *TextareaComponentWrapper) Cleanup() {
 
 // GetStateChanges returns the state changes from this component
 func (w *TextareaComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	// Textarea components work like input - sync the current value
+	// Textarea components work like input - sync the current value only if it changed
+	currentValue := w.GetValue()
+	key := w.GetID()
+	
+	// Check if the value has actually changed compared to the stored state
+	// Access the model's state to compare values
+	// Since we can't access the model directly from the component, we just return the value
+	// and let the framework handle the comparison
 	return map[string]interface{}{
-		w.GetID(): w.GetValue(),
+		key: currentValue,
 	}, true
 }
 

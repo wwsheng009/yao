@@ -69,8 +69,8 @@ func (d ListItemDelegate) Render(w io.Writer, m list.Model, index int, listItem 
 	}
 }
 
-// ListProps defines the properties for the List component
-type ListProps struct {
+// ListConfig defines the properties for the List component
+type ListConfig struct {
 	// Items contains the list items
 	Items []ListItem `json:"items"`
 
@@ -112,7 +112,7 @@ type ListProps struct {
 // ListComponent represents a list component implementing ComponentInterface
 type ListComponent struct {
 	model       list.Model
-	props       ListProps
+	props       ListConfig
 	id          string
 	bindings    []core.ComponentBinding
 	stateHelper *core.ListStateHelper
@@ -120,7 +120,7 @@ type ListComponent struct {
 
 // NewListComponent creates a new list component with the given configuration
 func NewListComponent(config core.RenderConfig, id string) *ListComponent {
-	props := ListProps{
+	props := ListConfig{
 		ShowTitle:        true,
 		ShowStatusBar:    true,
 		ShowFilter:       true,
@@ -366,7 +366,7 @@ func (c *ListComponent) Render(config core.RenderConfig) (string, error) {
 }
 
 // updateListDimensions updates the list model's width and height based on config and props
-func (c *ListComponent) updateListDimensions(config core.RenderConfig, props ListProps) {
+func (c *ListComponent) updateListDimensions(config core.RenderConfig, props ListConfig) {
 	// Props-specified width/height take precedence (for fixed sizing)
 	if props.Width > 0 {
 		c.model.SetWidth(props.Width)
@@ -408,8 +408,8 @@ func (c *ListComponent) GetSubscribedMessageTypes() []string {
 }
 
 // ParseListPropsWithBinding converts a props map to ListProps with __bind_data support
-func ParseListPropsWithBinding(props map[string]interface{}) ListProps {
-	lp := ListProps{
+func ParseListPropsWithBinding(props map[string]interface{}) ListConfig {
+	lp := ListConfig{
 		ShowTitle:        true,
 		ShowStatusBar:    true,
 		ShowFilter:       true,
@@ -488,6 +488,6 @@ func applyTemplate(template string, data map[string]interface{}) string {
 }
 
 // ParseListProps converts a generic props map to ListProps (legacy, kept for compatibility)
-func ParseListProps(props map[string]interface{}) ListProps {
+func ParseListProps(props map[string]interface{}) ListConfig {
 	return ParseListPropsWithBinding(props)
 }

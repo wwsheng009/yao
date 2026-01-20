@@ -96,7 +96,7 @@ func TestInputComponentInitReturnsFocusCmd(t *testing.T) {
 	
 	cmd := wrapper.Init()
 	
-	assert.NotNil(t, cmd, "InputComponentWrapper.Init should return Focus Cmd when not disabled")
+	assert.Nil(t, cmd, "InputComponentWrapper.Init should return nil (focus managed by framework)")
 }
 
 // TestInputComponentInitReturnsNilWhenDisabled tests that InputComponentWrapper.Init returns nil when disabled
@@ -148,5 +148,5 @@ func TestFormComponentInitCollectsChildCmds(t *testing.T) {
 	
 	cmd := wrapper.Init()
 	
-	assert.NotNil(t, cmd, "FormComponentWrapper.Init should return Batch Cmd when it has input fields")
+	assert.Nil(t, cmd, "FormComponentWrapper.Init should return nil (focus managed by framework)")
 }

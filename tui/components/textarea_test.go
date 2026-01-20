@@ -16,8 +16,12 @@ func TestTextareaComponentWrapperHasFocus(t *testing.T) {
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
-	// Initially focused
-	assert.True(t, wrapper.GetFocus(), "Textarea should be initially focused")
+	// Initially not focused by default (focus is managed by TUI framework)
+	assert.False(t, wrapper.GetFocus(), "Textarea should not be initially focused by default")
+
+	// Add focus manually
+	wrapper.SetFocus(true)
+	assert.True(t, wrapper.GetFocus(), "Textarea should be focused after SetFocus(true)")
 
 	// Remove focus
 	wrapper.SetFocus(false)
@@ -36,11 +40,12 @@ func TestTextareaComponentWrapperUpdateMsg(t *testing.T) {
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Test ESC key when focused
+	wrapper.SetFocus(true) // 确保组件获得焦点
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
 	updatedWrapper, cmd, response := wrapper.UpdateMsg(escMsg)
 
 	assert.NotNil(t, cmd)
-	assert.Equal(t, core.Ignored, response)
+	assert.Equal(t, core.Handled, response) // ESC key is now handled by the component to manage focus
 	updatedWrapperTyped := updatedWrapper.(*TextareaComponentWrapper)
 	assert.False(t, updatedWrapperTyped.GetFocus(), "Textarea should lose focus on ESC")
 
@@ -74,8 +79,12 @@ func TestTextareaModelHasFocus(t *testing.T) {
 	}
 	model := NewTextareaModel(props, "test-textarea")
 
-	// Initially focused (because !Disabled)
-	assert.True(t, model.GetFocus(), "Model should be initially focused when not disabled")
+	// Initially not focused by default (focus is managed by TUI framework)
+	assert.False(t, model.GetFocus(), "Model should not be initially focused by default")
+
+	// Add focus manually
+	model.SetFocus(true)
+	assert.True(t, model.GetFocus(), "Model should be focused after SetFocus(true)")
 
 	// Remove focus
 	model.SetFocus(false)
@@ -104,6 +113,9 @@ func TestTextareaMultilineEditing(t *testing.T) {
 		Disabled:    false,
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
+
+	// Set focus so the textarea can receive input
+	wrapper.SetFocus(true)
 
 	// Type first line
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
@@ -137,6 +149,9 @@ func TestTextareaDeleteOperations(t *testing.T) {
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
+	// Set focus so the textarea can receive input
+	wrapper.SetFocus(true)
+
 	// Press backspace to delete character
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyBackspace})
 
@@ -151,6 +166,9 @@ func TestTextareaNavigationWithinText(t *testing.T) {
 		Disabled: false,
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
+
+	// Set focus so the textarea can receive input
+	wrapper.SetFocus(true)
 
 	// Navigation should not panic
 	wrapper.UpdateMsg(tea.KeyMsg{Type: tea.KeyLeft})
@@ -169,6 +187,9 @@ func TestTextareaPasteBehavior(t *testing.T) {
 		Disabled:    false,
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
+
+	// Set focus so the textarea can receive input
+	wrapper.SetFocus(true)
 
 	// Simulate rapid typing (like paste)
 	text := "Simulating pasted text"
@@ -190,8 +211,12 @@ func TestTextareaWrapBehavior(t *testing.T) {
 	}
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
+	// Set focus so the textarea can receive input
+	wrapper.SetFocus(true)
+
 	// Render should not panic
 	view := wrapper.View()
 	assert.NotEmpty(t, view)
-	assert.Contains(t, view, len(longText) > 0)
+	// Check that the view contains some content from the long text
+	assert.Contains(t, view, "This is a") // Check that some content is visible
 }

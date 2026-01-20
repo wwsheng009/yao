@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TestTextareaInitReturnsCmd tests that TextareaComponentWrapper.Init returns Focus Cmd when not disabled
+// TestTextareaInitReturnsCmd tests that TextareaComponentWrapper.Init returns nil (focus managed by framework)
 func TestTextareaInitReturnsCmd(t *testing.T) {
 	props := TextareaProps{
 		Disabled:    false,
@@ -15,18 +15,17 @@ func TestTextareaInitReturnsCmd(t *testing.T) {
 	wrapper := NewTextareaComponentWrapper(props, "test-textarea")
 
 	// Call Init and check if it returns nil
-	// Note: textarea.Focus() does not return a BlinkCmd, so Init returns nil
-	// But it should call Focus() internally
+	// Focus should NOT be set automatically
 	cmd := wrapper.Init()
 
-	// Verify that the component is focused after Init
-	if !wrapper.GetFocus() {
-		t.Error("TextareaComponentWrapper should be focused after Init when not disabled")
+	// Verify that the component is NOT focused after Init
+	if wrapper.GetFocus() {
+		t.Error("TextareaComponentWrapper should NOT be focused after Init - focus is managed by framework")
 	}
 
-	// Cmd should be nil for textarea (unlike input which has BlinkCmd)
+	// Cmd should be nil
 	if cmd != nil {
-		t.Error("TextareaComponentWrapper.Init should return nil for textarea (no BlinkCmd)")
+		t.Error("TextareaComponentWrapper.Init should return nil")
 	}
 }
 
@@ -80,9 +79,9 @@ func TestTextareaInitFlow(t *testing.T) {
 		expectFocus bool
 	}{
 		{
-			name:        "Enabled textarea should be focused",
+			name:        "Enabled textarea should not be focused by default",
 			disabled:    false,
-			expectFocus: true,
+			expectFocus: false, // Changed: No automatic focus
 		},
 		{
 			name:        "Disabled textarea should not be focused",
@@ -102,7 +101,7 @@ func TestTextareaInitFlow(t *testing.T) {
 			cmd := wrapper.Init()
 
 			if cmd != nil {
-				t.Errorf("Init should return nil for textarea (no BlinkCmd)")
+				t.Errorf("Init should return nil for textarea")
 			}
 
 			if wrapper.GetFocus() != tc.expectFocus {
@@ -127,9 +126,9 @@ func TestTextareaInitWithDefaultValue(t *testing.T) {
 		t.Errorf("Expected value to be 'Default value', got '%s'", wrapper.GetValue())
 	}
 
-	// Should still be focused
-	if !wrapper.GetFocus() {
-		t.Error("Textarea should be focused after Init")
+	// Should not be focused by default
+	if wrapper.GetFocus() {
+		t.Error("Textarea should not be focused by default after Init")
 	}
 }
 
@@ -143,17 +142,17 @@ func TestTextareaInitAfterBlur(t *testing.T) {
 	// First, blur the component
 	wrapper.SetFocus(false)
 
-	// Verify it's not focused
+	// Verify it's not focused (it wasn't focused to begin with)
 	if wrapper.GetFocus() {
-		t.Error("Textarea should not be focused after SetFocus(false)")
+		t.Error("Textarea should not be focused by default after SetFocus(false)")
 	}
 
-	// Now call Init to re-focus
+	// Now call Init - still shouldn't be focused
 	wrapper.Init()
 
-	// Verify it's focused again
-	if !wrapper.GetFocus() {
-		t.Error("Textarea should be re-focused after Init")
+	// Verify it's still not focused (init doesn't give focus anymore)
+	if wrapper.GetFocus() {
+		t.Error("Textarea should not be focused after Init - focus is managed by framework")
 	}
 }
 

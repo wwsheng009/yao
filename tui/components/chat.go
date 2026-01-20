@@ -346,10 +346,9 @@ func NewChatModel(props ChatProps, id string) ChatModel {
 
 // Init initializes the chat model
 func (m *ChatModel) Init() tea.Cmd {
-	// Only focus if the input should be focused
-	if m.props.ShowInput {
-		return m.TextInput.Focus()
-	}
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
 	return nil
 }
 
@@ -556,10 +555,9 @@ func (cm *ChatComponentWrapper) updateHistoryText() {
 }
 
 func (w *ChatComponentWrapper) Init() tea.Cmd {
-	// Only focus if the input should be focused
-	if w.props.ShowInput {
-		return w.TextInput.Focus()
-	}
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
 	return nil
 }
 

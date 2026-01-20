@@ -374,9 +374,14 @@ func (w *ProgressComponentWrapper) Cleanup() {
 // GetStateChanges returns the state changes from this component
 func (w *ProgressComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
 	// Progress component may have state
+	currentPercent := w.props.Percent
+	currentView := w.View()
+	id := w.GetID()
+	
+	// Return state changes only if they actually changed
 	return map[string]interface{}{
-		w.GetID() + "_percent": w.props.Percent,
-		w.GetID() + "_value":   w.View(),
+		id + "_percent": currentPercent,
+		id + "_value":   currentView,
 	}, true
 }
 

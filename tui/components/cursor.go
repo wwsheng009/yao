@@ -321,9 +321,9 @@ func NewCursorComponentWrapper(props CursorProps, id string) *CursorComponentWra
 }
 
 func (w *CursorComponentWrapper) Init() tea.Cmd {
-	if w.props.Blink && w.props.Style != "hide" {
-		return w.helper.GetModel().BlinkCmd()
-	}
+	// 不要在初始化时自动启动光标闪烁
+	// 光标闪烁应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才启动闪烁
 	return nil
 }
 

@@ -27,7 +27,7 @@ func TestTextareaESCAndQuitKeys(t *testing.T) {
 	updatedWrapper, cmd, response := wrapper.UpdateMsg(escMsg)
 
 	assert.NotNil(t, cmd)
-	assert.Equal(t, core.Ignored, response)
+	assert.Equal(t, core.Handled, response) // ESC key is now handled by the component to manage focus
 	updatedWrapperTyped := updatedWrapper.(*TextareaComponentWrapper)
 	assert.False(t, updatedWrapperTyped.GetFocus(), "Textarea should lose focus on ESC")
 

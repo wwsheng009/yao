@@ -215,7 +215,12 @@ func NewFilePickerComponentWrapper(props FilePickerProps, id string) *FilePicker
 }
 
 func (w *FilePickerComponentWrapper) Init() tea.Cmd {
-	return w.model.Init()
+	// 不要在初始化时自动获取焦点
+	// 焦点应该通过框架的焦点管理机制来控制
+	// 只有当组件被明确设置焦点时才获取焦点
+	// 我们仍然需要初始化底层模型，但不获取焦点
+	w.model.Init() // 初始化模型但不返回命令
+	return nil
 }
 
 func (w *FilePickerComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {

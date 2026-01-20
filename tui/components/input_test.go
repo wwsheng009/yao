@@ -216,7 +216,7 @@ func TestInputComponentWrapperUpdateMsg(t *testing.T) {
 	updatedWrapper, cmd, response := wrapper.UpdateMsg(escMsg)
 	assert.NotNil(t, updatedWrapper)
 	assert.NotNil(t, cmd)
-	assert.Equal(t, core.Ignored, response)
+	assert.Equal(t, core.Handled, response) // ESC key is now handled by the component to manage focus
 
 	// After ESC, component loses focus, need to re-focus for next tests
 	updatedWrapperTyped := updatedWrapper.(*InputComponentWrapper)

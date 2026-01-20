@@ -199,15 +199,19 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 	// Unified state synchronization using GetStateChanges()
 	stateChanges, hasChanges := updatedComp.GetStateChanges()
 	if hasChanges {
+		var actualChanges bool
 		m.StateMu.Lock()
 		for key, value := range stateChanges {
-			m.State[key] = value
+			// Only record actual changes
+			if oldValue, exists := m.State[key]; !exists || oldValue != value {
+				m.State[key] = value
+				actualChanges = true
+			}
 		}
 		m.StateMu.Unlock()
 
-		// Invalidate props cache for components that reference state
-		// This ensures expressions are re-evaluated when state changes
-		if m.propsCache != nil {
+		// Only invalidate props cache if there were actual changes
+		if actualChanges && m.propsCache != nil {
 			m.propsCache.Clear()
 			log.Trace("State changes detected, cleared props cache")
 		}

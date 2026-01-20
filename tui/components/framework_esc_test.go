@@ -26,6 +26,6 @@ func TestFrameworkESCHandling(t *testing.T) {
 
 	// 验证框架层处理的结果
 	assert.NotNil(t, cmd, "Should return command for ESC key")
-	assert.Equal(t, core.Ignored, response, "Should return Ignored for ESC key")
+	assert.Equal(t, core.Handled, response, "Should return Handled for ESC key") // Updated: ESC key is now handled by component
 	assert.False(t, wrapper.GetFocus(), "Input should lose focus on ESC")
 }
