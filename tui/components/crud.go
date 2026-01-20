@@ -17,49 +17,48 @@ const (
 	StateFiltering
 )
 
-// CRUDComponent 表示一个具有状态机的CRUD组件
+// CRUDComponent represents a CRUD component with state machine support
 type CRUDComponent struct {
 	State            CRUDState
-	Table            core.ComponentInterface // 内嵌表格组件
-	Form             core.ComponentInterface // 内嵌表单组件
-	Data             interface{}             // 当前数据
-	EventBus         *core.EventBus          // 用于内部组件通信（避免循环依赖）
-	id               string                  // Unique identifier for this component instance
-	unsubscribeFuncs []func()                // Store unsubscribe functions for cleanup
+	Table            core.ComponentInterface
+	Form             core.ComponentInterface
+	Data             interface{}
+	EventBus         *core.EventBus
+	id               string
+	unsubscribeFuncs []func()
 }
 
-// NewCRUDComponent creates a new CRUD component with the given ID and event bus
-func NewCRUDComponent(id string, eventBus *core.EventBus) *CRUDComponent {
-	return &CRUDComponent{
+// NewCRUDComponent creates a new CRUD component with the given ID
+func NewCRUDComponent(config core.RenderConfig, id string) *CRUDComponent {
+	component := &CRUDComponent{
 		State:            StateList,
 		id:               id,
-		EventBus:         eventBus,
+		EventBus:         core.NewEventBus(),
 		unsubscribeFuncs: []func(){},
 	}
+
+	if config.Data != nil {
+		if err := component.UpdateRenderConfig(config); err != nil {
+			log.Error("Failed to update CRUD component config: %v", err)
+		}
+	}
+
+	return component
 }
 
 // Init initializes the CRUD component and sets up event subscriptions
 func (c *CRUDComponent) Init() tea.Cmd {
-	// Subscribe to table events if we have an event bus
 	if c.EventBus != nil {
-		// Subscribe to row selected events from table
 		unsubRowSelected := c.EventBus.Subscribe(core.EventRowSelected, func(msg core.ActionMsg) {
-			// Check if this event came from our own table
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if tableID, ok := data["tableID"].(string); ok && tableID == c.id {
-					// This is a row selection from our own table
 					log.Trace("CRUD %s: Received ROW_SELECTED event, row index: %v", c.id, data["rowIndex"])
-
-					// In a real implementation, we would trigger a state transition here
-					// For now, we just log the event
 				}
 			}
 		})
 		c.unsubscribeFuncs = append(c.unsubscribeFuncs, unsubRowSelected)
 
-		// Subscribe to form submit success events
 		unsubFormSubmit := c.EventBus.Subscribe(core.EventFormSubmitSuccess, func(msg core.ActionMsg) {
-			// Handle form submission success
 			log.Trace("CRUD %s: Received FORM_SUBMIT_SUCCESS event", c.id)
 		})
 		c.unsubscribeFuncs = append(c.unsubscribeFuncs, unsubFormSubmit)
@@ -78,7 +77,6 @@ func (c *CRUDComponent) Cleanup() {
 
 // GetStateChanges returns the state changes from this component
 func (c *CRUDComponent) GetStateChanges() (map[string]interface{}, bool) {
-	// CRUD component state is managed by the wrapper
 	return nil, false
 }
 
@@ -97,17 +95,14 @@ func (c *CRUDComponent) GetID() string {
 
 // View returns the string representation of the CRUD component
 func (c *CRUDComponent) View() string {
-	// For now, return a placeholder view
 	if c.Table != nil {
 		return c.Table.View()
 	}
 	return "[CRUD Component]"
 }
 
-// UpdateMsg 实现 ComponentInterface 的 UpdateMsg 方法
-// 根据内部状态将消息路由到相应的子组件
+// UpdateMsg routes messages based on internal state
 func (c *CRUDComponent) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
 	if targetedMsg, ok := msg.(core.TargetedMsg); ok {
 		if targetedMsg.TargetID != c.id {
 			return c, nil, core.Ignored
@@ -115,39 +110,31 @@ func (c *CRUDComponent) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd
 		return c.UpdateMsg(targetedMsg.InnerMsg)
 	}
 
-	// Handle internal action messages that trigger state transitions
 	if actionMsg, ok := msg.(core.ActionMsg); ok {
 		switch actionMsg.Action {
 		case core.EventRowSelected:
-			// Transition from List to Editing state
 			if c.State == StateList {
 				c.State = StateEditing
-				// Load row data into form if available
 				if data, ok := actionMsg.Data.(map[string]interface{}); ok && c.Form != nil {
-					// Populate form with row data
 					log.Trace("CRUD %s: Loading row data into form from row index: %v", c.id, data["rowIndex"])
 				}
 				return c, nil, core.Handled
 			}
 
 		case core.EventNewItemRequested:
-			// Transition from List to Creating state
 			if c.State == StateList {
 				c.State = StateCreating
-				// Clear form for new item
 				log.Trace("CRUD %s: Clearing form for new item", c.id)
 				return c, nil, core.Handled
 			}
 
 		case core.EventItemDeleted:
-			// Stay in List state, refresh table
 			if c.State == StateList {
 				log.Trace("CRUD %s: Item deleted, refreshing table", c.id)
 				return c, nil, core.Handled
 			}
 
 		case core.EventFormSubmitSuccess:
-			// Transition back to List state after successful save
 			if c.State == StateEditing || c.State == StateCreating {
 				c.State = StateList
 				log.Trace("CRUD %s: Form submitted successfully, returning to list", c.id)
@@ -155,7 +142,6 @@ func (c *CRUDComponent) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd
 			}
 
 		case core.EventFormCancel:
-			// Cancel editing/creating, return to List state
 			if c.State == StateEditing || c.State == StateCreating {
 				c.State = StateList
 				log.Trace("CRUD %s: Form cancelled, returning to list", c.id)
@@ -164,52 +150,37 @@ func (c *CRUDComponent) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd
 		}
 	}
 
-	// Route message based on current state
-	var comp core.ComponentInterface
-	var cmd tea.Cmd
-	var response core.Response
-
 	switch c.State {
 	case StateEditing, StateCreating:
-		// In editing/creating state, send message to form component
 		if c.Form != nil {
-			comp, cmd, response = c.Form.UpdateMsg(msg)
-			return c, cmd, response
+			return c.Form.UpdateMsg(msg)
 		}
 		return c, nil, core.Ignored
 
 	case StateList:
-		// In list state, send message to table component
 		if c.Table != nil {
-			comp, cmd, response = c.Table.UpdateMsg(msg)
-			return c, cmd, response
+			return c.Table.UpdateMsg(msg)
 		}
 		return c, nil, core.Ignored
 
 	case StateFiltering:
-		// In filtering state, send message to filter component (if any)
 		if c.Table != nil {
-			comp, cmd, response = c.Table.UpdateMsg(msg)
-			return comp, cmd, response
+			return c.Table.UpdateMsg(msg)
 		}
 		return c, nil, core.Ignored
 
 	case StateDeleting:
-		// In deleting state, confirm and delete
 		if c.Table != nil {
-			comp, cmd, response = c.Table.UpdateMsg(msg)
-			return comp, cmd, response
+			return c.Table.UpdateMsg(msg)
 		}
 		return c, nil, core.Ignored
 	}
 
-	// Default: ignore message
 	return c, nil, core.Ignored
 }
 
 // SetFocus sets or removes focus from the CRUD component
 func (c *CRUDComponent) SetFocus(focus bool) {
-	// Delegate focus to the current active sub-component
 	switch c.State {
 	case StateList:
 		if c.Table != nil {
@@ -219,11 +190,7 @@ func (c *CRUDComponent) SetFocus(focus bool) {
 		if c.Form != nil {
 			c.Form.SetFocus(focus)
 		}
-	case StateFiltering:
-		if c.Table != nil {
-			c.Table.SetFocus(focus)
-		}
-	case StateDeleting:
+	case StateFiltering, StateDeleting:
 		if c.Table != nil {
 			c.Table.SetFocus(focus)
 		}
@@ -231,42 +198,30 @@ func (c *CRUDComponent) SetFocus(focus bool) {
 }
 
 func (c *CRUDComponent) GetFocus() bool {
-	// Delegate focus check to the current active sub-component
 	switch c.State {
 	case StateList:
 		if c.Table != nil {
-			// If the table implements GetFocus(), call it; otherwise return true as default
 			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
 				return focusGetter.GetFocus()
 			}
-			return true // Default to true if the interface doesn't support GetFocus
+			return true
 		}
 	case StateEditing, StateCreating:
 		if c.Form != nil {
-			// If the form implements GetFocus(), call it; otherwise return true as default
 			if focusGetter, ok := c.Form.(interface{ GetFocus() bool }); ok {
 				return focusGetter.GetFocus()
 			}
-			return true // Default to true if the interface doesn't support GetFocus
+			return true
 		}
-	case StateFiltering:
+	case StateFiltering, StateDeleting:
 		if c.Table != nil {
-			// If the table implements GetFocus(), call it; otherwise return true as default
 			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
 				return focusGetter.GetFocus()
 			}
-			return true // Default to true if the interface doesn't support GetFocus
-		}
-	case StateDeleting:
-		if c.Table != nil {
-			// If the table implements GetFocus(), call it; otherwise return true as default
-			if focusGetter, ok := c.Table.(interface{ GetFocus() bool }); ok {
-				return focusGetter.GetFocus()
-			}
-			return true // Default to true if the interface doesn't support GetFocus
+			return true
 		}
 	}
-	return false // Default to false if no active sub-component
+	return false
 }
 
 func (c *CRUDComponent) GetComponentType() string {
@@ -274,87 +229,82 @@ func (c *CRUDComponent) GetComponentType() string {
 }
 
 func (c *CRUDComponent) UpdateRenderConfig(config core.RenderConfig) error {
-	// CRUD组件目前不需要更新渲染配置
-	// 未来可以在这里更新子组件的配置
+	data := config.Data
+	if data == nil {
+		return nil
+	}
+
+	dataMap, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var items []interface{}
+	var tableHeight, tableWidth int
+
+	if h, ok := dataMap["height"].(int); ok {
+		tableHeight = h
+	}
+	if w, ok := dataMap["width"].(int); ok {
+		tableWidth = w
+	}
+
+	if bindData, ok := dataMap["__bind_data"].([]interface{}); ok {
+		items = bindData
+	}
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	var columns []Column
+	if firstItem, ok := items[0].(map[string]interface{}); ok {
+		i := 0
+		for key, val := range firstItem {
+			width := 15
+			if i == 0 {
+				width = 8
+			}
+			_ = val
+			columns = append(columns, Column{
+				Key:   key,
+				Title: key,
+				Width: width,
+			})
+			i++
+		}
+	}
+
+	if len(columns) == 0 {
+		return nil
+	}
+
+	convertedData := make([][]interface{}, 0, len(items))
+	for _, item := range items {
+		if itemMap, ok := item.(map[string]interface{}); ok {
+			row := make([]interface{}, len(columns))
+			for i, col := range columns {
+				row[i] = itemMap[col.Key]
+			}
+			convertedData = append(convertedData, row)
+		}
+	}
+
+	tableProps := TableProps{
+		Columns:    columns,
+		Data:       convertedData,
+		Focused:    true,
+		Height:     tableHeight,
+		Width:      tableWidth,
+		ShowBorder: true,
+		Bindings:   []core.ComponentBinding{},
+	}
+
+	c.Table = NewTableComponentWrapper(tableProps, c.id)
+
 	return nil
 }
 
 func (c *CRUDComponent) Render(config core.RenderConfig) (string, error) {
 	return c.View(), nil
-}
-
-// CRUDComponentWrapper wraps CRUDComponent for unified factory interface
-type CRUDComponentWrapper struct {
-	component *CRUDComponent
-}
-
-// NewCRUDComponentWrapper creates a wrapper around CRUD component
-func NewCRUDComponentWrapper(config core.RenderConfig, id string) *CRUDComponentWrapper {
-	// Create a new event bus for this CRUD component instance
-	eventBus := core.NewEventBus()
-	
-	// Create component with default configuration
-	wrapper := &CRUDComponentWrapper{
-		component: NewCRUDComponent(id, eventBus),
-	}
-	
-	// Update with provided configuration if available
-	if config.Data != nil {
-		if err := wrapper.UpdateRenderConfig(config); err != nil {
-			log.Error("Failed to update CRUD component config: %v", err)
-		}
-	}
-	
-	return wrapper
-}
-
-func (w *CRUDComponentWrapper) Init() tea.Cmd {
-	return w.component.Init()
-}
-
-func (w *CRUDComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	return w.component.UpdateMsg(msg)
-}
-
-func (w *CRUDComponentWrapper) View() string {
-	return w.component.View()
-}
-
-func (w *CRUDComponentWrapper) GetID() string {
-	return w.component.GetID()
-}
-
-func (w *CRUDComponentWrapper) SetFocus(focus bool) {
-	w.component.SetFocus(focus)
-}
-
-func (w *CRUDComponentWrapper) GetFocus() bool {
-	return w.component.GetFocus()
-}
-
-func (w *CRUDComponentWrapper) GetComponentType() string {
-	return w.component.GetComponentType()
-}
-
-func (w *CRUDComponentWrapper) Render(config core.RenderConfig) (string, error) {
-	return w.component.Render(config)
-}
-
-func (w *CRUDComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
-	return w.component.UpdateRenderConfig(config)
-}
-
-func (w *CRUDComponentWrapper) Cleanup() {
-	w.component.Cleanup()
-}
-
-// GetStateChanges returns the state changes from this component
-func (w *CRUDComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
-	// CRUD component wraps a table, so delegate to the table component
-	return w.component.GetStateChanges()
-}
-
-// GetSubscribedMessageTypes returns the message types this component subscribes to
-func (w *CRUDComponentWrapper) GetSubscribedMessageTypes() []string {
-	return w.component.GetSubscribedMessageTypes()
 }

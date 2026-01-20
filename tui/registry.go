@@ -33,7 +33,7 @@ const (
 	ProgressComponent   ComponentType = "progress"
 	SpinnerComponent    ComponentType = "spinner"
 	TextareaComponent   ComponentType = "textarea"
-	CRUDComponent      ComponentType = "crud"
+	CRUDComponent       ComponentType = "crud"
 )
 
 // ComponentFactory creates a component instance
@@ -153,7 +153,7 @@ func (r *ComponentRegistry) RegisterBuiltInComponents() {
 	}
 
 	r.factories[CRUDComponent] = func(config core.RenderConfig, id string) core.ComponentInterface {
-		return components.NewCRUDComponentWrapper(config, id)
+		return components.NewCRUDComponent(config, id)
 	}
 
 	// Register focusable component types
