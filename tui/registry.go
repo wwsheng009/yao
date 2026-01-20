@@ -166,6 +166,7 @@ func (r *ComponentRegistry) RegisterBuiltInComponents() {
 	r.focusableTypes[ChatComponent] = true
 	r.focusableTypes[FilePickerComponent] = true
 	r.focusableTypes[CRUDComponent] = true
+	r.focusableTypes[ListComponent] = true
 }
 
 // NewComponentRegistry creates a new component registry

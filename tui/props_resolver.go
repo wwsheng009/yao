@@ -1,6 +1,5 @@
 package tui
 
-
 // applyStateToProps processes component props and replaces {{}} expressions
 // with actual values from the State.
 func (m *Model) applyStateToProps(comp *Component) map[string]interface{} {
@@ -40,6 +39,14 @@ func (m *Model) resolveProps(comp *Component) map[string]interface{} {
 		return make(map[string]interface{})
 	}
 
+	// Props that should NOT be evaluated as expressions because they refer to item fields
+	// not global state variables
+	propsToSkipEvaluation := map[string]bool{
+		"itemTemplate":  true,
+		"labelTemplate": true,
+		"format":        true,
+	}
+
 	// Get current state snapshot for cache comparison
 	m.StateMu.RLock()
 	currentState := make(map[string]interface{}, len(m.State))
@@ -59,8 +66,14 @@ func (m *Model) resolveProps(comp *Component) map[string]interface{} {
 
 				// Process each prop
 				for key, value := range comp.Props {
-					// Use evaluateValue for consistent processing of all value types
-					result[key] = m.evaluateValue(value)
+					// Skip expression evaluation for template-like props
+					if propsToSkipEvaluation[key] {
+						// Keep the literal value without evaluation
+						result[key] = value
+					} else {
+						// Use evaluateValue for consistent processing of all value types
+						result[key] = m.evaluateValue(value)
+					}
 				}
 
 				// Handle bind attribute - bind entire state object
@@ -86,8 +99,14 @@ func (m *Model) resolveProps(comp *Component) map[string]interface{} {
 
 	// Process each prop
 	for key, value := range comp.Props {
-		// Use evaluateValue for consistent processing of all value types
-		result[key] = m.evaluateValue(value)
+		// Skip expression evaluation for template-like props
+		if propsToSkipEvaluation[key] {
+			// Keep the literal value without evaluation
+			result[key] = value
+		} else {
+			// Use evaluateValue for consistent processing of all value types
+			result[key] = m.evaluateValue(value)
+		}
 	}
 
 	// Handle bind attribute - bind entire state object

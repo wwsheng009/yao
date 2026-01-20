@@ -133,7 +133,6 @@ func ProcessQuitAction(model *Model, action *core.Action) (interface{}, error) {
 // Usage: Called internally by executeProcessAction
 func ProcessFocusNextAction(model *Model, action *core.Action) (interface{}, error) {
 	model.focusNextInput()
-	model.updateInputFocusStates()
 	return map[string]interface{}{"action": "focus_next", "message": "Focus next input"}, nil
 }
 
@@ -233,7 +232,6 @@ func ProcessInputEscapeAction(model *Model, action *core.Action, inputID string)
 			if comp.Instance.GetFocus() {
 				comp.Instance.SetFocus(false)
 			}
-			comp.LastFocusState = false
 		}
 		return map[string]interface{}{
 			"action":  "input_scape",

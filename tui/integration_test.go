@@ -153,6 +153,9 @@ func TestFocusManagementIntegration(t *testing.T) {
 	model := NewModel(cfg, nil)
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
+	// Initialize components first
+	model.InitializeComponents()
+
 	// Initial state - no focus
 	assert.Equal(t, "", model.CurrentFocus)
 
@@ -249,6 +252,9 @@ func TestTableStateSynchronizationIntegration(t *testing.T) {
 	model := NewModel(cfg, nil)
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
+	// Initialize components first
+	model.InitializeComponents()
+
 	// Render to create component instance
 	model.View()
 
@@ -291,6 +297,9 @@ func TestMenuStateSynchronizationIntegration(t *testing.T) {
 
 	model := NewModel(cfg, nil)
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Initialize components first
+	model.InitializeComponents()
 
 	// Render to create component instance
 	model.View()

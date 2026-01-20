@@ -71,6 +71,22 @@ type TargetedMsg struct {
 	InnerMsg tea.Msg
 }
 
+// FocusType represents the type of focus event
+type FocusType int
+
+const (
+	FocusGranted FocusType = iota // Component receives focus
+	FocusLost                     // Component loses focus
+)
+
+// FocusMsg represents a focus event sent to a component
+type FocusMsg struct {
+	Type   FocusType // FocusGranted or FocusLost
+	Reason string    // "TAB_NAVIGATE", "USER_ESC", "AUTO_FOCUS", etc.
+	FromID string    // ID of component losing focus (for FocusGranted events)
+	ToID   string    // ID of component receiving focus (for FocusLost events)
+}
+
 // Action defines an action to be executed in response to events.
 // An action can either call a Yao Process or execute a script method.
 type Action struct {
@@ -183,11 +199,10 @@ type LogMsg struct {
 
 // ComponentInstance represents a runtime instance of a component with its own UID
 type ComponentInstance struct {
-	ID             string
-	Type           string
-	Instance       ComponentInterface
-	LastConfig     RenderConfig
-	LastFocusState bool // Tracks last focus state to avoid redundant SetFocus calls
+	ID         string
+	Type       string
+	Instance   ComponentInterface
+	LastConfig RenderConfig
 }
 
 // ActionMsg represents an internal action message for cross-component communication

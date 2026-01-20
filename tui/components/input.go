@@ -361,7 +361,29 @@ func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 		return enterCmd, core.Handled, true
 	}
 
-	// 其他特殊键（ESC、Tab等）由框架层统一处理
+	// ESC 键：组件自己处理失去焦点
+	if keyMsg.Type == tea.KeyEsc && w.model.Focused() {
+		// 发送 FocusLost 消息给自己，完全消息驱动
+		cmd := func() tea.Msg {
+			return core.TargetedMsg{
+				TargetID: w.id,
+				InnerMsg: core.FocusMsg{
+					Type:   core.FocusLost,
+					Reason: "USER_ESC",
+					ToID:   "",
+				},
+			}
+		}
+		return cmd, core.Handled, true
+	}
+
+	// Tab 键：让框架处理焦点切换
+	if keyMsg.Type == tea.KeyTab {
+		// 返回 Ignored 让框架层处理 Tab 键的焦点切换
+		return nil, core.Ignored, false
+	}
+
+	// 其他键：不特殊处理
 	return nil, core.Ignored, false
 }
 

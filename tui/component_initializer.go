@@ -29,6 +29,22 @@ func (m *Model) InitializeComponents() []tea.Cmd {
 		// Continue initialization even if some components fail
 	}
 
+	// Handle autofocus - set focus to first focusable component
+	// This should be done AFTER all components are initialized
+	if m.Config.AutoFocus != nil && *m.Config.AutoFocus {
+		focusableIDs := m.getFocusableComponentIDs()
+		if len(focusableIDs) > 0 {
+			log.Trace("InitializeComponents: AutoFocus enabled, routing focus to first focusable component: %s", focusableIDs[0])
+			// Use setFocus which returns tea.Cmd - message will be processed in Update loop
+			cmd := m.setFocus(focusableIDs[0])
+			if cmd != nil {
+				allCmds = append(allCmds, cmd)
+			}
+		} else {
+			log.Trace("InitializeComponents: AutoFocus enabled but no focusable components found")
+		}
+	}
+
 	return allCmds
 }
 
@@ -82,8 +98,8 @@ func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry
 	// Create render config for initialization
 	// 初始化时的渲染配置，高宽是0，没有意义，屏幕还没显示。
 	renderConfig := core.RenderConfig{
-		Data:  props,
-		Width: m.Width,
+		Data:   props,
+		Width:  m.Width,
 		Height: m.Height,
 	}
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yaoapp/yao/tui/teatest"
 )
 
 func TestInputBlurBehavior(t *testing.T) {
@@ -27,35 +28,41 @@ func TestInputBlurBehavior(t *testing.T) {
 
 	model := NewModel(cfg, nil)
 
-	// Initialize components
+	// Initialize components - use teatest utility for proper batch processing
 	cmd := model.Init()
-	if cmd != nil {
-		msg := cmd()
-		model.Update(msg)
-	}
+	model = teatest.ProcessSequentialCmd(model, cmd).(*Model)
 
-	// Get window size
-	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
-	updatedModel, _ := model.Update(windowMsg)
-	m := updatedModel.(*Model)
+	// Set window size
+	model = teatest.ProcessSequentialCmd(model, func() tea.Msg {
+		return tea.WindowSizeMsg{Width: 80, Height: 24}
+	}).(*Model)
 
-	// Set focus to input
-	m.setFocus("test-input")
-	t.Logf("After setFocus, CurrentFocus: %s", m.CurrentFocus)
+	// Set focus to input (returns cmd)
+	cmd = model.setFocus("test-input")
+	model = teatest.ProcessSequentialCmd(model, cmd).(*Model)
+	t.Logf("After setFocus and process, CurrentFocus: %s", model.CurrentFocus)
 
 	// Check if component has focus
-	comp, exists := m.Components["test-input"]
+	comp, exists := model.Components["test-input"]
 	if !exists {
 		t.Fatal("Component not found")
 	}
 	t.Logf("Component GetFocus() before ESC: %v", comp.Instance.GetFocus())
+	if !comp.Instance.GetFocus() {
+		t.Error("Expected component to have focus after setFocus")
+	}
 
-	// Send ESC key
+	// Send ESC key - component should handle it and lose focus
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
-	updatedModel, _ = m.Update(escMsg)
-	m = updatedModel.(*Model)
+	updatedModel, cmd := model.Update(escMsg)
+	m := updatedModel.(*Model)
 
-	t.Logf("After ESC, CurrentFocus: %s", m.CurrentFocus)
+	// Process any returned command (should be FocusMsg if component implements)
+	if cmd != nil {
+		m = teatest.ProcessSequentialCmd(m, cmd).(*Model)
+	}
+
+	t.Logf("After ESC and process command, CurrentFocus: %s", m.CurrentFocus)
 	t.Logf("Component GetFocus() after ESC: %v", comp.Instance.GetFocus())
 
 	if m.CurrentFocus != "" {
@@ -63,6 +70,6 @@ func TestInputBlurBehavior(t *testing.T) {
 	}
 
 	if comp.Instance.GetFocus() {
-		t.Error("Expected component to not have focus")
+		t.Error("Expected component to not have focus after ESC")
 	}
 }

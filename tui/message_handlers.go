@@ -61,22 +61,27 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		// Handle specific system actions
 		switch actionMsg.Action {
 		case core.EventFocusNext:
-			// Move focus to next input component
-			model.focusNextInput()
+			// Move focus to next input component via message-driven approach
+			return model, model.focusNextInput()
 		case core.EventFocusPrev:
-			// Move focus to previous input component
-			model.focusPrevInput()
+			// Move focus to previous input component via message-driven approach
+			return model, model.focusPrevInput()
 		case core.EventFocusChanged:
-			// Update focus based on data
+			// NOTE: Focus changes should be driven by FocusMsg, not ActionMsg
+			// Components should send FocusMsg directly to notify focus changes
+			// This action is deprecated in favor of FocusMsg-based approach
+			log.Trace("TUI: EventFocusChanged is deprecated, use FocusMsg instead")
+			// Update focus based on data (legacy compatibility)
 			if data, ok := actionMsg.Data.(map[string]interface{}); ok {
 				if focused, ok := data["focused"].(bool); ok && focused {
 					// Set focus to the component that sent this message
-					model.setFocus(actionMsg.ID)
+					return model, model.setFocus(actionMsg.ID)
 				} else {
 					// Clear focus if focused is false
-					model.clearFocus()
+					return model, model.clearFocus()
 				}
 			}
+			return model, nil
 		default:
 			// For other actions, publish to EventBus for component communication
 			model.EventBus.Publish(actionMsg)
@@ -179,10 +184,10 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		// Get all focusable components
 		focusableIDs := model.getFocusableComponentIDs()
 		if len(focusableIDs) > 0 && model.Config.AutoFocus != nil && *model.Config.AutoFocus {
-			// Set focus to the first focusable component
-			model.setFocus(focusableIDs[0])
+			// Set focus to the first focusable component via message-driven approach
 			model.AutoFocusApplied = true
 			log.Trace("TUI: Auto-focus to first focusable component: %s", focusableIDs[0])
+			return model, model.setFocus(focusableIDs[0])
 		}
 
 		return model, nil
@@ -268,11 +273,32 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// ESC key handling (Priority 2): check for ESC bindings first
-	// ESC should work as exit/cancel regardless of component focus
-	if msg.Type == tea.KeyEsc {
-		log.Trace("TUI: ESC key detected, CurrentFocus=%q", m.CurrentFocus)
-		// Check if there's an ESC binding
+	// Dispatch phase: Route to focused component (Priority 2)
+	componentHandled := false
+	if m.CurrentFocus != "" {
+		log.Trace("TUI: Dispatching key to focused component: %s", m.CurrentFocus)
+		updatedModel, cmd, handled := m.dispatchMessageToComponent(m.CurrentFocus, msg)
+		log.Trace("TUI: Component %s returned: handled=%v", m.CurrentFocus, handled)
+		if handled {
+			// Component handled the message
+			componentHandled = true
+
+			// For ESC key, return the component's command which sends FocusMsg
+			// Don't interfere with component's internal focus management
+			if msg.Type == tea.KeyEsc {
+				log.Trace("TUI: ESC key handled by component, executing its command")
+				return updatedModel, cmd
+			}
+
+			return updatedModel, cmd
+		}
+		m = updatedModel.(*Model)
+	}
+
+	// ESC key handling (Priority 3): No component handled it, use default behavior
+	if msg.Type == tea.KeyEsc && !componentHandled {
+		log.Trace("TUI: ESC key not handled by component, checking bindings")
+		// Check for ESC bindings first
 		if m.Config.Bindings != nil {
 			key := msg.String()
 			if action, ok := m.Config.Bindings[key]; ok {
@@ -284,46 +310,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m.executeBoundAction(&action, key)
 			}
 		}
-		log.Trace("TUI: ESC key has no binding, dispatching to component")
-		// If no ESC binding, continue to component handling
-		// The component will handle ESC to blur, and we'll check focus after dispatch
-	}
-
-	// Dispatch phase: Route to focused component (Priority 3)
-	componentHandled := false
-	if m.CurrentFocus != "" {
-		log.Trace("TUI: Dispatching key to focused component: %s", m.CurrentFocus)
-		updatedModel, cmd, handled := m.dispatchMessageToComponent(m.CurrentFocus, msg)
-		log.Trace("TUI: Component %s returned: handled=%v", m.CurrentFocus, handled)
-		if handled {
-			// Component handled the message
-			componentHandled = true
-
-			// For ESC key, ALWAYS check and clear focus regardless of response status
-			// This ensures that components can't block ESC from releasing focus
-			if msg.Type == tea.KeyEsc {
-				log.Trace("TUI: ESC key handled by component %s, checking focus state", m.CurrentFocus)
-				comp, exists := updatedModel.(*Model).Components[m.CurrentFocus]
-				if exists {
-					// Check component focus state using GetFocus()
-					hasFocus := comp.Instance.GetFocus()
-					log.Trace("TUI: Component %s GetFocus()=%v", m.CurrentFocus, hasFocus)
-					if !hasFocus {
-						// Component lost focus, clear global focus state
-						log.Trace("TUI: Component lost focus, clearing CurrentFocus")
-						updatedModel.(*Model).CurrentFocus = ""
-						log.Trace("TUI: ESC pressed, component %s lost focus, cleared CurrentFocus", m.CurrentFocus)
-					} else {
-						log.Trace("TUI: Component still has focus after ESC, CurrentFocus remains")
-					}
-				} else {
-					log.Trace("TUI: Component %s not found in updated model", m.CurrentFocus)
-				}
-			}
-
-			return updatedModel, cmd
-		}
-		m = updatedModel.(*Model)
+		// Default: use clearFocus() which sends FocusMsg via tea.Cmd
+		log.Trace("TUI: Using default clearFocus for ESC")
+		return m, m.clearFocus()
 	}
 
 	// Native navigation keys (Priority 4): Tab/ShiftTab handling
@@ -445,9 +434,7 @@ func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 	}
 
 	if m.CurrentFocus == "" {
-		m.setFocus(focusableIDs[0])
-		log.Trace("Focused to first component: %s", focusableIDs[0])
-		return m, nil
+		return m, m.setFocus(focusableIDs[0])
 	}
 
 	currentIndex := -1
@@ -459,9 +446,7 @@ func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 	}
 
 	if currentIndex == -1 {
-		m.setFocus(focusableIDs[0])
-		log.Trace("Current focus not found, focusing to first: %s", focusableIDs[0])
-		return m, nil
+		return m, m.setFocus(focusableIDs[0])
 	}
 
 	// Check if Tab cycling is enabled
@@ -487,17 +472,16 @@ func (m *Model) handleTabNavigation() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.setFocus(nextFocus)
 	log.Trace("Focused to next component: %s (index %d, cycles=%v)", nextFocus, currentIndex+1, tabCycles)
 
-	return m, nil
+	return m, m.setFocus(nextFocus)
 }
 
 // handleShiftTabNavigation handles Shift+Tab to focus previous component
 func (m *Model) handleShiftTabNavigation() (tea.Model, tea.Cmd) {
 	log.Trace("Shift+Tab pressed, moving to previous component, current focus: %s", m.CurrentFocus)
-	m.focusPrevComponent()
-	return m, nil
+	// focusPrevComponent internally calls setFocus, so we need to get the command from it
+	return m, m.focusPrevComponent()
 }
 
 // handleProcessResult processes the result from a Yao Process execution.

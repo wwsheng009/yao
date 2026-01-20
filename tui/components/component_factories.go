@@ -160,31 +160,6 @@ func NewFormComponent(config core.RenderConfig, id string) *FormComponentWrapper
 	return NewFormComponentWrapper(props, id)
 }
 
-// NewListComponent creates a new List component wrapper
-func NewListComponent(config core.RenderConfig, id string) *ListComponentWrapper {
-	var props ListProps
-
-	// Extract props from config
-	if config.Data != nil {
-		if dataMap, ok := config.Data.(map[string]interface{}); ok {
-			props = ParseListProps(dataMap)
-		}
-	}
-
-	// Use defaults if no data provided
-	if len(props.Items) == 0 {
-		props = ListProps{
-			Items:   []ListItem{},
-			Title:   "",
-			Height:  0,
-			Width:   0,
-			Focused: false,
-		}
-	}
-
-	// Directly call the unified wrapper constructor
-	return NewListComponentWrapper(props, id)
-}
 
 // NewPaginatorComponent creates a new Paginator component wrapper
 func NewPaginatorComponent(config core.RenderConfig, id string) *PaginatorComponentWrapper {

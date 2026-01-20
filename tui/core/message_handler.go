@@ -105,6 +105,13 @@ func DefaultInteractiveUpdateMsg(
 	}
 
 	// ═════════════════════════════════════════════════
+	// Layer 1.5: FocusMsg 消息处理（完全消息驱动的焦点管理）
+	// ═════════════════════════════════════════════════
+	if focusMsg, ok := msg.(FocusMsg); ok {
+		return handleFocusMessage(w, focusMsg)
+	}
+
+	// ═════════════════════════════════════════════════
 	// Layer 2: 按键消息分层
 	// ═════════════════════════════════════════════════
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -133,7 +140,7 @@ func DefaultInteractiveUpdateMsg(
 		// Layer 2.3: 统一的默认特殊键处理
 		switch keyMsg.Type {
 		case tea.KeyEsc:
-			// 统一处理 ESC 键：失焦
+			// 统一处理 ESC 键：返回 Ignored 让 Model 处理焦点释放
 			return handleDefaultEscape(w)
 		case tea.KeyTab:
 			// 统一处理 Tab 键：让冒泡处理组件导航
@@ -148,6 +155,50 @@ func DefaultInteractiveUpdateMsg(
 	// Layer 3: 非按键消息处理
 	// ═════════════════════════════════════════════════
 	return HandleStateChanges(w, delegateUpdate(msg)), Handled
+}
+
+// handleDefaultEscape 处理默认的 ESC 键行为
+func handleDefaultEscape(w InteractiveBehavior) (tea.Cmd, Response) {
+	// 发布 ESC 事件
+	eventCmd := PublishEvent(w.GetID(), EventEscapePressed, nil)
+
+	// 关键改动：组件应该自己处理 ESC 键
+	// 如果组件实现了 SetFocus()，会发送 FocusMsg 来通知焦点变化
+	// 如果组件未处理 ESC，返回 Ignored 让 Model 触发焦点释放
+	//
+	// 注意：这里不再强制调用 SetFocus(false)
+	// 完全由组件通过消息驱动来管理焦点状态
+
+	// 让组件有机会处理 ESC（比如在 HandleSpecialKey 中）
+	// 如果组件没有特殊处理，返回 Ignored
+	return eventCmd, Ignored
+}
+
+// handleFocusMessage 处理 FocusMsg 消息（完全消息驱动的焦点管理）
+// 组件根据 FocusMsg 的类型自主管理其内部焦点状态
+func handleFocusMessage(w InteractiveBehavior, msg FocusMsg) (tea.Cmd, Response) {
+	// 组件通过 SetFocus(bool) 方法管理内部焦点状态
+	// 框架通过消息发送请求，组件自己响应并更新状态
+	if focuser, ok := w.(interface{ SetFocus(bool) }); ok {
+		switch msg.Type {
+		case FocusGranted:
+			// 组件获得焦点 - 组件应该启用编辑/交互功能
+			focuser.SetFocus(true)
+		case FocusLost:
+			// 组件失去焦点 - 组件应该禁用编辑/交互功能
+			focuser.SetFocus(false)
+		}
+	}
+
+	// 组件可以发布状态变化事件（但不是必须的）
+	eventCmd := PublishEvent(w.GetID(), EventFocusChanged, map[string]interface{}{
+		"focused": msg.Type == FocusGranted,
+		"reason":  msg.Reason,
+		"fromID":  msg.FromID,
+		"toID":    msg.ToID,
+	})
+
+	return eventCmd, Handled
 }
 
 // InputStateHelper 输入组件状态捕获助手
@@ -175,7 +226,7 @@ func (h *InputStateHelper) DetectStateChanges(old, new map[string]interface{}) [
 	}
 
 	if old["focused"] != new["focused"] {
-		cmds = append(cmds, PublishEvent(h.ComponentID, "INPUT_FOCUS_CHANGED", map[string]interface{}{
+		cmds = append(cmds, PublishEvent(h.ComponentID, EventInputFocusChanged, map[string]interface{}{
 			"focused": new["focused"],
 		}))
 	}
@@ -243,19 +294,6 @@ func (h *ChatStateHelper) DetectStateChanges(old, new map[string]interface{}) []
 	}
 
 	return cmds
-}
-
-// handleDefaultEscape 处理默认的 ESC 键行为
-func handleDefaultEscape(w InteractiveBehavior) (tea.Cmd, Response) {
-	// 发布 ESC 事件
-	eventCmd := PublishEvent(w.GetID(), EventEscapePressed, nil)
-
-	// 如果组件实现了 SetFocus(false) 方法，调用失焦
-	if focuser, ok := w.(interface{ SetFocus(bool) }); ok {
-		focuser.SetFocus(false)
-	}
-
-	return eventCmd, Ignored
 }
 
 // ViewportStateHelper 视口组件状态捕获助手

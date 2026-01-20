@@ -213,22 +213,11 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 		}
 	}
 
-	// Check if component lost focus after processing message
-	// This handles ESC key to clear focus from components
-	keyMsg, isKeyMsg := msg.(tea.KeyMsg)
-	isESC := isKeyMsg && keyMsg.Type == tea.KeyEsc
-	componentWasFocused := m.CurrentFocus == componentID
-
-	// For ESC key, always check focus state regardless of response
-	// For other keys, only check if the component handled the message
-	shouldCheckFocus := (response == core.Handled && componentWasFocused) || (isESC && componentWasFocused)
-
-	if shouldCheckFocus {
-		// Check if this component lost focus
-		if !comp.Instance.GetFocus() {
-			m.clearFocus()
-		}
-	}
+	// NOTE: Removed focus state check after message processing
+	// Components should manage their own focus state autonomously.
+	// If a component wants to lose focus (e.g., on ESC), it should do so
+	// internally and not rely on the Model to clear CurrentFocus.
+	// The Model should only track routing information, not manage component state.
 
 	return m, cmd, response == core.Handled
 }

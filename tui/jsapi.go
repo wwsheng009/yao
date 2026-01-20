@@ -637,10 +637,7 @@ func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemp
 				model.CurrentFocus = inputIDs[0] // Wrap to first
 			}
 
-			// Update focus states in components
-			model.updateInputFocusStates()
-
-			// Publish focus change event
+			// Publish focus change event - components listen to this to update their state
 			if model.EventBus != nil && model.CurrentFocus != "" {
 				model.EventBus.Publish(core.ActionMsg{
 					ID:     model.CurrentFocus,
