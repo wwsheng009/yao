@@ -14,19 +14,50 @@ func isRenderConfigChanged(old, new core.RenderConfig) bool {
 	if !reflect.DeepEqual(old.Data, new.Data) {
 		return true
 	}
-	
+
 	// Compare Width
 	if old.Width != new.Width {
 		return true
 	}
-	
+
 	// Compare Height
 	if old.Height != new.Height {
 		return true
 	}
-	
+
 	// No significant changes detected
 	return false
+}
+
+// updateComponentInstanceConfig safely updates component config with validation
+// Returns true if config was updated, false if no changes detected
+func updateComponentInstanceConfig(comp *core.ComponentInstance, renderConfig core.RenderConfig, componentID string) bool {
+	updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error })
+	if !ok {
+		return false
+	}
+
+	// Check if config has changed before updating
+	if !isRenderConfigChanged(comp.LastConfig, renderConfig) {
+		return false
+	}
+
+	// Validate config before updating
+	if validator, ok := comp.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
+		if err := validator.ValidateConfig(renderConfig); err != nil {
+			log.Warn("Config validation failed for %s: %v", componentID, err)
+		}
+	}
+
+	// Update the config
+	if err := updater.UpdateRenderConfig(renderConfig); err != nil {
+		log.Warn("Failed to update render config for component %s: %v", componentID, err)
+		return false
+	}
+
+	// Store the new config for future comparison
+	comp.LastConfig = renderConfig
+	return true
 }
 
 // ComponentInstanceRegistry manages component instances with lifecycle
@@ -55,28 +86,16 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 	if comp, exists := r.components[id]; exists {
 		// Check if the existing component is of the same type
 		if comp.Type == componentType {
-			log.Trace("GetOrCreate: component=%s, type=%s, updating existing", id, componentType)
+			// log.Trace("GetOrCreate: component=%s, type=%s, updating existing", id, componentType)
 			// Update existing instance's render config only if config changed
-			if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
-				// Check if config has changed before updating
-				if !isRenderConfigChanged(comp.LastConfig, renderConfig) {
-					log.Trace("GetOrCreate: config unchanged for %s, skipping update", id)
-					r.mu.RUnlock()
-					return comp, false
-				}
-
-				// Validate config before updating
-				if validator, ok := comp.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
-					if err := validator.ValidateConfig(renderConfig); err != nil {
-						log.Warn("Config validation failed for %s: %v", id, err)
-					}
-				}
-				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
-					log.Warn("Failed to update render config for component %s: %v", id, err)
-				}
-				// Store the new config for future comparison
-				comp.LastConfig = renderConfig
+			if !isRenderConfigChanged(comp.LastConfig, renderConfig) {
+				// log.Trace("GetOrCreate: config unchanged for %s, skipping update", id)
+				r.mu.RUnlock()
+				return comp, false
 			}
+
+			// Validate and update the config
+			updateComponentInstanceConfig(comp, renderConfig, id)
 			r.mu.RUnlock()
 			return comp, false // false means existing instance
 		}
@@ -93,22 +112,8 @@ func (r *ComponentInstanceRegistry) GetOrCreate(
 
 	// Double-check locking
 	if comp, exists := r.components[id]; exists {
-		if updater, ok := comp.Instance.(interface{ UpdateRenderConfig(core.RenderConfig) error }); ok {
-			// Check if config has changed before updating
-			if isRenderConfigChanged(comp.LastConfig, renderConfig) {
-				// Validate config before updating
-				if validator, ok := comp.Instance.(interface{ ValidateConfig(core.RenderConfig) error }); ok {
-					if err := validator.ValidateConfig(renderConfig); err != nil {
-						log.Warn("Config validation failed for %s: %v", id, err)
-					}
-				}
-				if err := updater.UpdateRenderConfig(renderConfig); err != nil {
-					log.Warn("Failed to update render config for component %s: %v", id, err)
-				}
-				// Store the new config for future comparison
-				comp.LastConfig = renderConfig
-			}
-		}
+		// Validate and update the config
+		updateComponentInstanceConfig(comp, renderConfig, id)
 		return comp, false
 	}
 

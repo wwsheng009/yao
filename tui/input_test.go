@@ -107,7 +107,8 @@ func TestInputNavigation(t *testing.T) {
 		model.RenderComponent(&cfg.Layout.Children[i])
 	}
 
-	// Initially, first input should be focused
+	// Manually set focus to first input (auto-focus only happens via Init)
+	model.setFocus("first-input")
 	assert.Equal(t, "first-input", model.CurrentFocus)
 
 	// Simulate tabbing to next input

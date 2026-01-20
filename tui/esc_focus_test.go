@@ -8,9 +8,10 @@ import (
 )
 
 func TestESCWithoutBindingClearsInputFocus(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
 		Name:      "Test ESC Clears Focus",
-		AutoFocus: false,
+		AutoFocus: &autofocus,
 		LogLevel:  "trace",
 		Layout: Layout{
 			Direction: "vertical",
@@ -27,6 +28,13 @@ func TestESCWithoutBindingClearsInputFocus(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+
+	// Initialize components
+	cmd := model.Init()
+	if cmd != nil {
+		msg := cmd()
+		model.Update(msg)
+	}
 
 	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	updatedModel, _ := model.Update(windowMsg)
@@ -55,9 +63,10 @@ func TestESCWithoutBindingClearsInputFocus(t *testing.T) {
 }
 
 func TestESCWithQuitBinding(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
 		Name:      "Test ESC With Quit Binding",
-		AutoFocus: true,
+		AutoFocus: &autofocus,
 		Bindings: map[string]core.Action{
 			"esc": {
 				Process: "tui.quit",

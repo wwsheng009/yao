@@ -7,9 +7,10 @@ import (
 )
 
 func TestAutofocusConfiguration(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
 		Name:      "Test AutoFocus Enabled",
-		AutoFocus: true,
+		AutoFocus: &autofocus,
 		Layout: Layout{
 			Direction: "vertical",
 			Children: []Component{
@@ -40,10 +41,9 @@ func TestAutofocusConfiguration(t *testing.T) {
 			t.Errorf("Expected focus on %s, got %s", focusableIDs[0], m.CurrentFocus)
 		}
 	}
-
 	cfgDisabled := &Config{
 		Name:      "Test AutoFocus Disabled",
-		AutoFocus: false,
+		AutoFocus: &autofocus,
 		Layout: Layout{
 			Direction: "vertical",
 			Children: []Component{

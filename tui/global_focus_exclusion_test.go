@@ -2,8 +2,6 @@ package tui
 
 import (
 	"testing"
-
-	"github.com/yaoapp/yao/tui/components"
 )
 
 // TestGlobalFocusExclusion verifies that only one component can have focus at any time

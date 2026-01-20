@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -797,6 +798,13 @@ func (w *TableComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 			return eventCmd, core.Handled, true
 		}
 		return nil, core.Handled, true
+	case tea.KeyEsc:
+		// Handle ESC key - blur the table component
+		// This allows ESC to release focus from table
+		w.model.Blur()
+		log.Trace("TUI: Table %s blur called via ESC", w.id)
+		// Return Ignored to let the message bubble up
+		return nil, core.Ignored, true
 	}
 
 	// 其他按键不由这个函数处理

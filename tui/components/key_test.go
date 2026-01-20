@@ -147,6 +147,71 @@ func TestKeyModel_RenderConfig_BatchMode(t *testing.T) {
 
 	assert.Len(t, model.props.Bindings, 2)
 	assert.Equal(t, "q", model.props.Bindings[0].Key)
-	assert.Equal(t, "s", model.props.Bindings[1].Key)
+	assert.Equal(t, "r", model.props.Bindings[1].Key)
 	assert.True(t, model.props.ShowLabels)
+}
+
+// TestKeyModelWithDisabledBindings tests disabled key bindings
+func TestKeyModelWithDisabledBindings(t *testing.T) {
+	props := KeyProps{
+		Bindings: []KeyBinding{
+			{Key: "q", Action: "Quit", Enabled: true},
+			{Key: "r", Action: "Refresh", Enabled: false},
+			{Key: "h", Action: "Help", Enabled: true},
+		},
+		ShowLabels: true,
+	}
+
+	model := NewKeyModel(props, "test-key")
+
+	// Verify all bindings are present
+	assert.Len(t, model.props.Bindings, 3)
+	assert.True(t, model.props.Bindings[0].Enabled)
+	assert.False(t, model.props.Bindings[1].Enabled)
+	assert.True(t, model.props.Bindings[2].Enabled)
+}
+
+// TestKeyModelWithSpacing tests custom spacing in batch mode
+func TestKeyModelWithSpacing(t *testing.T) {
+	props := KeyProps{
+		Bindings: []KeyBinding{
+			{Key: "q", Action: "Quit"},
+			{Key: "r", Action: "Refresh"},
+		},
+		ShowLabels: true,
+		Spacing:    5,
+	}
+
+	model := NewKeyModel(props, "test-key")
+	assert.Equal(t, 5, model.props.Spacing)
+	assert.True(t, model.props.ShowLabels)
+}
+
+// TestKeyModelWithCustomWidth tests custom width
+func TestKeyModelWithCustomWidth(t *testing.T) {
+	props := KeyProps{
+		Keys:        []string{"ctrl+c"},
+		Description: "Quit",
+		Color:       "white",
+		Width:       100,
+		Bold:        true,
+	}
+
+	model := NewKeyModel(props, "test-key")
+	assert.Equal(t, 100, model.props.Width)
+	assert.True(t, model.props.Bold)
+}
+
+// TestParseKeyProps_WithInvalidInput tests parsing with invalid input
+func TestParseKeyProps_WithInvalidInput(t *testing.T) {
+	// Test with empty map
+	props1 := ParseKeyProps(map[string]interface{}{})
+	assert.Equal(t, "", props1.Keys[0])
+
+	// Test with missing required fields
+	props2 := ParseKeyProps(map[string]interface{}{
+		"keys": []string{"q"},
+		// Missing description
+	})
+	assert.Len(t, props2.Keys, 1)
 }

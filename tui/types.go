@@ -54,7 +54,8 @@ type Config struct {
 	LogLevel string `json:"logLevel,omitempty"`
 
 	// AutoFocus enables automatic focus to the first focusable component (default: true)
-	AutoFocus bool `json:"autoFocus,omitempty"`
+	// Use a pointer to distinguish between "not set" and "explicitly false"
+	AutoFocus *bool `json:"autoFocus,omitempty"`
 
 	// NavigationMode defines how Tab/ShiftTab keys are handled
 	// "native": Tab always navigates between components (default)
@@ -227,6 +228,9 @@ type Model struct {
 	// Ready indicates whether the TUI is ready to render
 	Ready bool
 
+	// AutoFocusApplied indicates whether auto-focus has already been applied
+	AutoFocusApplied bool
+
 	// Program is a reference to the Bubble Tea program instance
 	// Used for sending messages from external goroutines
 	Program *tea.Program
@@ -277,6 +281,12 @@ func (c *Config) Validate() error {
 		if !validLevels[c.LogLevel] {
 			return fmt.Errorf("invalid log level: %s (must be one of: trace, debug, info, warn, error, none)", c.LogLevel)
 		}
+	}
+
+	// Set default for AutoFocus
+	if c.AutoFocus == nil {
+		defaultAutoFocus := true
+		c.AutoFocus = &defaultAutoFocus
 	}
 
 	// Validate components

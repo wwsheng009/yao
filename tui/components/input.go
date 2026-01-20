@@ -336,7 +336,7 @@ func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		// 跳过已在 HandleSpecialKey 中处理的键
 		switch keyMsg.Type {
-		case tea.KeyTab, tea.KeyEscape:
+		case tea.KeyTab, tea.KeyEsc:
 			// 这些键已由 HandleSpecialKey 处理，跳过委托
 			return nil
 		case tea.KeyEnter:
@@ -380,7 +380,7 @@ func (w *InputComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, co
 	case tea.KeyTab:
 		// 让Tab键冒泡以处理组件导航
 		return nil, core.Ignored, true
-	case tea.KeyEscape:
+	case tea.KeyEsc:
 		// 失焦处理
 		w.model.Blur()
 		cmd := core.PublishEvent(w.id, core.EventEscapePressed, nil)

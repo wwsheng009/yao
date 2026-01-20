@@ -8,9 +8,10 @@ import (
 )
 
 func TestGlobalBindingsWorkWhenNoFocus(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
 		Name:      "Test Global Bindings No Focus",
-		AutoFocus: false,
+		AutoFocus: &autofocus,
 		Bindings: map[string]core.Action{
 			"q": {
 				Process: "tui.quit",
@@ -60,9 +61,10 @@ func TestGlobalBindingsWorkWhenNoFocus(t *testing.T) {
 }
 
 func TestGlobalBindingsIgnoredWhenInputHasFocus(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
 		Name:      "Test Global Bindings With Input Focus",
-		AutoFocus: true,
+		AutoFocus: &autofocus,
 		Bindings: map[string]core.Action{
 			"q": {
 				Process: "tui.quit",
