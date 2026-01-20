@@ -437,13 +437,33 @@ func (m *Model) bindData(v interface{}) interface{} {
 
 // preprocessExpression handles special cases for expressions like features.0
 // that need to be converted to index($, "features.0") when direct access fails
+// Also converts conditional field access to use index() function to avoid type checking issues
 func preprocessExpression(expr string, state map[string]interface{}) string {
-	// This is a simple preprocessing to detect patterns like "identifier.number" or "identifier.identifier"
-	// where identifier might not exist as an object but combined key exists in the flattened state
+	processed := expr
+
+	// Check if the expression is already an index call with $ - skip processing
+	// Pattern: index($, "...") or index( $ , "..." ) etc.
+	if strings.Contains(expr, "index($,") {
+		return expr
+	}
+
+	// Check if the expression contains any operators or function calls
+	// If it's complex (contains spaces, operators, parentheses beyond the simple case),
+	// we should convert field accesses but NOT wrap the whole expression in index($, "...")
+	isComplexExpression := strings.Contains(expr, " ") ||
+		strings.Contains(expr, "(") ||
+		strings.Contains(expr, ")") ||
+		strings.Contains(expr, "==") ||
+		strings.Contains(expr, "!=") ||
+		strings.Contains(expr, ">") ||
+		strings.Contains(expr, "<") ||
+		strings.Contains(expr, "?") ||
+		strings.Contains(expr, "+") ||
+		strings.Contains(expr, "-")
 
 	// First, let's check if the expression is a simple identifier like "features.0"
-	// that could potentially be a flattened key
-	if strings.Contains(expr, ".") {
+	// that could potentially be a flattened key - only do this if it's NOT a complex expression
+	if strings.Contains(expr, ".") && !isComplexExpression {
 		// Check if the whole expression as a key exists in the state
 		if _, exists := state[expr]; exists {
 			// If key exists, wrap it in index function for safe access
@@ -451,5 +471,29 @@ func preprocessExpression(expr string, state map[string]interface{}) string {
 		}
 	}
 
-	return expr
+	// Handle conditional expressions with field access
+	// Pattern: identifier ? identifier.field : literal  ->  NotNil(identifier) ? index(identifier, "field") : literal
+	// Pattern: identifier.field == 'value' ? ... : ...  ->  index(identifier, "field") == 'value' ? ... : ...
+
+	// Find all patterns in the form of: identifier.field (but not in string literals)
+	// We'll use a simple approach: replace all field access patterns with index() calls
+	// Pattern: [a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]+
+	fieldAccessRe := regexp.MustCompile(`([a-zA-Z_]\w*)\.([a-zA-Z_]\w+)`)
+
+	// Replace field access with index function
+	// This helps avoid type checking issues when the object might be nil/null
+	processed = fieldAccessRe.ReplaceAllStringFunc(processed, func(match string) string {
+		// Skip if already wrapped in index()
+		if strings.Contains(match, "index(") {
+			return match
+		}
+		parts := fieldAccessRe.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			// Transform "obj.field" to "index(obj, "field")"
+			return fmt.Sprintf(`index(%s, "%s")`, parts[1], parts[2])
+		}
+		return match
+	})
+
+	return processed
 }

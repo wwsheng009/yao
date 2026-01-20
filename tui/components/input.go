@@ -331,14 +331,6 @@ func (w *InputComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.Co
 
 func (w *InputComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-
-	// 处理按键消息
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		// 直接委托给底层组件处理（所有按键，包括 Enter）
-		w.model, cmd = w.model.Update(msg)
-		return cmd
-	}
-
 	// 非按键消息
 	w.model, cmd = w.model.Update(msg)
 	return cmd

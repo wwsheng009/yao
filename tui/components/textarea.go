@@ -412,23 +412,6 @@ func (w *TextareaComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core
 
 func (w *TextareaComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-
-	// 如果是Enter键且EnterSubmits为true，则发布Enter按下事件
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyEnter && w.props.EnterSubmits {
-		w.model, cmd = w.model.Update(msg)
-
-		// 发布Enter按下事件
-		enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
-			"value": w.model.Value(),
-		})
-
-		// 如果原始命令存在，批处理两个命令
-		if cmd != nil {
-			return tea.Batch(enterCmd, cmd)
-		}
-		return enterCmd
-	}
-
 	w.model, cmd = w.model.Update(msg)
 	return cmd
 }
@@ -444,8 +427,21 @@ func (w *TextareaComponentWrapper) DetectStateChanges(old, new map[string]interf
 
 // 实现 HandleSpecialKey 方法
 func (w *TextareaComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
-	// ESC 和 Tab 现在由框架层统一处理，这里不处理
-	// 如果有其他特殊的键处理需求，可以在这里添加
+	// 特殊处理 Enter 键（当 EnterSubmits 为 true 时）
+	if keyMsg.Type == tea.KeyEnter && w.props.EnterSubmits {
+		// 更新模型状态
+		w.model, _ = w.model.Update(keyMsg)
+
+		// 发布 Enter 按下事件
+		enterCmd := core.PublishEvent(w.id, core.EventInputEnterPressed, map[string]interface{}{
+			"value": w.model.Value(),
+		})
+
+		// 返回已处理，阻止消息继续传递
+		return enterCmd, core.Handled, true
+	}
+
+	// 其他特殊键（ESC、Tab等）由框架层统一处理
 	return nil, core.Ignored, false
 }
 
