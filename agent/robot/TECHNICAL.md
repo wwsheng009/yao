@@ -32,17 +32,27 @@ yao/agent/robot/
 │   ├── queue.go              # Priority queue
 │   └── worker.go             # Worker goroutines
 │
-├── executor/                 # Executor package
-│   ├── executor.go           # Executor struct, Execute
-│   ├── phase.go              # RunPhase dispatcher
-│   ├── inspiration.go        # P0: Inspiration (clock only)
-│   ├── goals.go              # P1: Goal generation
-│   ├── tasks.go              # P2: Task planning
-│   ├── run.go                # P3: Task execution
-│   ├── delivery.go           # P4: Delivery
-│   ├── learning.go           # P5: Learning
-│   ├── agent.go              # Call assistant/agent unified method
-│   └── prompt.go             # Prompt building helpers
+├── executor/                 # Executor package (pluggable architecture)
+│   ├── executor.go           # Factory functions, unified entry
+│   ├── types/
+│   │   ├── types.go          # Executor interface, Config types
+│   │   └── helpers.go        # Shared helper functions
+│   ├── standard/
+│   │   ├── executor.go       # Real Agent execution (production)
+│   │   ├── agent.go          # AgentCaller for LLM calls
+│   │   ├── input.go          # InputFormatter for prompts
+│   │   ├── inspiration.go    # P0: Inspiration phase
+│   │   ├── goals.go          # P1: Goals phase
+│   │   ├── tasks.go          # P2: Tasks phase
+│   │   ├── run.go            # P3: Run phase (main entry)
+│   │   ├── runner.go         # P3: Task Runner (execution logic)
+│   │   ├── validator.go      # P3: Validator (two-layer validation)
+│   │   ├── delivery.go       # P4: Delivery phase
+│   │   └── learning.go       # P5: Learning phase
+│   ├── dryrun/
+│   │   └── executor.go       # Simulated execution (testing/demo)
+│   └── sandbox/
+│       └── executor.go       # Container-isolated (NOT IMPLEMENTED)
 │
 ├── utils/                    # Utility functions
 │   ├── convert.go            # Type conversions (JSON, map, struct)
@@ -80,6 +90,11 @@ yao/agent/robot/
 └── plan/                     # Plan queue (deferred tasks)
     ├── plan.go               # Plan queue struct
     └── schedule.go           # Schedule for later
+
+yao/assert/                       # Universal assertion library (global package)
+├── types.go                      # Assertion, Result, interfaces
+├── asserter.go                   # Asserter implementation (8 assertion types)
+└── helpers.go                    # Utility functions (ExtractPath, ToString, etc.)
 ```
 
 ### Dependency Graph (No Cycles)
@@ -132,7 +147,7 @@ yao/agent/robot/
 | `trigger/`  | `types/`                                                    |
 | `job/`      | `types/`, `yao/job`                                         |
 | `plan/`     | `types/`                                                    |
-| `executor/` | `types/`, `cache/`, `dedup/`, `store/`, `pool/`, `job/`     |
+| `executor/` | `types/`, `cache/`, `dedup/`, `store/`, `pool/`, `job/`, `yao/assert` |
 | `manager/`  | `types/`, `cache/`, `pool/`, `trigger/`, `executor/`        |
 |             | Manager handles all trigger logic (clock, intervene, event) |
 | `api/`      | `types/`, `manager/`                                        |
@@ -269,6 +284,9 @@ type TriggerRequest struct {
     Source    types.EventSource      `json:"source,omitempty"`     // webhook | database
     EventType string                 `json:"event_type,omitempty"` // lead.created, order.paid, etc.
     Data      map[string]interface{} `json:"data,omitempty"`       // event payload
+
+    // Executor mode (optional, overrides robot config)
+    ExecutorMode types.ExecutorMode `json:"executor_mode,omitempty"` // standard | dryrun
 }
 
 // InsertPosition - where to insert task in queue
@@ -553,7 +571,14 @@ interface TriggerRequest {
   source?: "webhook" | "database";
   event_type?: string; // lead.created, etc.
   data?: Record<string, any>;
+
+  // Executor mode (optional, overrides robot config)
+  executor_mode?: "standard" | "dryrun"; // sandbox not implemented
 }
+
+// ExecutorMode - executor mode type
+type ExecutorMode = "standard" | "dryrun" | "sandbox";
+// Note: "sandbox" requires container infrastructure, falls back to "dryrun"
 
 interface ListQuery {
   team_id?: string;
@@ -829,10 +854,10 @@ const (
 type DeliveryType string
 
 const (
-    DeliveryEmail   DeliveryType = "email"
-    DeliveryFile    DeliveryType = "file"
-    DeliveryWebhook DeliveryType = "webhook"
-    DeliveryNotify  DeliveryType = "notify"
+    DeliveryEmail   DeliveryType = "email"   // Email via yao/messenger
+    DeliveryWebhook DeliveryType = "webhook" // POST to external URL
+    DeliveryProcess DeliveryType = "process" // Yao Process call
+    DeliveryNotify  DeliveryType = "notify"  // In-app notification (future)
 )
 
 // DedupResult - deduplication result
@@ -929,7 +954,7 @@ type Config struct {
     DB        *DB        `json:"db,omitempty"`        // shared database (same as assistant)
     Learn     *Learn     `json:"learn,omitempty"`     // learning config for private KB
     Resources *Resources `json:"resources,omitempty"`
-    Delivery  *Delivery  `json:"delivery,omitempty"`
+    Delivery  *DeliveryPreferences `json:"delivery,omitempty"` // see section 6.2
     Events    []Event    `json:"events,omitempty"`
 }
 
@@ -1109,11 +1134,7 @@ type MCPConfig struct {
     Tools []string `json:"tools,omitempty"` // empty = all
 }
 
-// Delivery - output delivery
-type Delivery struct {
-    Type DeliveryType           `json:"type"`
-    Opts map[string]interface{} `json:"opts,omitempty"`
-}
+// Note: Delivery preferences moved to DeliveryPreferences (see section 6.2)
 
 // Event - event trigger config
 type Event struct {
@@ -1148,6 +1169,7 @@ type Robot struct {
     SystemPrompt   string      `json:"system_prompt"`
     Status         RobotStatus `json:"robot_status"`
     AutonomousMode bool        `json:"autonomous_mode"`
+    RobotEmail     string      `json:"robot_email"` // Robot's email address for sending emails
 
     // Parsed config (from robot_config JSON field)
     Config *Config `json:"-"`
@@ -1216,7 +1238,7 @@ func (r *Robot) GetExecutions() []*Execution {
 // Relationship: 1 Execution = 1 job.Job
 type Execution struct {
     ID          string      `json:"id"`           // unique execution ID
-    MemberID    string      `json:"member_id"`    // robot member ID
+    MemberID    string      `json:"member_id"`    // robot member ID (globally unique)
     TeamID      string      `json:"team_id"`
     TriggerType TriggerType `json:"trigger_type"` // clock | human | event
     StartTime   time.Time   `json:"start_time"`
@@ -1269,7 +1291,7 @@ type CurrentState struct {
     Progress  string `json:"progress,omitempty"` // human-readable progress (e.g., "2/5 tasks")
 }
 
-// Goals - P1 output (markdown for LLM)
+// Goals - P1 output (markdown for LLM + structured metadata)
 // P1 Agent reads InspirationReport and generates goals as markdown
 // Example:
 // ## Goals
@@ -1280,7 +1302,19 @@ type CurrentState struct {
 // 3. [Low] Update CRM with new leads
 //    - Reason: 3 pending leads from yesterday
 type Goals struct {
-    Content string `json:"content"` // markdown text
+    Content  string          `json:"content"`            // markdown text
+    Delivery *DeliveryTarget `json:"delivery,omitempty"` // where to send results (for P4)
+}
+
+// DeliveryTarget - where to deliver results (defined in P1, used by P4)
+// Note: This is a hint from P1 Goals. Actual delivery is handled by Delivery Center
+// based on Robot/User preferences, not strictly by this target.
+type DeliveryTarget struct {
+    Type       DeliveryType           `json:"type"`                 // Preferred delivery type
+    Recipients []string               `json:"recipients,omitempty"` // email addresses, webhook URLs, user IDs
+    Format     string                 `json:"format,omitempty"`     // markdown | html | json | text
+    Template   string                 `json:"template,omitempty"`   // template name or inline template
+    Options    map[string]interface{} `json:"options,omitempty"`    // channel-specific options
 }
 
 // Task - planned task (structured, for execution)
@@ -1294,6 +1328,13 @@ type Task struct {
     ExecutorType ExecutorType `json:"executor_type"`
     ExecutorID   string       `json:"executor_id"`
     Args         []any        `json:"args,omitempty"`
+
+    // Validation (defined in P2, used in P3)
+    ExpectedOutput  string   `json:"expected_output,omitempty"`  // what the task should produce
+    // ValidationRules supports two formats:
+    // 1. Natural language: "output must be valid JSON", "must contain 'field'"
+    // 2. JSON assertions: `{"type": "type", "value": "object"}`, `{"type": "contains", "value": "success"}`
+    ValidationRules []string `json:"validation_rules,omitempty"` // specific checks to perform
 
     // Runtime
     Status    TaskStatus `json:"status"`
@@ -1334,20 +1375,127 @@ const (
 
 // TaskResult - task execution result
 type TaskResult struct {
-    TaskID    string      `json:"task_id"`
-    Success   bool        `json:"success"`
-    Output    interface{} `json:"output,omitempty"`
-    Error     string      `json:"error,omitempty"`
-    Duration  int64       `json:"duration_ms"`
-    Validated bool        `json:"validated"`
+    TaskID     string            `json:"task_id"`
+    Success    bool              `json:"success"`
+    Output     interface{}       `json:"output,omitempty"`
+    Error      string            `json:"error,omitempty"`
+    Duration   int64             `json:"duration_ms"`
+    Validation *ValidationResult `json:"validation,omitempty"` // P3 validation result
 }
 
-// DeliveryResult - delivery output
+// ValidationResult - P3 validation result with multi-turn conversation support
+type ValidationResult struct {
+    // Basic validation result
+    Passed      bool     `json:"passed"`                // overall validation passed
+    Score       float64  `json:"score,omitempty"`       // 0-1 confidence score
+    Issues      []string `json:"issues,omitempty"`      // what failed
+    Suggestions []string `json:"suggestions,omitempty"` // how to improve
+    Details     string   `json:"details,omitempty"`     // detailed validation report (markdown)
+
+    // Execution state (for multi-turn conversation control)
+    Complete     bool   `json:"complete"`                // whether expected result is obtained
+    NeedReply    bool   `json:"need_reply,omitempty"`    // whether to continue conversation
+    ReplyContent string `json:"reply_content,omitempty"` // content for next turn (if NeedReply)
+}
+
+// DeliveryRequest - pushed to Delivery Center
+// Agent only generates content, Delivery Center decides channels based on preferences
+type DeliveryRequest struct {
+    Content *DeliveryContent `json:"content"` // Agent-generated content
+    Context *DeliveryContext `json:"context"` // Tracking info
+    // No Channels field - Delivery Center decides based on Robot/User preferences
+}
+
+// DeliveryContent - content generated by Delivery Agent
+type DeliveryContent struct {
+    Summary     string               `json:"summary"`               // Brief summary (1-2 sentences)
+    Body        string               `json:"body"`                  // Full markdown report
+    Attachments []DeliveryAttachment `json:"attachments,omitempty"` // Output artifacts
+}
+
+// DeliveryAttachment - task output attachment with metadata
+// File uses wrapper format: __<uploader>://<fileID>
+// Example: __yao.attachment://ccd472d11feb96e03a3fc468f494045c
+// Parse with attachment.Parse(value) → (uploader, fileID, isWrapper)
+type DeliveryAttachment struct {
+    Title       string `json:"title"`                 // Human-readable title, e.g., "Market Analysis Report"
+    Description string `json:"description,omitempty"` // Description of what this artifact is
+    TaskID      string `json:"task_id,omitempty"`     // Which task produced this artifact
+    File        string `json:"file"`                  // Wrapper format: __<uploader>://<fileID>
+}
+
+// DeliveryContext - tracking and audit info
+type DeliveryContext struct {
+    MemberID    string      `json:"member_id"`    // Robot member ID (globally unique)
+    ExecutionID string      `json:"execution_id"`
+    TriggerType TriggerType `json:"trigger_type"`
+    TeamID      string      `json:"team_id"`
+}
+
+// DeliveryPreferences - Robot/User delivery preferences (read by Delivery Center)
+// Each channel supports multiple targets
+type DeliveryPreferences struct {
+    Email   *EmailPreference   `json:"email,omitempty"`
+    Webhook *WebhookPreference `json:"webhook,omitempty"`
+    Process *ProcessPreference `json:"process,omitempty"`
+    // notify is handled automatically based on user subscriptions
+}
+
+// EmailPreference - multiple email targets
+type EmailPreference struct {
+    Enabled bool          `json:"enabled"`
+    Targets []EmailTarget `json:"targets"`
+}
+
+type EmailTarget struct {
+    To       []string `json:"to"`                 // Recipient addresses
+    Template string   `json:"template,omitempty"` // Email template ID
+    Subject  string   `json:"subject,omitempty"`  // Subject template (default: content.Summary)
+}
+
+// WebhookPreference - multiple webhook targets
+type WebhookPreference struct {
+    Enabled bool            `json:"enabled"`
+    Targets []WebhookTarget `json:"targets"`
+}
+
+type WebhookTarget struct {
+    URL     string            `json:"url"`               // Webhook URL
+    Method  string            `json:"method,omitempty"`  // HTTP method (default: POST)
+    Headers map[string]string `json:"headers,omitempty"` // Custom headers
+    Secret  string            `json:"secret,omitempty"`  // Signing secret
+}
+
+// ProcessPreference - multiple Yao Process targets
+type ProcessPreference struct {
+    Enabled bool            `json:"enabled"`
+    Targets []ProcessTarget `json:"targets"`
+}
+
+type ProcessTarget struct {
+    Process string `json:"process"`        // Yao Process name, e.g., "orders.UpdateStatus"
+    Args    []any  `json:"args,omitempty"` // Additional args (DeliveryContent passed as first arg)
+}
+
+// DeliveryResult - P4 delivery output (returned by Delivery Center)
 type DeliveryResult struct {
-    Type    DeliveryType `json:"type"`
-    Success bool         `json:"success"`
-    Details interface{}  `json:"details,omitempty"`
-    Error   string       `json:"error,omitempty"`
+    RequestID string           `json:"request_id"`          // Delivery request ID
+    Content   *DeliveryContent `json:"content"`             // Agent-generated content
+    Results   []ChannelResult  `json:"results,omitempty"`   // Results per channel
+    Success   bool             `json:"success"`             // Overall success
+    Error     string           `json:"error,omitempty"`     // Error if failed
+    SentAt    *time.Time       `json:"sent_at,omitempty"`   // When delivery completed
+}
+
+// ChannelResult - result for a single delivery target
+type ChannelResult struct {
+    Type       DeliveryType `json:"type"`                 // email | webhook | process
+    Target     string       `json:"target"`               // Target identifier (email, URL, process name)
+    Success    bool         `json:"success"`              // Whether delivery succeeded
+    Recipients []string     `json:"recipients,omitempty"` // Who received (for email)
+    Details    interface{}  `json:"details,omitempty"`    // Channel-specific response
+    Error      string       `json:"error,omitempty"`      // Error message if failed
+    SentAt     *time.Time   `json:"sent_at,omitempty"`    // When this target was delivered
 }
 
 // LearningEntry - knowledge to save
@@ -1458,21 +1606,32 @@ import (
 // InterveneRequest - human intervention request
 // Processed by Manager.Intervene()
 type InterveneRequest struct {
-    TeamID   string                    `json:"team_id"`
-    MemberID string                    `json:"member_id"`
-    Action   InterventionAction        `json:"action"`             // task.add, goal.adjust, etc.
-    Messages []agentcontext.Message    `json:"messages,omitempty"` // user input (text, images, files)
-    PlanTime *time.Time                `json:"plan_time,omitempty"` // for action=plan.add
+    TeamID       string                    `json:"team_id"`
+    MemberID     string                    `json:"member_id"`
+    Action       InterventionAction        `json:"action"`               // task.add, goal.adjust, etc.
+    Messages     []agentcontext.Message    `json:"messages,omitempty"`   // user input (text, images, files)
+    PlanTime     *time.Time                `json:"plan_time,omitempty"`  // for action=plan.add
+    ExecutorMode ExecutorMode              `json:"executor_mode,omitempty"` // optional: standard | dryrun
 }
 
 // EventRequest - event trigger request
 // Processed by Manager.HandleEvent()
 type EventRequest struct {
-    MemberID  string                 `json:"member_id"`
-    Source    string                 `json:"source"`     // webhook path or table name
-    EventType string                 `json:"event_type"` // lead.created, etc.
-    Data      map[string]interface{} `json:"data,omitempty"`
+    MemberID     string                 `json:"member_id"`
+    Source       string                 `json:"source"`               // webhook path or table name
+    EventType    string                 `json:"event_type"`           // lead.created, etc.
+    Data         map[string]interface{} `json:"data,omitempty"`
+    ExecutorMode ExecutorMode           `json:"executor_mode,omitempty"` // optional: standard | dryrun
 }
+
+// ExecutorMode - executor mode enum
+type ExecutorMode string
+
+const (
+    ExecutorStandard ExecutorMode = "standard" // real Agent calls (default)
+    ExecutorDryRun   ExecutorMode = "dryrun"   // simulated, no LLM calls
+    ExecutorSandbox  ExecutorMode = "sandbox"  // container-isolated (NOT IMPLEMENTED)
+)
 
 // ExecutionResult - trigger result
 type ExecutionResult struct {
@@ -1703,4 +1862,612 @@ var (
     ErrTaskPlanFailed     = errors.New("task planning failed")
     ErrDeliveryFailed     = errors.New("delivery failed")
 )
+```
+
+---
+
+## 5. P3 Implementation Details
+
+### 5.1 Multi-Turn Conversation Flow
+
+For assistant tasks, P3 uses a validator-driven multi-turn conversation:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   executeAssistantWithMultiTurn              │
+├──────────────────────────────────────────────────────────────┤
+│  1. Create Conversation (single instance for entire task)    │
+│  2. Build initial messages with task context                 │
+│                                                              │
+│  ┌─────────────────── Turn Loop ───────────────────────────┐ │
+│  │  Phase 1: Call assistant via conv.Turn()                │ │
+│  │  Phase 2: ValidateWithContext() determines:             │ │
+│  │           - Complete: task done?                        │ │
+│  │           - NeedReply: continue conversation?           │ │
+│  │           - ReplyContent: what to send next?            │ │
+│  │  Phase 3: If NeedReply, use ReplyContent as next input  │ │
+│  │  Break if: Complete && Passed, or !NeedReply            │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  3. Return output, validation, error                         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Key points:
+- `ValidateWithContext()` returns `NeedReply` and `ReplyContent`
+- Conversation continues until `Complete && Passed` or `!NeedReply`
+- Max turns controlled by `RunConfig.MaxTurnsPerTask`
+
+### 5.2 Validation Rules Format
+
+Validation rules support two formats:
+
+1. **Natural language**: `"output must be valid JSON"`, `"must contain 'field'"`
+2. **Structured JSON**: `{"type": "type", "path": "field", "value": "array"}`
+
+Examples:
+```json
+// Natural language rules (converted to semantic validation)
+"output must be valid JSON"
+"must contain product name"
+
+// Structured JSON assertions
+{"type": "equals", "value": "success"}
+{"type": "contains", "value": "total"}
+{"type": "regex", "value": "^[A-Z].*"}
+{"type": "json_path", "path": "data.items", "value": 10}
+{"type": "type", "path": "result", "value": "object"}
+```
+
+### 5.3 Task Dependencies
+
+Task dependencies are handled automatically:
+
+1. `BuildTaskContext()` collects previous task results
+2. `FormatPreviousResultsAsContext()` formats them for assistant
+
+```go
+// Previous results are passed as context
+func (r *Runner) BuildTaskContext(exec *robottypes.Execution, taskIndex int) *RunnerContext {
+    ctx := &RunnerContext{}
+    if taskIndex > 0 {
+        ctx.PreviousResults = exec.Results[:taskIndex]
+    }
+    return ctx
+}
+```
+
+### 5.4 Resource Management
+
+Agent context is properly released to prevent resource leaks:
+
+```go
+func (c *AgentCaller) Call(ctx *robottypes.Context, assistantID string, messages []agentcontext.Message) (*CallResult, error) {
+    agentCtx := c.buildAgentContext(ctx)
+    defer agentCtx.Release() // IMPORTANT: Release agent context
+    
+    response, err := ast.Stream(agentCtx, messages, opts)
+    // ...
+}
+```
+
+### 5.5 yao/assert Package
+
+The `yao/assert` package is a standalone universal assertion library that can be used by other modules:
+
+```go
+import "github.com/yaoapp/yao/assert"
+
+// Create asserter with optional callbacks
+asserter := assert.NewAsserter(assert.AssertionOptions{
+    AgentValidator:  myAgentValidator,  // for "agent" type assertions
+    ScriptRunner:    myScriptRunner,    // for "script" type assertions
+})
+
+// Run assertions
+results := asserter.Assert(output, []assert.Assertion{
+    {Type: "type", Value: "object"},
+    {Type: "contains", Value: "success"},
+    {Type: "json_path", Path: "data.count", Value: 10},
+})
+```
+
+Supported assertion types:
+- `equals` - exact match
+- `contains` - substring check
+- `not_contains` - negative substring check
+- `json_path` - JSON path extraction and comparison
+- `regex` - regex pattern matching
+- `type` - type checking (with optional path)
+- `script` - custom script validation
+- `agent` - AI agent validation
+
+---
+
+## 6. P4 Delivery Implementation
+
+### 6.1 Overview
+
+P4 Delivery summarizes P3 execution results and delivers to configured channels.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      delivery.go (P4 Entry)                  │
+│  - DeliveryExecution: main entry point                       │
+│  - Calls Delivery Agent with full execution context          │
+│  - Routes DeliveryContent to configured channels             │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+         ┌────────────┴────────────┐
+         ▼                         ▼
+┌─────────────────┐      ┌─────────────────┐
+│ Delivery Agent  │      │ Delivery Center  │
+│  - Summarize    │      │  - sendEmail()   │
+│  - Format body  │      │  - postWebhook() │
+│  - List files   │      │  - callProcess() │
+└─────────────────┘      └─────────────────┘
+```
+
+### 6.2 Delivery Request Structure
+
+P4 generates a `DeliveryRequest` with **only content** and pushes to Delivery Center.
+**Delivery Center decides channels** based on Robot/User preferences.
+
+```go
+// DeliveryRequest - pushed to Delivery Center
+// No Channels - Delivery Center decides based on preferences
+type DeliveryRequest struct {
+    Content *DeliveryContent `json:"content"` // Agent-generated content
+    Context *DeliveryContext `json:"context"` // Tracking info
+}
+
+// DeliveryContent - content generated by Delivery Agent
+type DeliveryContent struct {
+    Summary     string               `json:"summary"`               // Brief 1-2 sentence summary
+    Body        string               `json:"body"`                  // Full markdown report
+    Attachments []DeliveryAttachment `json:"attachments,omitempty"` // Output artifacts from P3
+}
+
+// DeliveryAttachment - file attachment with metadata
+type DeliveryAttachment struct {
+    Title       string `json:"title"`                 // Human-readable title
+    Description string `json:"description,omitempty"` // What this artifact is
+    TaskID      string `json:"task_id,omitempty"`     // Which task produced this
+    File        string `json:"file"`                  // Wrapper: __<uploader>://<fileID>
+}
+
+// DeliveryContext - tracking and audit info
+type DeliveryContext struct {
+    MemberID    string      `json:"member_id"`    // Robot member ID (globally unique)
+    ExecutionID string      `json:"execution_id"`
+    TriggerType TriggerType `json:"trigger_type"`
+    TeamID      string      `json:"team_id"`
+}
+```
+
+**Example DeliveryRequest:**
+
+```json
+{
+  "content": {
+    "summary": "Sales report completed: 15 new leads",
+    "body": "## Weekly Sales Report\n...",
+    "attachments": [{"title": "Report.pdf", "file": "__yao.attachment://abc123"}]
+  },
+  "context": {
+    "member_id": "mem_abc123",
+    "execution_id": "exec_xyz789",
+    "trigger_type": "clock",
+    "team_id": "team_123"
+  }
+}
+```
+
+**Channel Decision by Delivery Center:**
+
+Delivery Center reads Robot/User preferences and executes delivery to all enabled targets:
+
+```go
+// DeliveryPreferences - from Robot config (each channel supports multiple targets)
+type DeliveryPreferences struct {
+    Email   *EmailPreference   `json:"email,omitempty"`
+    Webhook *WebhookPreference `json:"webhook,omitempty"`
+    Process *ProcessPreference `json:"process,omitempty"`
+}
+
+type EmailPreference struct {
+    Enabled bool          `json:"enabled"`
+    Targets []EmailTarget `json:"targets"` // Multiple email targets
+}
+
+type WebhookPreference struct {
+    Enabled bool            `json:"enabled"`
+    Targets []WebhookTarget `json:"targets"` // Multiple webhook URLs
+}
+
+type ProcessPreference struct {
+    Enabled bool            `json:"enabled"`
+    Targets []ProcessTarget `json:"targets"` // Multiple Yao Process calls
+}
+```
+
+### 6.3 File Wrapper Format
+
+Attachments use the standard `yao/attachment` wrapper format:
+
+```go
+// Format: __<uploader>://<fileID>
+// Example: __yao.attachment://ccd472d11feb96e03a3fc468f494045c
+
+import "github.com/yaoapp/yao/attachment"
+
+// Parse wrapper to get uploader and fileID
+uploader, fileID, isWrapper := attachment.Parse(wrapper)
+// uploader: "__yao.attachment"
+// fileID: "ccd472d11feb96e03a3fc468f494045c"
+// isWrapper: true
+
+// Get file info
+manager := attachment.Managers[uploader]
+fileInfo, err := manager.Info(ctx, fileID)
+
+// Read file content as base64
+base64Content := attachment.Base64(ctx, wrapper)
+
+// Read with data URI format
+dataURI := attachment.Base64(ctx, wrapper, true)
+// "data:image/png;base64,..."
+```
+
+### 6.4 Delivery Agent
+
+The Delivery Agent **only generates content**, does NOT decide channels.
+Channel decisions are made by Delivery Center based on Robot/User preferences.
+
+**Input:**
+```go
+type DeliveryAgentInput struct {
+    Robot       *Robot             `json:"robot"`       // Robot identity and config
+    TriggerType TriggerType        `json:"trigger"`     // clock | human | event
+    Inspiration *InspirationReport `json:"inspiration"` // P0 (clock only)
+    Goals       *Goals             `json:"goals"`       // P1
+    Tasks       []Task             `json:"tasks"`       // P2
+    Results     []TaskResult       `json:"results"`     // P3
+}
+```
+
+**Output:**
+```go
+// DeliveryAgentOutput - only content, no channels
+type DeliveryAgentOutput struct {
+    Content *DeliveryContent `json:"content"` // Generated content
+}
+```
+
+**Agent Responsibilities:**
+
+The agent focuses on content generation:
+- **Summary**: Brief 1-2 sentence summary of execution results
+- **Body**: Full markdown report with details
+- **Attachments**: Select which P3-generated files to include
+
+**Example Output:**
+
+```json
+{
+  "content": {
+    "summary": "Sales report completed: 15 new leads processed, 3 high-priority",
+    "body": "## Weekly Sales Report\n\n### Summary\n- Total leads: 15\n- High priority: 3\n...",
+    "attachments": [
+      {"title": "Sales Report.pdf", "task_id": "task_1", "file": "__yao.attachment://abc123"},
+      {"title": "Lead Analysis.xlsx", "task_id": "task_2", "file": "__yao.attachment://def456"}
+    ]
+  }
+}
+```
+
+### 6.5 Global Email Configuration
+
+Email delivery uses global configuration for channel selection and Robot-specific sender identity:
+
+```go
+// types/config_global.go
+
+// DefaultEmailChannel returns the default messenger channel name
+// Default: "email" (maps to messengers/channels.yao)
+func DefaultEmailChannel() string
+
+// SetDefaultEmailChannel sets the default channel (call during agent init)
+func SetDefaultEmailChannel(channel string)
+```
+
+**Usage:**
+- `DefaultEmailChannel()` - returns the messenger channel name for email delivery
+- `Robot.RobotEmail` - used as the `From` address when sending emails
+- If `RobotEmail` is empty, falls back to provider's default `from` address
+
+### 6.6 Delivery Center
+
+The Delivery Center receives `DeliveryRequest`, reads preferences, and executes delivery to **all enabled targets**.
+
+**Current implementation:** Internal to P4 (in `executor/delivery.go`)
+**Future:** Can be extracted to standalone `yao/delivery` package
+
+```go
+// DeliveryCenter - handles delivery execution to multiple targets
+type DeliveryCenter struct {
+    messenger *messenger.Manager
+}
+
+// Deliver - main entry point
+func (dc *DeliveryCenter) Deliver(ctx context.Context, req *DeliveryRequest) *DeliveryResult {
+    requestID := generateID()
+    prefs := dc.getDeliveryPreferences(ctx, req.Context.MemberID)
+    
+    var results []ChannelResult
+    allSuccess := true
+    
+    // Email - send to all targets (robot passed for From address)
+    if prefs.Email != nil && prefs.Email.Enabled {
+        for _, target := range prefs.Email.Targets {
+            result := dc.sendEmail(ctx, req.Content, target, req.Context, robot)
+            results = append(results, result)
+            if !result.Success {
+                allSuccess = false
+            }
+        }
+    }
+    
+    // Webhook - POST to all targets
+    if prefs.Webhook != nil && prefs.Webhook.Enabled {
+        for _, target := range prefs.Webhook.Targets {
+            result := dc.postWebhook(ctx, req.Content, target)
+            results = append(results, result)
+            if !result.Success {
+                allSuccess = false
+            }
+        }
+    }
+    
+    // Process - call all targets
+    if prefs.Process != nil && prefs.Process.Enabled {
+        for _, target := range prefs.Process.Targets {
+            result := dc.callProcess(ctx, req.Content, target)
+            results = append(results, result)
+            if !result.Success {
+                allSuccess = false
+            }
+        }
+    }
+    
+    // Future: auto-notify based on user subscriptions
+    // dc.sendNotifications(ctx, req)
+    
+    return &DeliveryResult{
+        RequestID: requestID,
+        Content:   req.Content,
+        Success:   allSuccess,
+        Results:   results,
+    }
+}
+```
+
+### 6.7 Channel Handlers
+
+Each delivery channel is handled by dedicated methods in DeliveryCenter:
+
+```go
+// sendEmail - send to a single email target
+// Uses Robot.RobotEmail as From address and global DefaultEmailChannel()
+func (dc *DeliveryCenter) sendEmail(
+    ctx context.Context,
+    content *DeliveryContent,
+    target EmailTarget,
+    deliveryCtx *DeliveryContext,
+    robot *Robot,
+) ChannelResult {
+    // Convert attachments to messenger format
+    var attachments []messenger.Attachment
+    for _, att := range content.Attachments {
+        uploader, fileID, _ := attachment.Parse(att.File)
+        manager := attachment.Managers[uploader]
+        data, _ := manager.Read(ctx, fileID)
+        info, _ := manager.Info(ctx, fileID)
+        
+        attachments = append(attachments, messenger.Attachment{
+            Filename:    att.Title,
+            ContentType: info.ContentType,
+            Content:     data,
+        })
+    }
+    
+    subject := content.Summary
+    if target.Subject != "" {
+        subject = target.Subject
+    }
+    
+    msg := &messenger.Message{
+        To:          target.To,
+        Subject:     subject,
+        Body:        content.Body,
+        Attachments: attachments,
+    }
+    
+    // Set From address from Robot's email (if configured)
+    if robot != nil && robot.RobotEmail != "" {
+        msg.From = robot.RobotEmail
+    }
+    
+    // Use global default email channel
+    channel := DefaultEmailChannel() // from types/config_global.go
+    err := dc.messenger.Send(ctx, channel, msg)
+    
+    now := time.Now()
+    return ChannelResult{
+        Type:       DeliveryEmail,
+        Target:     strings.Join(target.To, ","),
+        Success:    err == nil,
+        Recipients: target.To,
+        SentAt:     &now,
+        Error:      errStr(err),
+    }
+}
+
+// postWebhook - POST to a single webhook target
+func (dc *DeliveryCenter) postWebhook(ctx context.Context, content *DeliveryContent, target WebhookTarget) ChannelResult {
+    payload, _ := json.Marshal(content)
+    req, _ := http.NewRequestWithContext(ctx, "POST", target.URL, bytes.NewReader(payload))
+    req.Header.Set("Content-Type", "application/json")
+    
+    // Add custom headers
+    for k, v := range target.Headers {
+        req.Header.Set(k, v)
+    }
+    
+    resp, err := http.DefaultClient.Do(req)
+    now := time.Now()
+    
+    if err != nil {
+        return ChannelResult{
+            Type:    DeliveryWebhook,
+            Target:  target.URL,
+            Success: false,
+            Error:   err.Error(),
+            SentAt:  &now,
+        }
+    }
+    defer resp.Body.Close()
+    
+    success := resp.StatusCode < 400
+    return ChannelResult{
+        Type:    DeliveryWebhook,
+        Target:  target.URL,
+        Success: success,
+        Details: map[string]interface{}{"status_code": resp.StatusCode},
+        Error:   ternary(!success, fmt.Sprintf("HTTP %d", resp.StatusCode), ""),
+        SentAt:  &now,
+    }
+}
+
+// callProcess - call a single Yao Process target
+func (dc *DeliveryCenter) callProcess(ctx context.Context, content *DeliveryContent, target ProcessTarget) ChannelResult {
+    // DeliveryContent as first arg, then additional args
+    args := append([]interface{}{content}, target.Args...)
+    
+    proc := process.Of(target.Process, args...)
+    result, err := proc.Execute()
+    
+    now := time.Now()
+    return ChannelResult{
+        Type:    DeliveryProcess,
+        Target:  target.Process,
+        Success: err == nil,
+        Details: map[string]interface{}{
+            "process": target.Process,
+            "result":  result,
+        },
+        Error:  errStr(err),
+        SentAt: &now,
+    }
+}
+```
+
+**Note on Notifications:**
+
+`notify` is NOT configured per-Robot. Future Delivery Center will:
+1. Check user subscription preferences after receiving DeliveryRequest
+2. Automatically send in-app notifications to subscribed users
+3. This is transparent to P4 and Delivery Agent
+
+### 6.8 Execution Persistence
+
+Robot execution history is stored in `__yao.agent_execution` table for UI display:
+
+```go
+// Model: yao/models/agent/execution.mod.yao
+// Table: __yao.agent_execution
+
+type ExecutionRecord struct {
+    ID          int64                  `json:"id,omitempty"`     // Auto-increment primary key
+    ExecutionID string                 `json:"execution_id"`     // Unique execution identifier
+    MemberID    string                 `json:"member_id"`        // Robot member ID (globally unique)
+    TeamID      string                 `json:"team_id"`          // Team ID
+    JobID       string                 `json:"job_id,omitempty"` // Linked job.Job ID
+    TriggerType TriggerType            `json:"trigger_type"`     // clock | human | event
+    
+    // Status tracking (synced with runtime Execution)
+    Status      ExecStatus             `json:"status"`           // pending | running | completed | failed | cancelled
+    Phase       Phase                  `json:"phase"`            // Current phase
+    Current     *CurrentState          `json:"current,omitempty"`// Current executing state (task index, progress)
+    Error       string                 `json:"error,omitempty"`  // Error message if failed
+    
+    // Trigger input
+    Input       *TriggerInput          `json:"input,omitempty"`  // Original trigger input
+    
+    // Phase outputs (P0-P5)
+    Inspiration *InspirationReport     `json:"inspiration,omitempty"` // P0 result
+    Goals       *Goals                 `json:"goals,omitempty"`       // P1 result
+    Tasks       []Task                 `json:"tasks,omitempty"`       // P2 result
+    Results     []TaskResult           `json:"results,omitempty"`     // P3 results
+    Delivery    *DeliveryResult        `json:"delivery,omitempty"`    // P4 result
+    Learning    []LearningEntry        `json:"learning,omitempty"`    // P5 entries
+    
+    // Timestamps
+    StartTime   *time.Time             `json:"start_time,omitempty"`
+    EndTime     *time.Time             `json:"end_time,omitempty"`
+    CreatedAt   *time.Time             `json:"created_at,omitempty"`
+    UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
+}
+
+// CurrentState - current executing state (for JSON storage)
+type CurrentState struct {
+    TaskIndex int    `json:"task_index"`         // index in Tasks slice
+    Progress  string `json:"progress,omitempty"` // human-readable progress (e.g., "2/5 tasks")
+}
+```
+
+**Store Implementation:**
+
+```go
+// store/execution.go
+type ExecutionStore struct {
+    modelID string // "__yao.agent.execution"
+}
+
+func NewExecutionStore() *ExecutionStore
+
+// Save creates or updates an execution record
+func (s *ExecutionStore) Save(ctx context.Context, record *ExecutionRecord) error
+
+// Get retrieves an execution by execution_id
+func (s *ExecutionStore) Get(ctx context.Context, executionID string) (*ExecutionRecord, error)
+
+// List retrieves executions with filters
+func (s *ExecutionStore) List(ctx context.Context, opts *ListOptions) ([]*ExecutionRecord, error)
+
+// UpdatePhase updates the current phase and its data
+func (s *ExecutionStore) UpdatePhase(ctx context.Context, executionID string, phase Phase, data interface{}) error
+
+// UpdateStatus updates the execution status
+func (s *ExecutionStore) UpdateStatus(ctx context.Context, executionID string, status ExecStatus, errorMsg string) error
+
+// UpdateCurrent updates the current executing state
+func (s *ExecutionStore) UpdateCurrent(ctx context.Context, executionID string, current *CurrentState) error
+
+// Delete removes an execution record
+func (s *ExecutionStore) Delete(ctx context.Context, executionID string) error
+
+// Conversion helpers
+func FromExecution(exec *Execution) *ExecutionRecord
+func (r *ExecutionRecord) ToExecution() *Execution
+
+type ListOptions struct {
+    MemberID    string       // Filter by robot member ID (globally unique)
+    TeamID      string       // Filter by team
+    Status      ExecStatus   // Filter by status
+    TriggerType TriggerType  // Filter by trigger
+    Limit       int          // Max records to return (default: 100)
+    Offset      int          // Skip records for pagination
+    OrderBy     string       // e.g., "start_time desc"
+}
 ```

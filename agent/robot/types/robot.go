@@ -20,6 +20,7 @@ type Robot struct {
 	SystemPrompt   string      `json:"system_prompt"`
 	Status         RobotStatus `json:"robot_status"`
 	AutonomousMode bool        `json:"autonomous_mode"`
+	RobotEmail     string      `json:"robot_email"` // Robot's email address for sending emails
 
 	// Parsed config (from robot_config JSON field)
 	Config *Config `json:"-"`
@@ -149,6 +150,16 @@ type Execution struct {
 	robot  *Robot             `json:"-"`
 }
 
+// GetRobot returns the robot associated with this execution
+func (e *Execution) GetRobot() *Robot {
+	return e.robot
+}
+
+// SetRobot sets the robot associated with this execution
+func (e *Execution) SetRobot(robot *Robot) {
+	e.robot = robot
+}
+
 // TriggerInput - stored trigger input for traceability
 type TriggerInput struct {
 	// For human intervention
@@ -172,7 +183,7 @@ type CurrentState struct {
 	Progress  string `json:"progress,omitempty"` // human-readable progress (e.g., "2/5 tasks")
 }
 
-// Goals - P1 output (markdown for LLM)
+// Goals - P1 output (markdown for LLM + structured metadata)
 // P1 Agent reads InspirationReport and generates goals as markdown
 // Example:
 // ## Goals
@@ -186,6 +197,18 @@ type CurrentState struct {
 //   - Reason: 3 pending leads from yesterday
 type Goals struct {
 	Content string `json:"content"` // markdown text
+
+	// Delivery for P4 (where to send results)
+	Delivery *DeliveryTarget `json:"delivery,omitempty"`
+}
+
+// DeliveryTarget - where to deliver results (defined in P1, used in P4)
+type DeliveryTarget struct {
+	Type       DeliveryType           `json:"type"`                 // email | webhook | report | notification
+	Recipients []string               `json:"recipients,omitempty"` // email addresses, webhook URLs, user IDs
+	Format     string                 `json:"format,omitempty"`     // markdown | html | json | text
+	Template   string                 `json:"template,omitempty"`   // template name or inline template
+	Options    map[string]interface{} `json:"options,omitempty"`    // channel-specific options
 }
 
 // Task - planned task (structured, for execution)
@@ -200,6 +223,12 @@ type Task struct {
 	ExecutorID   string       `json:"executor_id"`
 	Args         []any        `json:"args,omitempty"`
 
+	// Validation (defined in P2, used in P3)
+	// ExpectedOutput describes what the task should produce (for LLM semantic validation)
+	ExpectedOutput string `json:"expected_output,omitempty"` // e.g., "JSON with sales_total, growth_rate fields"
+	// ValidationRules are specific checks to perform (can be semantic or structural)
+	ValidationRules []string `json:"validation_rules,omitempty"` // e.g., ["output must be valid JSON", "sales_total > 0"]
+
 	// Runtime
 	Status    TaskStatus `json:"status"`
 	Order     int        `json:"order"` // execution order (0-based)
@@ -209,20 +238,125 @@ type Task struct {
 
 // TaskResult - task execution result
 type TaskResult struct {
-	TaskID    string      `json:"task_id"`
-	Success   bool        `json:"success"`
-	Output    interface{} `json:"output,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Duration  int64       `json:"duration_ms"`
-	Validated bool        `json:"validated"`
+	TaskID   string      `json:"task_id"`
+	Success  bool        `json:"success"`
+	Output   interface{} `json:"output,omitempty"`
+	Error    string      `json:"error,omitempty"`
+	Duration int64       `json:"duration_ms"`
+
+	// Validation result (populated by P3)
+	Validation *ValidationResult `json:"validation,omitempty"`
 }
 
-// DeliveryResult - delivery output
+// ValidationResult - P3 semantic validation result
+type ValidationResult struct {
+	// Basic validation result
+	Passed      bool     `json:"passed"`                // overall validation passed
+	Score       float64  `json:"score,omitempty"`       // 0-1 confidence score
+	Issues      []string `json:"issues,omitempty"`      // what failed
+	Suggestions []string `json:"suggestions,omitempty"` // how to improve
+	Details     string   `json:"details,omitempty"`     // detailed validation report (markdown)
+
+	// Execution state (for multi-turn conversation control)
+	Complete     bool   `json:"complete"`                // whether expected result is obtained
+	NeedReply    bool   `json:"need_reply,omitempty"`    // whether to continue conversation
+	ReplyContent string `json:"reply_content,omitempty"` // content for next turn (if NeedReply)
+}
+
+// DeliveryResult - P4 delivery output (new architecture)
 type DeliveryResult struct {
-	Type    DeliveryType `json:"type"`
-	Success bool         `json:"success"`
-	Details interface{}  `json:"details,omitempty"`
-	Error   string       `json:"error,omitempty"`
+	RequestID string           `json:"request_id"`        // Delivery request ID
+	Content   *DeliveryContent `json:"content"`           // Agent-generated content
+	Results   []ChannelResult  `json:"results,omitempty"` // Results per channel
+	Success   bool             `json:"success"`           // Overall success
+	Error     string           `json:"error,omitempty"`   // Error if failed
+	SentAt    *time.Time       `json:"sent_at,omitempty"` // When delivery completed
+}
+
+// DeliveryContent - Content generated by Delivery Agent (only content, no channels)
+type DeliveryContent struct {
+	Summary     string               `json:"summary"`               // Brief 1-2 sentence summary
+	Body        string               `json:"body"`                  // Full markdown report
+	Attachments []DeliveryAttachment `json:"attachments,omitempty"` // Output artifacts from P3
+}
+
+// DeliveryAttachment - Task output attachment with metadata
+type DeliveryAttachment struct {
+	Title       string `json:"title"`                 // Human-readable title
+	Description string `json:"description,omitempty"` // What this artifact is
+	TaskID      string `json:"task_id,omitempty"`     // Which task produced this
+	File        string `json:"file"`                  // Wrapper: __<uploader>://<fileID>
+}
+
+// DeliveryRequest - pushed to Delivery Center (no channels - center decides based on preferences)
+type DeliveryRequest struct {
+	Content *DeliveryContent `json:"content"` // Agent-generated content
+	Context *DeliveryContext `json:"context"` // Tracking info
+}
+
+// DeliveryContext - tracking and audit info
+type DeliveryContext struct {
+	MemberID    string      `json:"member_id"`    // Robot member ID (globally unique)
+	ExecutionID string      `json:"execution_id"` // Execution ID
+	TriggerType TriggerType `json:"trigger_type"` // clock | human | event
+	TeamID      string      `json:"team_id"`      // Team ID
+}
+
+// DeliveryPreferences - Robot/User delivery preferences (from Config)
+type DeliveryPreferences struct {
+	Email   *EmailPreference   `json:"email,omitempty"`   // Email delivery settings
+	Webhook *WebhookPreference `json:"webhook,omitempty"` // Webhook delivery settings
+	Process *ProcessPreference `json:"process,omitempty"` // Process delivery settings
+}
+
+// EmailPreference - Email delivery configuration
+type EmailPreference struct {
+	Enabled bool          `json:"enabled"`           // Whether email delivery is enabled
+	Targets []EmailTarget `json:"targets,omitempty"` // Multiple email targets
+}
+
+// EmailTarget - Single email target
+type EmailTarget struct {
+	To       []string `json:"to"`                 // Recipient addresses
+	Template string   `json:"template,omitempty"` // Email template ID
+	Subject  string   `json:"subject,omitempty"`  // Subject template
+}
+
+// WebhookPreference - Webhook delivery configuration
+type WebhookPreference struct {
+	Enabled bool            `json:"enabled"`           // Whether webhook delivery is enabled
+	Targets []WebhookTarget `json:"targets,omitempty"` // Multiple webhook targets
+}
+
+// WebhookTarget - Single webhook target
+type WebhookTarget struct {
+	URL     string            `json:"url"`               // Webhook URL
+	Method  string            `json:"method,omitempty"`  // HTTP method (default: POST)
+	Headers map[string]string `json:"headers,omitempty"` // Custom headers
+	Secret  string            `json:"secret,omitempty"`  // Signing secret
+}
+
+// ProcessPreference - Process delivery configuration
+type ProcessPreference struct {
+	Enabled bool            `json:"enabled"`           // Whether process delivery is enabled
+	Targets []ProcessTarget `json:"targets,omitempty"` // Multiple process targets
+}
+
+// ProcessTarget - Single process target
+type ProcessTarget struct {
+	Process string `json:"process"`        // Yao Process name
+	Args    []any  `json:"args,omitempty"` // Process arguments
+}
+
+// ChannelResult - Result of delivery to a single channel target
+type ChannelResult struct {
+	Type       DeliveryType `json:"type"`                 // email | webhook | process
+	Target     string       `json:"target"`               // Target identifier (email, URL, process name)
+	Success    bool         `json:"success"`              // Whether delivery succeeded
+	Recipients []string     `json:"recipients,omitempty"` // Who received (for email)
+	Details    interface{}  `json:"details,omitempty"`    // Channel-specific response
+	Error      string       `json:"error,omitempty"`      // Error message if failed
+	SentAt     *time.Time   `json:"sent_at,omitempty"`    // When this target was delivered
 }
 
 // LearningEntry - knowledge to save
@@ -249,6 +383,7 @@ func NewRobotFromMap(m map[string]interface{}) (*Robot, error) {
 		DisplayName:    getString(m, "display_name"),
 		SystemPrompt:   getString(m, "system_prompt"),
 		AutonomousMode: getBool(m, "autonomous_mode"),
+		RobotEmail:     getString(m, "robot_email"),
 	}
 
 	// Parse robot_status

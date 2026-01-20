@@ -83,8 +83,8 @@ func TestPriorityEnum(t *testing.T) {
 
 func TestDeliveryTypeEnum(t *testing.T) {
 	assert.Equal(t, types.DeliveryType("email"), types.DeliveryEmail)
-	assert.Equal(t, types.DeliveryType("file"), types.DeliveryFile)
 	assert.Equal(t, types.DeliveryType("webhook"), types.DeliveryWebhook)
+	assert.Equal(t, types.DeliveryType("process"), types.DeliveryProcess)
 	assert.Equal(t, types.DeliveryType("notify"), types.DeliveryNotify)
 }
 
@@ -131,4 +131,48 @@ func TestInsertPositionEnum(t *testing.T) {
 	assert.Equal(t, types.InsertPosition("last"), types.InsertLast)
 	assert.Equal(t, types.InsertPosition("next"), types.InsertNext)
 	assert.Equal(t, types.InsertPosition("at"), types.InsertAt)
+}
+
+func TestExecutorModeEnum(t *testing.T) {
+	assert.Equal(t, types.ExecutorMode("standard"), types.ExecutorStandard)
+	assert.Equal(t, types.ExecutorMode("dryrun"), types.ExecutorDryRun)
+	assert.Equal(t, types.ExecutorMode("sandbox"), types.ExecutorSandbox)
+}
+
+func TestExecutorModeIsValid(t *testing.T) {
+	tests := []struct {
+		mode  types.ExecutorMode
+		valid bool
+	}{
+		{types.ExecutorStandard, true},
+		{types.ExecutorDryRun, true},
+		{types.ExecutorSandbox, true},
+		{"", true}, // empty is valid (defaults to standard)
+		{types.ExecutorMode("invalid"), false},
+		{types.ExecutorMode("unknown"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.mode), func(t *testing.T) {
+			assert.Equal(t, tt.valid, tt.mode.IsValid())
+		})
+	}
+}
+
+func TestExecutorModeGetDefault(t *testing.T) {
+	tests := []struct {
+		mode     types.ExecutorMode
+		expected types.ExecutorMode
+	}{
+		{"", types.ExecutorStandard},
+		{types.ExecutorStandard, types.ExecutorStandard},
+		{types.ExecutorDryRun, types.ExecutorDryRun},
+		{types.ExecutorSandbox, types.ExecutorSandbox},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.mode), func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.mode.GetDefault())
+		})
+	}
 }
