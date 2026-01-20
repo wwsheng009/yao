@@ -203,7 +203,8 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 		m.StateMu.Lock()
 		for key, value := range stateChanges {
 			// Only record actual changes
-			if oldValue, exists := m.State[key]; !exists || oldValue != value {
+			oldValue, exists := m.State[key]
+			if !exists || !valuesEqual(oldValue, value) {
 				m.State[key] = value
 				actualChanges = true
 			}
