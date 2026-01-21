@@ -60,8 +60,108 @@ func TestLoadFrom(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%d", cfg.Port), os.Getenv("YAO_PORT"))
 	assert.Equal(t, cfg.JWTSecret, os.Getenv("YAO_JWT_SECRET"))
 	assert.Equal(t, cfg.Log, os.Getenv("YAO_LOG"))
-	assert.Equal(t, cfg.LogMode, os.Getenv("YAO_LOG_MODE"))
+
+	logModeExpected := os.Getenv("YAO_LOG_MODE")
+	if logModeExpected == "" {
+		logModeExpected = "TEXT"
+	}
+	assert.Equal(t, cfg.LogMode, logModeExpected)
+
 	assert.Equal(t, cfg.DB.Driver, os.Getenv("YAO_DB_DRIVER"))
-	assert.Equal(t, cfg.DB.Primary[0], os.Getenv("YAO_DB_PRIMARY"))
+
+	primaryExpected := os.Getenv("YAO_DB_PRIMARY")
+	if primaryExpected != "" && !filepath.IsAbs(primaryExpected) {
+		primaryExpected = filepath.Join(root, primaryExpected)
+	}
+	assert.Equal(t, cfg.DB.Primary[0], primaryExpected)
 	// assert.Equal(t, cfg.DB.Secondary[0], os.Getenv("YAO_DB_SECONDARY"))
+}
+
+func TestResolveSQLitePathCaseInsensitive(t *testing.T) {
+	originalYaoRoot := os.Getenv("YAO_ROOT")
+	originalYaoDbDriver := os.Getenv("YAO_DB_DRIVER")
+	originalYaoDbPrimary := os.Getenv("YAO_DB_PRIMARY")
+
+	defer func() {
+		if originalYaoRoot != "" {
+			os.Setenv("YAO_ROOT", originalYaoRoot)
+		} else {
+			os.Unsetenv("YAO_ROOT")
+		}
+		if originalYaoDbDriver != "" {
+			os.Setenv("YAO_DB_DRIVER", originalYaoDbDriver)
+		} else {
+			os.Unsetenv("YAO_DB_DRIVER")
+		}
+		if originalYaoDbPrimary != "" {
+			os.Setenv("YAO_DB_PRIMARY", originalYaoDbPrimary)
+		} else {
+			os.Unsetenv("YAO_DB_PRIMARY")
+		}
+	}()
+
+	testCases := []struct {
+		driver    string
+		primary   string
+		root      string
+		checkType string
+	}{
+		{
+			driver:    "sqlite3",
+			primary:   "./test.db",
+			root:      "/test/app",
+			checkType: "relative",
+		},
+		{
+			driver:    "SQLITE3",
+			primary:   "./test.db",
+			root:      "/test/app",
+			checkType: "relative",
+		},
+		{
+			driver:    "Sqlite",
+			primary:   "./test.db",
+			root:      "/test/app",
+			checkType: "relative",
+		},
+		{
+			driver:    "mysql",
+			primary:   "user:pass@tcp(localhost:3306)/db",
+			root:      "/test/app",
+			checkType: "dsn",
+		},
+		{
+			driver:    "sqlite3",
+			primary:   "C:\\absolute\\path\\test.db",
+			root:      "/test/app",
+			checkType: "absolute",
+		},
+		{
+			driver:    "sqlite3",
+			primary:   "test.db",
+			root:      "/test/app",
+			checkType: "no-slash",
+		},
+	}
+
+	for _, tc := range testCases {
+		os.Setenv("YAO_ROOT", tc.root)
+		os.Setenv("YAO_DB_DRIVER", tc.driver)
+		os.Setenv("YAO_DB_PRIMARY", tc.primary)
+
+		cfg := Load()
+
+		switch tc.checkType {
+		case "relative":
+			expected, _ := filepath.Abs(filepath.Join(tc.root, tc.primary))
+			assert.Equal(t, expected, cfg.DB.Primary[0], "Driver: %s, Primary: %s", tc.driver, tc.primary)
+		case "dsn":
+			assert.Equal(t, tc.primary, cfg.DB.Primary[0], "Driver: %s, Primary: %s", tc.driver, tc.primary)
+		case "absolute":
+			assert.Equal(t, tc.primary, cfg.DB.Primary[0], "Driver: %s, Primary: %s", tc.driver, tc.primary)
+		case "no-slash":
+			expected, _ := filepath.Abs(filepath.Join(tc.root, tc.primary))
+			assert.Equal(t, expected, cfg.DB.Primary[0], "Driver: %s, Primary: %s", tc.driver, tc.primary)
+		}
+	}
 }

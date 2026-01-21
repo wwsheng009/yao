@@ -18,29 +18,82 @@ func NewRenderer(engine *Engine) *Renderer {
 }
 
 func (r *Renderer) Render() string {
+	if r.engine.root == nil {
+		return ""
+	}
+
+	// For Flex and Grid layouts, use the recursive line-based renderer
+	// which preserves ANSI escape codes correctly.
+	if r.engine.root.Type != LayoutAbsolute {
+		// Ensure layout is calculated before rendering
+		r.engine.Layout()
+		return r.RenderNode(r.engine.root)
+	}
+
+	// For Absolute layouts, use the buffer approach
 	result := r.engine.Layout()
-	var builder strings.Builder
+	if len(result.Nodes) == 0 {
+		return ""
+	}
+
+	return r.renderToBuffer(result)
+}
+
+func (r *Renderer) renderToBuffer(result *LayoutResult) string {
+	if r.engine.root == nil {
+		return ""
+	}
+
+	bound := r.engine.root.Bound
+	if bound.Width == 0 || bound.Height == 0 {
+		return ""
+	}
+
+	buffer := make([][]rune, bound.Height)
+	for i := range buffer {
+		buffer[i] = make([]rune, bound.Width)
+		for j := range buffer[i] {
+			buffer[i][j] = ' '
+		}
+	}
 
 	for _, node := range result.Nodes {
 		if node.Component != nil && node.Component.Instance != nil {
 			config := core.RenderConfig{
 				Width:  node.Bound.Width,
 				Height: node.Bound.Height,
+				Data:   node.Props,
 			}
 			content, err := node.Component.Instance.Render(config)
 			if err != nil {
 				content = err.Error()
 			}
-			builder.WriteString(content)
-		} else {
-			if len(node.Children) == 0 {
-				line := strings.Repeat(" ", node.Bound.Width)
-				builder.WriteString(line)
+
+			lines := strings.Split(content, "\n")
+			for i, line := range lines {
+				targetY := node.Bound.Y + i
+				if targetY >= 0 && targetY < bound.Height {
+					runes := []rune(line)
+					for j, ch := range runes {
+						targetX := node.Bound.X + j
+						if targetX >= 0 && targetX < bound.Width {
+							buffer[targetY][targetX] = ch
+						}
+					}
+				}
 			}
 		}
 	}
 
-	return builder.String()
+	var builder strings.Builder
+	for _, row := range buffer {
+		builder.WriteString(string(row) + "\n")
+	}
+
+	if builder.Len() > 0 {
+		return builder.String()[:builder.Len()-1]
+	}
+	return ""
 }
 
 func (r *Renderer) RenderNode(node *LayoutNode) string {
@@ -76,6 +129,7 @@ func (r *Renderer) renderNodeInternal(node *LayoutNode, width, height int) []str
 		config := core.RenderConfig{
 			Width:  width,
 			Height: height,
+			Data:   node.Props,
 		}
 		content, err := node.Component.Instance.Render(config)
 		if err != nil {

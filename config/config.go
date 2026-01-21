@@ -156,6 +156,20 @@ func LoadWithRoot(root string) Config {
 		}
 	}
 
+	// DB Primary - Resolve relative paths for SQLite only (case-insensitive)
+	if strings.HasPrefix(strings.ToLower(cfg.DB.Driver), "sqlite") {
+		for i, dsn := range cfg.DB.Primary {
+			if dsn != "" && !filepath.IsAbs(dsn) && isValidFilePath(dsn) {
+				cfg.DB.Primary[i] = filepath.Join(cfg.Root, dsn)
+			}
+		}
+		for i, dsn := range cfg.DB.Secondary {
+			if dsn != "" && !filepath.IsAbs(dsn) && isValidFilePath(dsn) {
+				cfg.DB.Secondary[i] = filepath.Join(cfg.Root, dsn)
+			}
+		}
+	}
+
 	// Trace Driver - default based on mode
 	if cfg.Trace.Driver == "" {
 		if cfg.Mode == "development" {
@@ -313,4 +327,25 @@ func CloseLog() {
 // IsDevelopment returns true if the current mode is development
 func IsDevelopment() bool {
 	return Conf.Mode == "development"
+}
+
+// isValidFilePath checks if the string is a valid file path (not a DSN connection string)
+func isValidFilePath(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	if strings.Contains(s, "@") {
+		return false
+	}
+
+	if strings.Contains(s, "://") {
+		return false
+	}
+
+	if filepath.IsAbs(s) {
+		return true
+	}
+
+	return true
 }

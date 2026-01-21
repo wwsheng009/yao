@@ -38,7 +38,9 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		}
 
 		// Broadcast window size to all components
-		return model, nil
+		// This ensures that nested Bubble Tea models (like list, table) receive the message
+		// and can update their internal dimensions/pagination accordingly.
+		return model.dispatchMessageToAllComponents(msg)
 	}
 
 	// Register handler for core.TargetedMsg

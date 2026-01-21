@@ -3,6 +3,9 @@ package layout
 import (
 	"fmt"
 	"math"
+	"strings"
+
+	"github.com/yaoapp/yao/tui/core"
 )
 
 type Engine struct {
@@ -112,37 +115,47 @@ func (e *Engine) layoutFlex(
 		Gap:        node.Style.Gap,
 	}
 
-	var totalSize int
+	// 收集所有子元素信息，保持原始顺序
+	var allChildren []*flexChildInfo
+	var totalFixedSize int
 	var growSum float64
-	var fixedChildren []*flexChildInfo
-	var flexibleChildren []*flexChildInfo
 
 	for _, child := range node.Children {
 		info := e.measureChild(child, config, width, height)
+		allChildren = append(allChildren, info)
 		if info.Grow.Value > 0 {
 			growSum += info.Grow.Value
-			flexibleChildren = append(flexibleChildren, info)
 		} else {
-			fixedChildren = append(fixedChildren, info)
-			totalSize += info.Size
+			totalFixedSize += info.Size
 		}
 	}
 
 	totalGap := node.Style.Gap * (len(node.Children) - 1)
-	availableSpace := width - totalSize - totalGap
 
-	for _, info := range flexibleChildren {
-		if growSum > 0 {
+	// 根据布局方向选择正确的可用空间维度
+	var containerSize int
+	if config.Direction == DirectionRow {
+		containerSize = width
+	} else {
+		containerSize = height
+	}
+	availableSpace := containerSize - totalFixedSize - totalGap
+
+	// 确保可用空间不为负
+	if availableSpace < 0 {
+		availableSpace = 0
+	}
+
+	// 为 flex 子元素分配空间
+	for _, info := range allChildren {
+		if info.Grow.Value > 0 && growSum > 0 {
 			extra := int(float64(availableSpace) * (info.Grow.Value / growSum))
-			info.Size += extra
-			totalSize += info.Size
+			info.Size = extra
 		}
 	}
 
-	e.distributeFlexChildren(
-		fixedChildren, flexibleChildren,
-		config, x, y, width, height,
-		totalGap, result,
+	e.distributeFlexChildrenOrdered(
+		allChildren, config, x, y, width, height, result,
 	)
 }
 
@@ -171,7 +184,8 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		size = child.Style.Height
 	}
 
-	if size != nil {
+	// 检查 size 是否有有效值
+	if size != nil && size.Value != nil {
 		switch v := size.Value.(type) {
 		case float64:
 			info.Size = int(v)
@@ -180,13 +194,22 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		case string:
 			if v == "flex" {
 				info.Grow.Value = 1
+				info.Size = 0 // 初始为0，稍后分配
+			}
+		default:
+			// 未知类型，使用默认测量
+			if config.Direction == DirectionRow {
+				info.Size = e.measureChildWidth(child, parentHeight)
+			} else {
+				info.Size = e.measureChildHeight(child, parentWidth)
 			}
 		}
 	} else {
+		// size 为 nil 或 size.Value 为 nil，使用默认测量
 		if config.Direction == DirectionRow {
-			info.Size = parentWidth / 2
+			info.Size = e.measureChildWidth(child, parentHeight)
 		} else {
-			info.Size = parentHeight / 2
+			info.Size = e.measureChildHeight(child, parentWidth)
 		}
 	}
 
@@ -331,6 +354,50 @@ func (e *Engine) distributeFlexChildren(
 	}
 }
 
+// distributeFlexChildrenOrdered 按原始顺序布局子元素
+func (e *Engine) distributeFlexChildrenOrdered(
+	children []*flexChildInfo,
+	config *FlexConfig, x, y, width, height int,
+	result *LayoutResult,
+) {
+	if len(children) == 0 {
+		return
+	}
+
+	offset := 0
+	gap := config.Gap
+
+	switch config.Direction {
+	case DirectionRow:
+		for i, childInfo := range children {
+			childX := x + offset
+			childWidth := childInfo.Size
+			childHeight := height
+
+			e.layoutNode(childInfo.Node, childX, y, childWidth, childHeight, result)
+
+			offset += childWidth
+			if i < len(children)-1 {
+				offset += gap
+			}
+		}
+
+	case DirectionColumn:
+		for i, childInfo := range children {
+			childY := y + offset
+			childHeight := childInfo.Size
+			childWidth := width
+
+			e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
+
+			offset += childHeight
+			if i < len(children)-1 {
+				offset += gap
+			}
+		}
+	}
+}
+
 func (e *Engine) layoutGrid(
 	node *LayoutNode,
 	x, y, width, height int,
@@ -466,30 +533,166 @@ func (e *Engine) calculateMetrics(node *LayoutNode, width, height int) {
 func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 	if node.Style != nil && node.Style.Width != nil {
 		switch v := node.Style.Width.Value.(type) {
+		case string:
+			if v == "flex" {
+				return 0 // Flex 的宽度将在 distributeFlexChildren 中计算
+			}
 		case int:
-			return v
+			if v > 0 {
+				return v
+			}
 		case float64:
-			return int(v)
+			if v > 0 {
+				return int(v)
+			}
 		}
 	}
+
+	if node.Component != nil && node.Component.Instance != nil {
+		if config := node.Component.LastConfig; config.Width > 0 {
+			return config.Width
+		}
+
+		if config := node.Component.LastConfig; config.Height > 0 {
+			height = config.Height
+		}
+
+		renderConfig := core.RenderConfig{
+			Width:  200,
+			Height: height,
+		}
+
+		if node.Component.Instance.GetComponentType() == "text" {
+			props := node.Props
+			if props != nil {
+				if content, ok := props["content"].(string); ok {
+					return len(content)
+				}
+			}
+		}
+
+		content, err := node.Component.Instance.Render(renderConfig)
+		if err == nil {
+			lines := strings.Split(content, "\n")
+			maxWidth := 0
+			for _, line := range lines {
+				w := len(line)
+				if w > maxWidth {
+					maxWidth = w
+				}
+			}
+			if maxWidth > 0 && maxWidth < 200 {
+				return maxWidth
+			}
+		}
+
+		// Try to get component type from instance or node
+		componentType := node.ComponentType
+		if componentType == "" && node.Component != nil && node.Component.Instance != nil {
+			componentType = node.Component.Instance.GetComponentType()
+		}
+
+		if componentType != "" {
+			switch componentType {
+			case "header":
+				return 80
+			case "text":
+				return 40
+			case "list":
+				return 80
+			case "input":
+				return 40
+			case "button":
+				return 20
+			default:
+				return 50
+			}
+		}
+	} else if node.ComponentType != "" {
+		switch node.ComponentType {
+		case "header":
+			return 80
+		case "text":
+			return 40
+		case "list":
+			return 80
+		case "input":
+			return 40
+		case "button":
+			return 20
+		default:
+			return 50
+		}
+	}
+
 	return 20
 }
 
 func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 	if node.Style != nil && node.Style.Height != nil {
 		switch v := node.Style.Height.Value.(type) {
+		case string:
+			if v == "flex" {
+				return 0 // Flex 的高度将在 distributeFlexChildren 中计算
+			}
 		case int:
-			return v
+			if v > 0 {
+				return v
+			}
 		case float64:
-			return int(v)
+			if v > 0 {
+				return int(v)
+			}
 		}
 	}
+
 	if node.Component != nil && node.Component.Instance != nil {
 		if config := node.Component.LastConfig; config.Height > 0 {
 			return config.Height
 		}
+
+		if config := node.Component.LastConfig; config.Width > 0 {
+			width = config.Width
+		}
+
+		renderConfig := core.RenderConfig{
+			Width:  width,
+			Height: 1000,
+		}
+		content, err := node.Component.Instance.Render(renderConfig)
+		if err == nil {
+			lines := strings.Split(content, "\n")
+			lineCount := len(lines)
+			if lineCount > 0 && lineCount < 1000 {
+				return lineCount
+			}
+		}
 	}
-	return 10
+
+	// Try to determine component type
+	componentType := node.ComponentType
+	if componentType == "" && node.Component != nil && node.Component.Instance != nil {
+		componentType = node.Component.Instance.GetComponentType()
+	}
+
+	if componentType != "" {
+		switch componentType {
+		case "header":
+			return 3
+		case "text":
+			return 1
+		case "list":
+			return 10
+		case "input":
+			return 1
+		case "button":
+			return 1
+		default:
+			return 5
+		}
+	}
+
+	return 1
 }
 
 func nodeFromInfo(info *flexChildInfo) *LayoutNode {

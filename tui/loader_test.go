@@ -14,7 +14,6 @@ import (
 
 // prepare sets up the test environment and loads TUI configurations
 func prepare(t *testing.T) {
-	os.Setenv("YAO_TEST_APPLICATION", "E:/projects/yao/wwsheng009/yao/tui/demo/tui_app")
 	test.Prepare(t, config.Conf)
 	mirror := os.Getenv("TEST_MOAPI_MIRROR")
 	secret := os.Getenv("TEST_MOAPI_SECRET")

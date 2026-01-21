@@ -398,6 +398,7 @@ func logWarnings(warnings []Warning) {
 		log.Warn("[%s] %s", warning.Widget, warning.Error)
 	}
 }
+
 // Unload application engine
 func Unload() (err error) {
 	defer func() { err = exception.Catch(recover()) }()

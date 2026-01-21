@@ -65,9 +65,10 @@ type Rect struct {
 }
 
 type LayoutNode struct {
-	ID        string
-	Type      LayoutType
-	Children  []*LayoutNode
+	ID            string
+	Type          LayoutType
+	ComponentType string
+	Children      []*LayoutNode
 	Component *core.ComponentInstance
 	Style     *LayoutStyle
 	Props     map[string]interface{}
