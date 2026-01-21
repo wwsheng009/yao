@@ -19,6 +19,13 @@ func NewEngine(config *LayoutConfig) *Engine {
 	if config.WindowSize == nil {
 		config.WindowSize = &WindowSize{Width: 80, Height: 24}
 	}
+	// Ensure non-zero dimensions to avoid layout issues during initialization
+	if config.WindowSize.Width == 0 {
+		config.WindowSize.Width = 80
+	}
+	if config.WindowSize.Height == 0 {
+		config.WindowSize.Height = 24
+	}
 	return &Engine{
 		config: config,
 		root:   config.Root,
@@ -530,6 +537,13 @@ func (e *Engine) calculateMetrics(node *LayoutNode, width, height int) {
 	node.Metrics.TotalHeight = node.Metrics.ContentHeight + node.Metrics.PaddingHeight
 }
 
+func (e *Engine) getProps(node *LayoutNode) map[string]interface{} {
+	if e.config.PropsResolver != nil {
+		return e.config.PropsResolver(node)
+	}
+	return node.Props
+}
+
 func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 	if node.Style != nil && node.Style.Width != nil {
 		switch v := node.Style.Width.Value.(type) {
@@ -557,13 +571,14 @@ func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 			height = config.Height
 		}
 
+		props := e.getProps(node)
 		renderConfig := core.RenderConfig{
 			Width:  200,
 			Height: height,
+			Data:   props,
 		}
 
 		if node.Component.Instance.GetComponentType() == "text" {
-			props := node.Props
 			if props != nil {
 				if content, ok := props["content"].(string); ok {
 					return len(content)
@@ -646,6 +661,8 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 		}
 	}
 
+	props := e.getProps(node)
+
 	if node.Component != nil && node.Component.Instance != nil {
 		if config := node.Component.LastConfig; config.Height > 0 {
 			return config.Height
@@ -658,6 +675,7 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 		renderConfig := core.RenderConfig{
 			Width:  width,
 			Height: 1000,
+			Data:   props,
 		}
 		content, err := node.Component.Instance.Render(renderConfig)
 		if err == nil {
@@ -680,8 +698,44 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 		case "header":
 			return 3
 		case "text":
+			// Try to estimate text height based on content and width
+			if props != nil {
+				if content, ok := props["content"].(string); ok {
+					// Simple estimation: content length / width
+					// This is a fallback if Render() above failed or wasn't called
+					if width > 0 {
+						return int(math.Ceil(float64(len(content)) / float64(width)))
+					}
+				}
+			}
 			return 1
 		case "list":
+			// Try to estimate list height based on items count
+			if props != nil {
+				// Check for items array
+				if items, ok := props["items"].([]interface{}); ok {
+					// Limit default height to something reasonable
+					count := len(items)
+					if count == 0 {
+						return 5 // Empty list default
+					}
+					if count > 20 {
+						return 20 // Max default height
+					}
+					return count + 2 // +2 for title/border
+				}
+				// Check for bound data
+				if bindData, ok := props["__bind_data"].([]interface{}); ok {
+					count := len(bindData)
+					if count == 0 {
+						return 5
+					}
+					if count > 20 {
+						return 20
+					}
+					return count + 2
+				}
+			}
 			return 10
 		case "input":
 			return 1

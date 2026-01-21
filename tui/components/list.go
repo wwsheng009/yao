@@ -141,7 +141,18 @@ func NewListComponent(config core.RenderConfig, id string) *ListComponent {
 	// Use a compact delegate similar to list-simple example
 	delegate := &ListItemDelegate{}
 
-	l := list.New(items, delegate, 0, 0)
+	// Initialize with default non-zero dimensions to avoid panic/issues
+	// These will be overwritten by updateListDimensions shortly after
+	width := 20
+	height := 10
+	if config.Width > 0 {
+		width = config.Width
+	}
+	if config.Height > 0 {
+		height = config.Height
+	}
+
+	l := list.New(items, delegate, width, height)
 
 	if props.Title != "" && props.ShowTitle {
 		l.Title = props.Title
@@ -177,6 +188,9 @@ func NewListComponent(config core.RenderConfig, id string) *ListComponent {
 		id:       id,
 		bindings: props.Bindings,
 	}
+
+	// Initialize with correct dimensions from config if not specified in props
+	component.updateListDimensions(config, props)
 
 	component.stateHelper = &core.ListStateHelper{
 		Indexer:     component,

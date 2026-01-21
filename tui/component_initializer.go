@@ -32,6 +32,18 @@ func (m *Model) InitializeComponents() []tea.Cmd {
 			Width:  m.Width,
 			Height: m.Height,
 		},
+		PropsResolver: func(node *layout.LayoutNode) map[string]interface{} {
+			// Find component config by ID
+			if node.ID == "" {
+				return node.Props
+			}
+			comp := m.findComponentConfig(node.ID)
+			if comp != nil {
+				// Use Model's props resolution logic which handles {{}} expressions
+				return m.resolveProps(comp)
+			}
+			return node.Props
+		},
 	})
 	log.Trace("InitializeComponents: Created layout engine, window: %dx%d", m.Width, m.Height)
 

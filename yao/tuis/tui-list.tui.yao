@@ -1,0 +1,55 @@
+{
+  "name": "TUI List",
+  "data": {
+    "title": "Available TUI Configurations",
+    "description": "Select a TUI to run",
+    "items": []
+  },
+  "layout": {
+    "direction": "vertical",
+    "children": [
+      {
+        "type": "header",
+        "props": {
+          "title": "{{title}}",
+          "align": "center"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "content": "{{description}}"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "content": "Total items: {{len(items)}}"
+        }
+      },
+      {
+        "type": "list",
+        "id": "tuiList",
+        "bind": "items",
+        "height": "flex",
+        "width": "flex",
+        "props": {
+          "showTitle": true,
+          "showStatusBar": true,
+          "showFilter": true,
+          "filteringEnabled": true
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "content": "Press Enter to show command for selected TUI, Esc or q to quit"
+        }
+      }
+    ]
+  },
+  "bindings": {
+    "q": {"process": "tui.quit"},
+    "ctrl+c": {"process": "tui.quit"}
+  }
+}

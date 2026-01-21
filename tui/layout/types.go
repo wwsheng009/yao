@@ -69,13 +69,13 @@ type LayoutNode struct {
 	Type          LayoutType
 	ComponentType string
 	Children      []*LayoutNode
-	Component *core.ComponentInstance
-	Style     *LayoutStyle
-	Props     map[string]interface{}
-	Bound     Rect
-	Metrics   *LayoutMetrics
-	Parent    *LayoutNode
-	Dirty     bool
+	Component     *core.ComponentInstance
+	Style         *LayoutStyle
+	Props         map[string]interface{}
+	Bound         Rect
+	Metrics       *LayoutMetrics
+	Parent        *LayoutNode
+	Dirty         bool
 }
 
 type LayoutStyle struct {
@@ -157,9 +157,10 @@ type WindowSize struct {
 }
 
 type LayoutConfig struct {
-	Root       *LayoutNode
-	WindowSize *WindowSize
-	Theme      map[string]interface{}
+	Root          *LayoutNode
+	WindowSize    *WindowSize
+	Theme         map[string]interface{}
+	PropsResolver func(node *LayoutNode) map[string]interface{}
 }
 
 type FlexConfig struct {
