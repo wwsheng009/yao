@@ -65,6 +65,9 @@ type HelpProps struct {
 
 	// ItemSeparator specifies the separator between items
 	ItemSeparator string `json:"itemSeparator"`
+
+	// Bindings define custom key bindings for the component (optional)
+	Bindings []core.ComponentBinding `json:"bindings,omitempty"`
 }
 
 // HelpModel wraps the help.Model to handle TUI integration
@@ -338,41 +341,103 @@ func (m *HelpModel) SetKeyMap(keyMap map[string]interface{}) {
 
 // HelpComponentWrapper wraps the native help.Model directly
 type HelpComponentWrapper struct {
-	model help.Model
-	props HelpProps
-	id    string
-	focus bool
+	model       help.Model
+	props       HelpProps
+	id          string
+	focus       bool
+	bindings    []core.ComponentBinding
+	stateHelper *HelpStateHelper
 }
 
 // NewHelpComponentWrapper creates a wrapper that implements ComponentInterface
 func NewHelpComponentWrapper(props HelpProps, id string) *HelpComponentWrapper {
-	return &HelpComponentWrapper{
+	wrapper := &HelpComponentWrapper{
 		model: help.New(),
 		props: props,
 		id:    id,
+		bindings: props.Bindings,
 	}
+	wrapper.stateHelper = &HelpStateHelper{
+		ComponentID: id,
+	}
+	return wrapper
 }
 
 func (w *HelpComponentWrapper) Init() tea.Cmd {
 	return nil
 }
 
+// HelpStateHelper 帮助组件状态捕获助手
+type HelpStateHelper struct {
+	ComponentID string
+}
+
+func (h *HelpStateHelper) CaptureState() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+func (h *HelpStateHelper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return []tea.Cmd{}
+}
+
 func (w *HelpComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle targeted messages first
-	switch msg := msg.(type) {
-	case core.TargetedMsg:
-		// Check if this message is targeted to this component
-		if msg.TargetID == w.id {
-			return w.UpdateMsg(msg.InnerMsg)
-		}
-		return w, nil, core.Ignored
-	}
+	// 使用通用消息处理模板
+	cmd, response := core.DefaultInteractiveUpdateMsg(
+		w,                   // 实现了 InteractiveBehavior 接口的组件
+		msg,                 // 接收的消息
+		w.getBindings,       // 获取按键绑定的函数
+		w.handleBinding,     // 处理按键绑定的函数
+		w.delegateToBubbles, // 委托给原 bubbles 组件的函数
+	)
 
-	// For help, just update the model
+	return w, cmd, response
+}
+
+// 实现 InteractiveBehavior 接口的方法
+func (w *HelpComponentWrapper) getBindings() []core.ComponentBinding {
+	return w.bindings
+}
+
+func (w *HelpComponentWrapper) handleBinding(keyMsg tea.KeyMsg, binding core.ComponentBinding) (tea.Cmd, core.Response, bool) {
+	cmd, response, handled := core.HandleBinding(w, keyMsg, binding)
+	return cmd, response, handled
+}
+
+// 以下是 ComponentWrapper 接口的实现
+func (w *HelpComponentWrapper) ExecuteAction(action *core.Action) tea.Cmd {
+	// 帮助组件通常不需要执行动作
+	return nil
+}
+
+func (w *HelpComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
+	return core.PublishEvent(sourceID, eventName, payload)
+}
+
+func (w *HelpComponentWrapper) GetModel() interface{} {
+	return w.model
+}
+
+func (w *HelpComponentWrapper) delegateToBubbles(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
+	// 对于帮助组件，只需更新模型
 	w.model, cmd = w.model.Update(msg)
+	return cmd
+}
 
-	return w, cmd, core.Handled
+// 实现 StateCapturable 接口
+func (w *HelpComponentWrapper) CaptureState() map[string]interface{} {
+	return w.stateHelper.CaptureState()
+}
+
+func (w *HelpComponentWrapper) DetectStateChanges(old, new map[string]interface{}) []tea.Cmd {
+	return w.stateHelper.DetectStateChanges(old, new)
+}
+
+// 实现 HandleSpecialKey 方法
+func (w *HelpComponentWrapper) HandleSpecialKey(keyMsg tea.KeyMsg) (tea.Cmd, core.Response, bool) {
+	// 帮助组件可能有特殊键处理逻辑
+	// 目前返回未处理，让框架继续处理
+	return nil, core.Ignored, false
 }
 
 func (w *HelpComponentWrapper) View() string {
