@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/engine"
 	"github.com/yaoapp/yao/tui"
 )
 
@@ -33,8 +34,17 @@ func runValidate(cmd *cobra.Command, args []string) {
 	// Boot and load Yao configuration
 	Boot()
 
+	// Load application engine (required for application.App to be initialized)
+	_, err := engine.Load(config.Conf, engine.LoadOption{
+		Action: "tui",
+	}, nil)
+	if err != nil {
+		fmt.Printf("Error: Failed to load engine: %v\n", err)
+		return
+	}
+
 	// Load TUI configurations
-	err := tui.Load(config.Conf)
+	err = tui.Load(config.Conf)
 	if err != nil {
 		fmt.Printf("Error: Failed to load TUI configurations: %v\n", err)
 		return

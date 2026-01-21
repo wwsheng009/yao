@@ -103,13 +103,15 @@ var Cmd = &cobra.Command{
 		}()
 
 		// Create Bubble Tea program with context
-		model := tui.NewModel(nil, nil)
+		model := tui.NewModel(cfg, nil)
 		program := tea.NewProgram(
 			model,
 			tea.WithAltScreen(),       // Use alternate screen buffer
 			tea.WithMouseCellMotion(), // Enable mouse support
 			tea.WithContext(ctx),      // Add context for graceful shutdown
 		)
+		// Set the program reference after creation
+		model.Program = program
 
 		// Run program
 		if _, err := program.Run(); err != nil {
