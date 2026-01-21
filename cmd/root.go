@@ -9,6 +9,7 @@ import (
 	"github.com/yaoapp/kun/exception"
 	"github.com/yaoapp/yao/cmd/agent"
 	"github.com/yaoapp/yao/cmd/sui"
+	"github.com/yaoapp/yao/cmd/tui"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/pack"
 	"github.com/yaoapp/yao/share"
@@ -163,7 +164,7 @@ func init() {
 		inspectCmd,
 		startCmd,
 		runCmd,
-		tuiCmd,
+		tui.Cmd,
 		// getCmd,
 		// dumpCmd,
 		// restoreCmd,
