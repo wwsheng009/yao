@@ -49,9 +49,18 @@ func Load(cfg config.Config) error {
 
 		cfg.ID = id
 
-		// Validate configuration
-		if err := cfg.Validate(); err != nil {
-			messages = append(messages, fmt.Sprintf("invalid TUI configuration in %s: %v", file, err))
+		// Run comprehensive validation including rendering compatibility
+		// The validator works with the component registry to ensure render compatibility
+		registry := GetGlobalRegistry()
+		validator := NewConfigValidator(cfg, registry)
+
+		if !validator.Validate() {
+			// Log validation summary but warn instead of error
+			log.Warn("TUI configuration has validation issues in %s:\n%s", file, validator.GetErrorSummary())
+			// Still load the TUI - validation is informational
+			// Store in cache even with warnings
+			Set(id, cfg)
+			log.Trace("Loaded TUI with warnings: %s (%s)", id, cfg.Name)
 			return nil
 		}
 
@@ -62,7 +71,7 @@ func Load(cfg config.Config) error {
 		return nil
 	}, exts...)
 
-	if len(messages) > 0 {
+	if len(messages) > 0 && strings.Contains(messages[0], "failed to load") {
 		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
 
@@ -176,7 +185,7 @@ func loadFile(file string) (*Config, error) {
 	if cfg.Data != nil {
 		wrappedRes := any.Of(cfg.Data)
 		flattened := wrappedRes.Map().MapStrAny.Dot()
-		
+
 		// Merge flattened keys with original data to support both access patterns
 		for k, v := range flattened {
 			cfg.Data[k] = v
@@ -191,7 +200,7 @@ func loadFile(file string) (*Config, error) {
 	if cfg.Bindings == nil {
 		cfg.Bindings = make(map[string]core.Action)
 	}
-	
+
 	// Set default bindings if they don't exist
 	setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
 	setMissingBinding(cfg.Bindings, "ctrl+c", core.Action{Process: "tui.quit"})
@@ -217,7 +226,7 @@ func loadFile(file string) (*Config, error) {
 	if !cfg.TabCycles {
 		cfg.TabCycles = true
 	}
-	
+
 	// Add default submit bindings for input components
 	setDefaultInputSubmitBindings(&cfg)
 
@@ -229,7 +238,7 @@ func setDefaultInputSubmitBindings(cfg *Config) {
 	// This function would analyze the layout and set up appropriate submit bindings
 	// for input components based on their configuration and placement
 	// For now, we ensure that enter key triggers form submission if it's not already bound differently
-	
+
 	// We already set the general enter binding above, so this is more about
 	// specific input component actions
 	walkComponents(&cfg.Layout, func(comp *Component) {

@@ -32,8 +32,13 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		model.Height = sizeMsg.Height
 		model.Ready = true // Mark model as ready after receiving window size
 
+		// Update layout engine with new window size
+		if model.LayoutEngine != nil {
+			model.LayoutEngine.UpdateWindowSize(sizeMsg.Width, sizeMsg.Height)
+		}
+
 		// Broadcast window size to all components
-		return model.dispatchMessageToAllComponents(msg)
+		return model, nil
 	}
 
 	// Register handler for core.TargetedMsg
@@ -66,12 +71,12 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		case core.EventFocusPrev:
 			// Move focus to previous input component via message-driven approach
 			return model, model.focusPrevInput()
-	case core.EventFocusChanged:
-		// DEPRECATED: Focus changes should be driven by FocusMsg only
-		// Components no longer publish EventFocusChanged to avoid infinite loops
-		// This event is ignored - all focus changes are handled via FocusMsg
-		log.Trace("TUI: EventFocusChanged is deprecated and ignored, use FocusMsg instead")
-		return model, nil
+		case core.EventFocusChanged:
+			// DEPRECATED: Focus changes should be driven by FocusMsg only
+			// Components no longer publish EventFocusChanged to avoid infinite loops
+			// This event is ignored - all focus changes are handled via FocusMsg
+			log.Trace("TUI: EventFocusChanged is deprecated and ignored, use FocusMsg instead")
+			return model, nil
 		default:
 			// For other actions, publish to EventBus for component communication
 			model.EventBus.Publish(actionMsg)

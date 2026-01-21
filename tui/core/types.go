@@ -87,6 +87,60 @@ type FocusMsg struct {
 	ToID   string    // ID of component receiving focus (for FocusLost events)
 }
 
+// Direction specifies layout direction for flexbox
+type Direction string
+
+const (
+	DirectionRow    Direction = "row"
+	DirectionColumn Direction = "column"
+)
+
+// Align specifies alignment for flexbox children
+type Align string
+
+const (
+	AlignStart   Align = "start"
+	AlignCenter  Align = "center"
+	AlignEnd     Align = "end"
+	AlignStretch Align = "stretch"
+)
+
+// Justify specifies justification for flexbox children
+type Justify string
+
+const (
+	JustifyStart        Justify = "start"
+	JustifyCenter       Justify = "center"
+	JustifyEnd          Justify = "end"
+	JustifySpaceBetween Justify = "space-between"
+	JustifySpaceAround  Justify = "space-around"
+	JustifySpaceEvenly  Justify = "space-evenly"
+)
+
+// Padding represents box model padding
+type Padding struct {
+	Top    int
+	Right  int
+	Bottom int
+	Left   int
+}
+
+// Rect represents a rectangle with position and size
+type Rect struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
+}
+
+// Position represents positioning type
+type Position string
+
+const (
+	PositionRelative Position = "relative"
+	PositionAbsolute Position = "absolute"
+)
+
 // Action defines an action to be executed in response to events.
 // An action can either call a Yao Process or execute a script method.
 type Action struct {

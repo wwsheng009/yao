@@ -160,6 +160,10 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		Grow: Grow{Value: 0},
 	}
 
+	if child.Style == nil {
+		e.ensureStyle(child)
+	}
+
 	size := child.Style.Width
 	if size != nil {
 		switch v := size.Value.(type) {

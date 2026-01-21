@@ -365,6 +365,9 @@ func TestRenderLayout(t *testing.T) {
 	model.Height = 24
 	model.Ready = true
 
+	// Initialize components
+	model.InitializeComponents()
+
 	result := model.RenderLayout()
 	assert.NotEmpty(t, result)
 	assert.Contains(t, result, "Test App")

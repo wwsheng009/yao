@@ -105,6 +105,264 @@ type CRUDProps struct {
 	Actions    map[string]*core.Action       `json:"actions"`     // 自定义操作
 }
 
+// CRUDDataOperator 数据操作接口
+type CRUDDataOperator interface {
+	LoadData() tea.Cmd
+	SaveData(data interface{}) tea.Cmd
+	DeleteData(id interface{}) tea.Cmd
+	HasUserConfig(operation string) bool
+}
+
+// DefaultCRUDOperator 默认CRUD数据操作实现
+type DefaultCRUDOperator struct {
+	Data interface{} // 存储当前数据
+}
+
+// LoadData 加载数据
+func (op *DefaultCRUDOperator) LoadData() tea.Cmd {
+	return func() tea.Msg {
+		return core.ActionMsg{
+			ID:     "default_op",
+			Action: "DATA_LOAD_COMPLETED",
+			Data:   map[string]interface{}{"result": "success", "data": op.Data},
+		}
+	}
+}
+
+// SaveData 保存数据
+func (op *DefaultCRUDOperator) SaveData(data interface{}) tea.Cmd {
+	// 更新本地数据存储
+	if op.Data != nil {
+		// 如果已有数据，尝试更新
+		if dataList, ok := op.Data.([]interface{}); ok {
+			// 查找并更新或添加数据
+			updated := false
+			for i, item := range dataList {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					// 简单的ID匹配逻辑
+					if dataMap, ok := data.(map[string]interface{}); ok {
+						if itemID, exists := itemMap["id"]; exists {
+							if dataID, dataExists := dataMap["id"]; dataExists && itemID == dataID {
+								// 更新现有项
+								dataList[i] = data
+								updated = true
+								break
+							}
+						}
+					}
+				}
+			}
+			if !updated {
+				// 添加新项
+				dataList = append(dataList, data)
+			}
+			op.Data = dataList
+		} else {
+			// 如果不是数组，尝试直接赋值
+			op.Data = data
+		}
+	} else {
+		// 如果没有现有数据，创建新的数据集
+		op.Data = []interface{}{data}
+	}
+	return func() tea.Msg {
+		return core.ActionMsg{
+			ID:     "default_op",
+			Action: "DATA_SAVE_COMPLETED",
+			Data:   map[string]interface{}{"result": "success", "savedData": data},
+		}
+	}
+}
+
+// DeleteData 删除数据
+func (op *DefaultCRUDOperator) DeleteData(id interface{}) tea.Cmd {
+	if op.Data != nil {
+		if dataList, ok := op.Data.([]interface{}); ok {
+			// 根据ID查找并删除数据
+			var newDataList []interface{}
+			deleted := false
+			for _, item := range dataList {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if itemID, exists := itemMap["id"]; exists {
+						if dataID, ok := id.(string); ok && fmt.Sprintf("%v", itemID) == dataID {
+							deleted = true
+							continue // 跳过此元素，相当于删除
+						}
+						if dataID, ok := id.(float64); ok && itemID == dataID {
+							deleted = true
+							continue // 跳过此元素，相当于删除
+						}
+						if dataID, ok := id.(int); ok && itemID == dataID {
+							deleted = true
+							continue // 跳过此元素，相当于删除
+						}
+					}
+				}
+				newDataList = append(newDataList, item)
+			}
+			op.Data = newDataList
+			return func() tea.Msg {
+				return core.ActionMsg{
+					ID:     "default_op",
+					Action: "DATA_DELETE_COMPLETED",
+					Data:   map[string]interface{}{"result": "success", "deletedId": id, "deleted": deleted},
+				}
+			}
+		}
+	}
+	// 如果数据不是数组或删除失败，仍然返回成功
+	return func() tea.Msg {
+		return core.ActionMsg{
+			ID:     "default_op",
+			Action: "DATA_DELETE_COMPLETED",
+			Data:   map[string]interface{}{"result": "success", "deletedId": id, "deleted": true},
+		}
+	}
+}
+
+// HasUserConfig 检查是否有用户配置
+func (op *DefaultCRUDOperator) HasUserConfig(operation string) bool {
+	return false // 默认操作器不处理用户配置
+}
+
+// UserConfiguredCRUDOperator 用户配置的CRUD数据操作实现
+type UserConfiguredCRUDOperator struct {
+	DataAPI  map[string]interface{}
+	Actions  map[string]*core.Action
+	Component *CRUDComponent // 引用组件以执行操作
+}
+
+// LoadData 加载数据
+func (op *UserConfiguredCRUDOperator) LoadData() tea.Cmd {
+	if api, exists := op.DataAPI["load"]; exists {
+		return op.executeDataAPI(api, "load")
+	}
+	if action, exists := op.Actions["load"]; exists {
+		return op.Component.ExecuteAction(action)
+	}
+	return nil
+}
+
+// SaveData 保存数据
+func (op *UserConfiguredCRUDOperator) SaveData(data interface{}) tea.Cmd {
+	if api, exists := op.DataAPI["save"]; exists {
+		return op.executeDataAPI(api, "save")
+	}
+	if action, exists := op.Actions["save"]; exists {
+		return op.Component.ExecuteAction(action)
+	}
+	return nil
+}
+
+// DeleteData 删除数据
+func (op *UserConfiguredCRUDOperator) DeleteData(id interface{}) tea.Cmd {
+	if api, exists := op.DataAPI["delete"]; exists {
+		return op.executeDataAPI(api, "delete")
+	}
+	if action, exists := op.Actions["delete"]; exists {
+		return op.Component.ExecuteAction(action)
+	}
+	return nil
+}
+
+// HasUserConfig 检查是否有用户配置
+func (op *UserConfiguredCRUDOperator) HasUserConfig(operation string) bool {
+	if op.Actions != nil {
+		_, exists := op.Actions[operation]
+		return exists
+	}
+	if op.DataAPI != nil {
+		_, exists := op.DataAPI[operation]
+		return exists
+	}
+	return false
+}
+
+// executeDataAPI 执行数据API操作
+func (op *UserConfiguredCRUDOperator) executeDataAPI(api interface{}, operation string) tea.Cmd {
+	return func() tea.Msg {
+		return core.ActionMsg{
+			ID:     op.Component.GetID(),
+			Action: fmt.Sprintf("DATA_%s_COMPLETED", strings.ToUpper(operation)),
+			Data:   map[string]interface{}{"result": "success", "operation": operation},
+		}
+	}
+}
+
+// CRUDDataManager CRUD数据管理器
+type CRUDDataManager struct {
+	DefaultOperator     *DefaultCRUDOperator
+	UserOperator      *UserConfiguredCRUDOperator
+}
+
+// NewCRUDDataManager 创建新的CRUD数据管理器
+func NewCRUDDataManager() *CRUDDataManager {
+	manager := &CRUDDataManager{
+		DefaultOperator: &DefaultCRUDOperator{},
+		UserOperator:  &UserConfiguredCRUDOperator{},
+	}
+	return manager
+}
+
+// ExecuteOperation 执行数据操作
+func (dm *CRUDDataManager) ExecuteOperation(operation string, data interface{}, component *CRUDComponent) tea.Cmd {
+	// 配置用户操作器
+	dm.UserOperator.Component = component
+	dm.UserOperator.DataAPI = component.DataAPI
+	dm.UserOperator.Actions = component.Actions
+	
+	// 检查是否有用户配置
+	if dm.UserOperator.HasUserConfig(operation) {
+		log.Info("CRUD %s: Using user-configured %s operation", component.GetID(), operation)
+		switch operation {
+		case "load":
+			return dm.UserOperator.LoadData()
+		case "save":
+			return dm.UserOperator.SaveData(data)
+		case "delete":
+			return dm.UserOperator.DeleteData(data)
+		default:
+			return nil
+		}
+	} else {
+		log.Info("CRUD %s: Using default %s operation", component.GetID(), operation)
+		// 使用默认操作
+		dm.DefaultOperator.Data = component.Data
+		switch operation {
+		case "load":
+			resultCmd := dm.DefaultOperator.LoadData()
+			// 更新组件数据
+			if resultMsg := resultCmd(); resultMsg != nil {
+				if actionMsg, ok := resultMsg.(core.ActionMsg); ok {
+					if data, exists := actionMsg.Data.(map[string]interface{}); exists {
+						if resultData, ok := data["data"]; ok {
+							component.Data = resultData
+						}
+					return func() tea.Msg { return actionMsg }
+					}
+				}
+			}
+			return resultCmd
+		case "save":
+			// 设置默认操作器的数据为组件数据
+			dm.DefaultOperator.Data = component.Data
+			resultCmd := dm.DefaultOperator.SaveData(data)
+			// 更新组件数据
+			component.Data = dm.DefaultOperator.Data
+			return resultCmd
+		case "delete":
+			// 设置默认操作器的数据为组件数据
+			dm.DefaultOperator.Data = component.Data
+			resultCmd := dm.DefaultOperator.DeleteData(data)
+			// 更新组件数据
+			component.Data = dm.DefaultOperator.Data
+			return resultCmd
+		default:
+			return nil
+		}
+	}
+}
+
 // CRUDComponent represents a CRUD component with state machine support
 type CRUDComponent struct {
 	State            CRUDState
@@ -120,6 +378,7 @@ type CRUDComponent struct {
 	unsubscribeFuncs []func()
 	bindings         []core.ComponentBinding
 	stateHelper      *CRUDStateHelper
+	DataManager      *CRUDDataManager  // 数据管理器
 }
 
 // getDefaultCRUDBindings 获取默认的CRUD快捷键绑定
@@ -166,6 +425,7 @@ func NewCRUDComponent(config core.RenderConfig, id string) *CRUDComponent {
 		EventBus:         core.NewEventBus(),
 		unsubscribeFuncs: []func(){},
 		bindings:         getDefaultCRUDBindings(), // 设置默认绑定
+		DataManager:      NewCRUDDataManager(),   // 初始化数据管理器
 	}
 
 	component.stateHelper = &CRUDStateHelper{
@@ -239,45 +499,127 @@ func (c *CRUDComponent) View() string {
 
 // LoadData 加载数据
 func (c *CRUDComponent) LoadData() tea.Cmd {
-	// 根据配置从 API 或其他数据源加载数据
-	// 返回 tea.Cmd 来异步获取数据
-	if api, exists := c.DataAPI["load"]; exists {
-		// 执行加载操作
-		return c.executeDataAPI(api, "load")
-	}
-	
-	// 默认：使用配置的数据
-	return nil
+	log.Info("CRUD %s: LoadData called", c.id)
+	// 使用数据管理器执行操作
+	return c.DataManager.ExecuteOperation("load", nil, c)
 }
 
 // SaveData 保存数据
 func (c *CRUDComponent) SaveData(data interface{}) tea.Cmd {
-	if api, exists := c.DataAPI["save"]; exists {
-		return c.executeDataAPI(api, "save")
-	}
-	return nil
+	log.Info("CRUD %s: SaveData called with data: %v", c.id, data)
+	// 使用数据管理器执行操作
+	return c.DataManager.ExecuteOperation("save", data, c)
 }
 
 // DeleteData 删除数据
 func (c *CRUDComponent) DeleteData(id interface{}) tea.Cmd {
-	if api, exists := c.DataAPI["delete"]; exists {
-		return c.executeDataAPI(api, "delete")
-	}
-	return nil
+	log.Info("CRUD %s: DeleteData called with id: %v", c.id, id)
+	// 使用数据管理器执行操作
+	return c.DataManager.ExecuteOperation("delete", id, c)
 }
 
-// executeDataAPI 执行数据API操作
-func (c *CRUDComponent) executeDataAPI(api interface{}, operation string) tea.Cmd {
-	// 实现 API 调用逻辑
-	return func() tea.Msg {
-		// 模拟 API 调用
-		return core.ActionMsg{
-			ID:     c.id,
-			Action: fmt.Sprintf("DATA_%s_COMPLETED", strings.ToUpper(operation)),
-			Data:   map[string]interface{}{"result": "success", "operation": operation},
+// updateTableData 更新表格数据以反映CRUD操作的结果
+func (c *CRUDComponent) updateTableData() {
+	if c.Data != nil {
+		// 将CRUD组件的数据同步到表格组件
+		if dataSlice, ok := c.Data.([]interface{}); ok {
+			// 重新构建表格数据
+			if len(dataSlice) > 0 {
+				if firstItem, ok := dataSlice[0].(map[string]interface{}); ok {
+					// 从第一个数据项生成列定义
+					columns := []Column{}
+					i := 0
+					for key := range firstItem {
+						width := 15
+						if i == 0 {
+							width = 8
+						}
+						columns = append(columns, Column{
+							Key:   key,
+							Title: key,
+							Width: width,
+						})
+						i++
+					}
+
+					// 转换数据格式
+					convertedData := make([][]interface{}, 0, len(dataSlice))
+					for _, item := range dataSlice {
+						if itemMap, ok := item.(map[string]interface{}); ok {
+							row := make([]interface{}, len(columns))
+							for i, col := range columns {
+								row[i] = itemMap[col.Key]
+							}
+							convertedData = append(convertedData, row)
+						}
+					}
+
+					// 创建新的表格组件
+					tableProps := TableProps{
+						Columns:    columns,
+						Data:       convertedData,
+						Focused:    true,
+						Height:     0, // 使用默认高度
+						Width:      0, // 使用默认宽度
+						ShowBorder: true,
+						Bindings:   []core.ComponentBinding{},
+					}
+					c.Table = NewTableComponentWrapper(tableProps, c.id+"_table")
+				}
+			} else {
+				// 如果没有数据，创建一个空的表格
+				c.Table = NewTableComponentWrapper(TableProps{
+					Columns:    []Column{{Key: "empty", Title: "No Data", Width: 20}},
+					Data:       [][]interface{}{},
+					Focused:    true,
+					Height:     0,
+					Width:      0,
+					ShowBorder: true,
+					Bindings:   []core.ComponentBinding{},
+				}, c.id+"_table")
+			}
+		} else {
+			// 如果数据不是切片格式，尝试将其作为单个项目处理
+			if itemMap, ok := c.Data.(map[string]interface{}); ok {
+				// 从单个项目生成列定义
+				columns := []Column{}
+				i := 0
+				for key := range itemMap {
+					width := 15
+					if i == 0 {
+						width = 8
+					}
+					columns = append(columns, Column{
+						Key:   key,
+						Title: key,
+						Width: width,
+					})
+					i++
+				}
+
+				// 转换单个项目为表格数据格式
+				row := make([]interface{}, len(columns))
+				for i, col := range columns {
+					row[i] = itemMap[col.Key]
+				}
+				convertedData := [][]interface{}{row}
+
+				// 创建带有单行数据的表格
+				tableProps := TableProps{
+					Columns:    columns,
+					Data:       convertedData,
+					Focused:    true,
+					Height:     0,
+					Width:      0,
+					ShowBorder: true,
+					Bindings:   []core.ComponentBinding{},
+				}
+				c.Table = NewTableComponentWrapper(tableProps, c.id+"_table")
+			}
 		}
 	}
 }
+
 
 // CRUDStateHelper CRUD组件状态捕获助手
 type CRUDStateHelper struct {
@@ -374,15 +716,16 @@ func (c *CRUDComponent) delegateToBubbles(msg tea.Msg) tea.Cmd {
 		case core.EventItemDeleted:
 			if c.State == StateList {
 				log.Trace("CRUD %s: Item deleted, refreshing table", c.id)
-				return core.PublishEvent(c.id, core.EventItemDeleted, map[string]interface{}{
-					"state": "deleted",
-				})
+				// 使用数据管理器执行删除操作
+				return c.DataManager.ExecuteOperation("delete", msg.Data, c)
 			}
 
 		case core.EventFormSubmitSuccess:
 			if c.State == StateEditing || c.State == StateCreating {
 				c.State = StateList
 				log.Trace("CRUD %s: Form submitted successfully, returning to list", c.id)
+				// 更新表格数据以反映更改
+				c.updateTableData()
 				return core.PublishEvent(c.id, core.EventFormSubmitSuccess, map[string]interface{}{
 					"transition": "StateEditing_Creating_to_StateList",
 				})
@@ -397,9 +740,27 @@ func (c *CRUDComponent) delegateToBubbles(msg tea.Msg) tea.Cmd {
 				})
 			}
 
+		// 处理数据加载请求事件
+		case core.EventDataRefreshed:
+			log.Info("CRUD %s: Processing data load request", c.id)
+			// 使用数据管理器执行加载操作
+			return c.DataManager.ExecuteOperation("load", nil, c)
+
+		// 处理表单提交事件
+		case core.EventFormSubmit:
+			if (c.State == StateEditing || c.State == StateCreating) && c.Form != nil {
+				// 获取表单数据
+				formData := c.getFormData()
+				log.Info("CRUD %s: Processing form submit", c.id)
+				// 使用数据管理器执行保存操作
+				return c.DataManager.ExecuteOperation("save", formData, c)
+			}
+
 		// 处理数据操作完成事件
 		case "DATA_LOAD_COMPLETED":
 			log.Trace("CRUD %s: Data load completed", c.id)
+			// 更新表格数据以反映加载操作
+			c.updateTableData()
 			return core.PublishEvent(c.id, core.EventDataLoaded, msg.Data)
 			
 		case "DATA_SAVE_COMPLETED":
@@ -409,15 +770,9 @@ func (c *CRUDComponent) delegateToBubbles(msg tea.Msg) tea.Cmd {
 			
 		case "DATA_DELETE_COMPLETED":
 			log.Trace("CRUD %s: Data delete completed", c.id)
+			// 更新表格数据以反映删除操作
+			c.updateTableData()
 			return core.PublishEvent(c.id, core.EventItemDeleted, msg.Data)
-
-		// 处理表单提交事件
-		case core.EventFormSubmit:
-			if (c.State == StateEditing || c.State == StateCreating) && c.Form != nil {
-				// 获取表单数据并保存
-				formData := c.getFormData()
-				return c.SaveData(formData)
-			}
 		}
 	}
 
@@ -637,6 +992,8 @@ func (c *CRUDComponent) UpdateRenderConfig(config core.RenderConfig) error {
 
 	if bindData, ok := dataMap["__bind_data"].([]interface{}); ok {
 		items = bindData
+		// 同时设置CRUD组件的数据
+		c.Data = items
 	}
 
 	if len(items) == 0 {
@@ -698,8 +1055,21 @@ func (c *CRUDComponent) Render(config core.RenderConfig) (string, error) {
 // getFormData 获取表单当前数据
 func (c *CRUDComponent) getFormData() interface{} {
 	if c.Form != nil {
+		// 如果表单组件实现了GetValue方法，则使用它
 		if valuer, ok := c.Form.(interface{ GetValue() string }); ok {
-			return valuer.GetValue()
+			value := valuer.GetValue()
+			// 尝试解析JSON格式的数据
+			var parsed interface{}
+			if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+				return parsed
+			}
+			// 如果不是JSON格式，返回原始字符串
+			return value
+		}
+		// 作为备用，尝试获取表单组件的底层数据
+		if modeler, ok := c.Form.(interface{ GetModel() interface{} }); ok {
+			model := modeler.GetModel()
+			return model
 		}
 	}
 	return nil
@@ -710,3 +1080,11 @@ func (c *CRUDComponent) setStateTransition(from, to CRUDState) {
 	c.State = to
 	log.Trace("CRUD %s: State transition %d -> %d", c.id, from, to)
 }
+
+
+
+
+
+
+
+

@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/layout"
 )
 
 // MessageHandler defines a function that handles a specific message type
@@ -104,6 +105,14 @@ type Component struct {
 
 	// Width specifies the component width
 	Width interface{} `json:"width,omitempty"`
+
+	// Children contains child components (for nested layouts)
+	// This is used in the old format where type="layout" can have children directly
+	Children []Component `json:"children,omitempty"`
+
+	// Direction specifies layout direction for layout components
+	// This is used in the old format where type="layout" has direction property
+	Direction string `json:"direction,omitempty"`
 }
 
 // Bridge provides external message bridge for async operations
@@ -249,6 +258,12 @@ type Model struct {
 
 	// propsCache caches resolved props for performance
 	propsCache *PropsCache
+
+	// LayoutEngine is the flexible layout engine for calculating component bounds
+	LayoutEngine *layout.Engine
+
+	// LayoutRoot is the root node of the layout tree
+	LayoutRoot *layout.LayoutNode
 }
 
 // Validate validates the Config structure.
@@ -258,12 +273,27 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config.name is required")
 	}
 
+	// Normalize direction to support both old and new formats
 	if c.Layout.Direction == "" {
 		c.Layout.Direction = "vertical" // Default to vertical
 	}
 
-	if c.Layout.Direction != "vertical" && c.Layout.Direction != "horizontal" {
-		return fmt.Errorf("invalid layout.direction: %s (must be 'vertical' or 'horizontal')", c.Layout.Direction)
+	// Support both old (vertical/horizontal) and new (row/column) format
+	validDirections := map[string]bool{
+		"vertical":   true,
+		"horizontal": true,
+		"column":     true,
+		"row":        true,
+	}
+	if !validDirections[c.Layout.Direction] {
+		return fmt.Errorf("invalid layout.direction: %s (must be one of: vertical, horizontal, column, row)", c.Layout.Direction)
+	}
+
+	// Normalize new format to old format for compatibility
+	if c.Layout.Direction == "column" {
+		c.Layout.Direction = "vertical"
+	} else if c.Layout.Direction == "row" {
+		c.Layout.Direction = "horizontal"
 	}
 
 	// Validate log level
@@ -289,8 +319,10 @@ func (c *Config) Validate() error {
 		c.AutoFocus = &defaultAutoFocus
 	}
 
-	// Validate components
+	// Validate components (be lenient - only check for type)
 	for i, comp := range c.Layout.Children {
+		// Allow extra fields like "width", "height", "align", etc. for future compatibility
+		// Only validate that required fields are present
 		if comp.Type == "" {
 			return fmt.Errorf("component at index %d missing 'type' field", i)
 		}

@@ -68,7 +68,7 @@ func TestModelUpdateWindowSize(t *testing.T) {
 
 	updatedModel, cmd := model.Update(msg)
 
-	assert.NotNil(t, cmd) // WindowSizeMsg returns commands
+	assert.Nil(t, cmd) // WindowSizeMsg now returns nil
 	m := updatedModel.(*Model)
 	assert.Equal(t, 80, m.Width)
 	assert.Equal(t, 24, m.Height)
