@@ -441,61 +441,28 @@ func (m *TableModel) GetComponentType() string {
 
 // UpdateMsg implements ComponentInterface for table component
 func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// If table is not focused, ignore keyboard events but allow pass-through
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		// If not focused, ignore keyboard navigation events
-		if !m.Model.Focused() {
-			return m, nil, core.Ignored
-		}
-
-		// Track current selection before update
-		prevSelectedRow := m.Model.Cursor()
-
-		// Update using the underlying model
-		var cmd tea.Cmd
-		m.Model, cmd = m.Model.Update(msg)
-
-		// Check if selection changed after navigation
-		currentSelectedRow := m.Model.Cursor()
-
-		// Publish event for any selection change (including Down key)
-		if currentSelectedRow != prevSelectedRow && currentSelectedRow >= 0 {
-			// Get row data if available
-			var rowData interface{}
-			rows := m.Model.Rows()
-			if currentSelectedRow < len(rows) {
-				rowData = rows[currentSelectedRow]
-			}
-
-			// Publish row selected event
-			eventCmd := core.PublishEvent(
-				m.id,
-				core.EventRowSelected,
-				map[string]interface{}{
-					"rowIndex":      currentSelectedRow,
-					"prevRowIndex":  prevSelectedRow,
-					"rowData":       rowData,
-					"tableID":       m.id,
-					"navigationKey": msg.String(),
-				},
-			)
-
-			// Combine commands if we have an existing cmd
-			if cmd != nil {
-				cmd = tea.Batch(cmd, eventCmd)
-			} else {
-				cmd = eventCmd
-			}
-		}
-
-		return m, cmd, core.Handled
+	// Use the wrapper's UpdateMsg implementation for consistency
+	wrapper := &TableComponentWrapper{
+		model:       m.Model,
+		props:       m.props,
+		id:          m.id,
+		bindings:    m.props.Bindings,
+		stateHelper: &TableStateHelper{
+			Indexer:     m,
+			Selector:    m,
+			Focuser:     m,
+			ComponentID: m.id,
+		},
 	}
 
-	// For non-key messages, just update the model
-	var cmd tea.Cmd
-	m.Model, cmd = m.Model.Update(msg)
-	return m, cmd, core.Handled
+	// Copy the model state to the wrapper
+	updatedComponent, cmd, response := wrapper.UpdateMsg(msg)
+	if updatedWrapper, ok := updatedComponent.(*TableComponentWrapper); ok {
+		// Update the original model with the wrapper's state
+		m.Model = updatedWrapper.model
+	}
+
+	return m, cmd, response
 }
 
 // TableStateHelper 表格组件状态捕获助手

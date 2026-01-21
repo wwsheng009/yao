@@ -182,12 +182,17 @@ func (m *TextModel) Init() tea.Cmd {
 
 // UpdateMsg implements ComponentInterface
 func (m *TextModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle targeted messages first
 	switch msg := msg.(type) {
 	case core.TargetedMsg:
-		if msg.TargetID == "text" {
-			return m, nil, core.Handled
+		// Check if this message is targeted to this component
+		if msg.TargetID == m.id {
+			return m.UpdateMsg(msg.InnerMsg)
 		}
+		return m, nil, core.Ignored
 	}
+
+	// Text is a static component, no need to handle other messages
 	return m, nil, core.Ignored
 }
 

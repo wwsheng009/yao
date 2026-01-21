@@ -326,41 +326,29 @@ func (m *FormModel) GetID() string {
 
 // UpdateMsg implements ComponentInterface for form component
 func (m *FormModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
-	// Handle key press events for navigation and submission
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		// If form doesn't have focus, ignore all key messages
-		// This allows global bindings (like 'q' for quit) and Tab navigation to work
-		if !m.focused {
-			return m, nil, core.Ignored
-		}
-
-		switch msg.Type {
-		case tea.KeyEnter:
-			// Form submission - bubble to parent to handle
-			return m, nil, core.Ignored
-		case tea.KeyEsc:
-			// Cancel form - bubble to parent
-			return m, nil, core.Ignored
-		case tea.KeyTab:
-			// Let Tab bubble to handleKeyPress for component navigation
-			return m, nil, core.Ignored
-		case tea.KeyUp:
-			// Navigate to previous field
-			if m.focusIndex > 0 {
-				m.focusIndex--
-			}
-			return m, nil, core.Handled
-		case tea.KeyDown:
-			// Navigate to next field
-			if m.focusIndex < len(m.props.Fields)-1 {
-				m.focusIndex++
-			}
-			return m, nil, core.Handled
-		}
+	// Create a temporary wrapper to use the standard message handling
+	wrapper := &FormComponentWrapper{
+		model:       *m,
+		inputFields: make(map[string]*InputComponentWrapper),
+		props:       m.props,
+		bindings:    m.props.Bindings,
+		id:          m.ID,
 	}
 
-	return m, nil, core.Ignored
+	wrapper.stateHelper = &FormStateHelper{
+		Valuer:      wrapper,
+		Focuser:     wrapper,
+		ComponentID: wrapper.id,
+	}
+
+	// Use the wrapper's UpdateMsg implementation for consistency
+	updatedComponent, cmd, response := wrapper.UpdateMsg(msg)
+	if updatedWrapper, ok := updatedComponent.(*FormComponentWrapper); ok {
+		// Update the original model with the wrapper's state
+		*m = updatedWrapper.model
+	}
+
+	return m, cmd, response
 }
 
 // GetModel returns the underlying model
