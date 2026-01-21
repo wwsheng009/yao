@@ -45,6 +45,11 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 
 // Init initializes the Model and returns an initial command.
 // This is called once when the program starts.
+// Init 初始化TUI模型，执行以下操作：
+// 1. 收集并执行所有组件的初始化命令
+// 2. 执行配置中指定的onLoad动作
+// 3. 如果启用了AutoFocus，自动聚焦到第一个可聚焦组件
+// 返回一个tea.Cmd命令，包含所有需要执行的初始化操作
 func (m *Model) Init() tea.Cmd {
 	log.Trace("TUI Init: %s", m.Config.Name)
 

@@ -164,7 +164,13 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		e.ensureStyle(child)
 	}
 
-	size := child.Style.Width
+	var size *Size
+	if config.Direction == DirectionRow {
+		size = child.Style.Width
+	} else {
+		size = child.Style.Height
+	}
+
 	if size != nil {
 		switch v := size.Value.(type) {
 		case float64:
@@ -184,8 +190,11 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		}
 	}
 
-	if info.Size < child.Style.MinWidth {
+	// Apply minimum size based on direction
+	if config.Direction == DirectionRow && info.Size < child.Style.MinWidth {
 		info.Size = child.Style.MinWidth
+	} else if config.Direction == DirectionColumn && info.Size < child.Style.MinHeight {
+		info.Size = child.Style.MinHeight
 	}
 
 	return info

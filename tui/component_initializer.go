@@ -129,13 +129,28 @@ func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry,
 
 // createComponentNode creates a layout node for a regular component
 func (m *Model) createComponentNode(child Component) *layout.LayoutNode {
+	// Create size objects from component properties
+	var width, height *layout.Size
+	
+	if child.Width != nil {
+		width = layout.NewSize(child.Width)
+	} else {
+		width = layout.NewSize(nil)
+	}
+	
+	if child.Height != nil {
+		height = layout.NewSize(child.Height)
+	} else {
+		height = layout.NewSize(nil)
+	}
+	
 	node := &layout.LayoutNode{
 		ID:   child.ID,
 		Type: layout.LayoutFlex, // Container type
 		Style: &layout.LayoutStyle{
 			Direction: layout.DirectionColumn,
-			Width:     layout.NewSize(nil),
-			Height:    layout.NewSize(nil),
+			Width:     width,
+			Height:    height,
 			Position:  layout.PositionRelative,
 		},
 	}

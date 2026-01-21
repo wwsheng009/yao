@@ -8,15 +8,103 @@ import (
 	"sync"
 
 	"github.com/yaoapp/gou/application"
-	"github.com/yaoapp/kun/any"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
+	"github.com/yaoapp/yao/data"
 	"github.com/yaoapp/yao/share"
 	"github.com/yaoapp/yao/tui/core"
 )
 
+// systemTUIs defines built-in TUI configurations
+var systemTUIs = map[string]string{
+	"__yao.tui-list": "yao/tuis/tui-list.tui.yao",
+}
+
 // cache stores loaded TUI configurations
 var cache sync.Map
+
+// reservedTUINames defines TUI names that are reserved for built-in subcommands
+// These names conflict with Cobra subcommands and will be inaccessible via 'yao tui <name>'
+var reservedTUINames = map[string]bool{
+	"list":     true, // yao tui list
+	"validate": true, // yao tui validate
+	"inspect":  true, // yao tui inspect
+	"check":    true, // yao tui check
+	"dump":     true, // yao tui dump
+	"help":     true, // yao tui help
+}
+
+// loadSystemTUIs loads built-in TUI configurations from source code
+// Similar to loadSystemModels in model package
+func loadSystemTUIs() error {
+	messages := []string{}
+
+	for id, tuiPath := range systemTUIs {
+		content, err := data.Read(tuiPath)
+		if err != nil {
+			log.Error("Failed to read system TUI %s: %s", id, err.Error())
+			messages = append(messages, err.Error())
+			continue
+		}
+
+		// Parse TUI configuration
+		var cfg Config
+		if err := json.Unmarshal(content, &cfg); err != nil {
+			log.Error("Failed to parse system TUI %s: %s", id, err.Error())
+			messages = append(messages, err.Error())
+			continue
+		}
+
+		// Assign ID
+		cfg.ID = id
+
+		// Run validation
+		registry := GetGlobalRegistry()
+		validator := NewConfigValidator(&cfg, registry)
+
+		if !validator.Validate() {
+			log.Warn("System TUI %s has validation issues:\n%s", id, validator.GetErrorSummary())
+		}
+
+		// Flatten data if present using unified flattening function
+		if cfg.Data != nil {
+			cfg.Data = FlattenData(cfg.Data)
+		}
+
+		// Assign component IDs
+		counter := 0
+		assignComponentIDs(&cfg.Layout, "comp", &counter)
+
+		// Add default bindings
+		if cfg.Bindings == nil {
+			cfg.Bindings = make(map[string]core.Action)
+		}
+		setMissingBinding(cfg.Bindings, "q", core.Action{Process: "tui.quit"})
+		setMissingBinding(cfg.Bindings, "ctrl+c", core.Action{Process: "tui.quit"})
+
+		// Set default navigation mode
+		if cfg.NavigationMode == "" {
+			cfg.NavigationMode = "native"
+		}
+
+		if !cfg.TabCycles {
+			cfg.TabCycles = true
+		}
+
+		// Add default submit bindings for input components
+		setDefaultInputSubmitBindings(&cfg)
+
+		// Store in cache
+		Set(id, &cfg)
+		log.Trace("Loaded system TUI: %s (%s)", id, cfg.Name)
+	}
+
+	if len(messages) > 0 {
+		return fmt.Errorf("errors loading system TUIs: %s", strings.Join(messages, "; "))
+	}
+
+	return nil
+}
 
 // Load scans the tuis/ directory and loads all .tui configuration files.
 // It registers each TUI in the cache with an ID derived from its file path.
@@ -25,12 +113,20 @@ var cache sync.Map
 func Load(cfg config.Config) error {
 	messages := []string{}
 
+	// First, load built-in system TUIs from source code
+	if err := loadSystemTUIs(); err != nil {
+		log.Warn("Failed to load some system TUIs: %v", err)
+		// Continue loading filesystem TUIs even if system TUIs fail
+	}
+
+	// Load filesystem TUIs
 	// Ignore if the tuis directory does not exist
 	exists, err := application.App.Exists("tuis")
 	if err != nil {
 		return err
 	}
 	if !exists {
+		// Even if tuis directory doesn't exist, system TUIs are already loaded
 		return nil
 	}
 	exts := []string{"*.tui.yao", "*.tui.json", "*.tui.jsonc"}
@@ -75,7 +171,74 @@ func Load(cfg config.Config) error {
 		return fmt.Errorf("%s", strings.Join(messages, ";\n"))
 	}
 
+	// Check for naming conflicts after loading all TUIs
+	checkConfigurationConflicts()
+
 	return err
+}
+
+// checkConfigurationConflicts checks for TUI configuration names that conflict
+// with built-in subcommands and emits warnings
+func checkConfigurationConflicts() {
+	conflicts := []string{}
+	reservedNames := getReservedTUINameSlice()
+
+	cache.Range(func(key, value interface{}) bool {
+		tuiID, ok := key.(string)
+		if !ok {
+			return true
+		}
+
+		// Check if TUI name conflicts with reserved subcommand names
+		// Exclude system TUIs (those starting with "__")
+		if isReservedTUIName(tuiID) {
+			conflicts = append(conflicts, tuiID)
+		}
+
+		return true
+	})
+
+	// Emit warnings for conflicts
+	if len(conflicts) > 0 {
+		log.Warn("=============================================================")
+		log.Warn("TUI Naming Conflict Detected")
+		log.Warn("=============================================================")
+		for _, name := range conflicts {
+			log.Warn("  TUI configuration '%s' conflicts with a built-in subcommand.", name)
+			log.Warn("  It will be inaccessible via 'yao tui %s'.", name)
+			log.Warn("  To access this TUI, use: yao run tui.%s", name)
+			log.Warn("  Or rename the configuration file to avoid conflicts.")
+		}
+		log.Warn("")
+		log.Warn("Reserved subcommand names: %v", reservedNames)
+		log.Warn("")
+		log.Warn("TUI naming guidelines:")
+		log.Warn("  - Avoid using reserved names above")
+		log.Warn("  - Use descriptive names: user-dashboard, data-editor, file-browser")
+		log.Warn("  - Use prefixes to avoid conflicts: my-list, app-validate, tools/inspect")
+		log.Warn("=============================================================")
+	}
+}
+
+// isReservedTUIName checks if a TUI name is a reserved subcommand name
+// Returns false for system TUIs (those starting with "__")
+func isReservedTUIName(tuiID string) bool {
+	// Exclude system TUIs (they start with "__")
+	if strings.HasPrefix(tuiID, "__") {
+		return false
+	}
+
+	// Check if the name is reserved
+	return reservedTUINames[tuiID]
+}
+
+// getReservedTUINameSlice returns the list of reserved TUI names
+func getReservedTUINameSlice() []string {
+	names := make([]string, 0, len(reservedTUINames))
+	for name := range reservedTUINames {
+		names = append(names, name)
+	}
+	return names
 }
 
 // Set stores a TUI configuration in the cache with the given ID.
@@ -181,15 +344,9 @@ func loadFile(file string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// If the config has data property, flatten it using kun/any but preserve original structure
+	// If the config has data property, flatten it using unified flattening function
 	if cfg.Data != nil {
-		wrappedRes := any.Of(cfg.Data)
-		flattened := wrappedRes.Map().MapStrAny.Dot()
-
-		// Merge flattened keys with original data to support both access patterns
-		for k, v := range flattened {
-			cfg.Data[k] = v
-		}
+		cfg.Data = FlattenData(cfg.Data)
 	}
 
 	// Assign unique IDs to components that don't have an ID

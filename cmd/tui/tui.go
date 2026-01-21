@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/cobra"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
@@ -21,10 +23,16 @@ var Verbose bool
 
 // Cmd represents the tui command
 var Cmd = &cobra.Command{
-	Use:   "tui [TUI_ID]",
+	Use:   "tui <tui-name> [args...]",
 	Short: L("Run a terminal user interface"),
-	Long:  L("Run a terminal user interface defined in .tui.yao files"),
-	Args:  cobra.ExactArgs(1),
+	Long: L("Run a terminal user interface defined in .tui.yao files") +
+		L("\n\n") +
+		L("With external data (wrap JSON in quotes with :: prefix):\n") +
+		L("  yao tui myapp '::{\"key\":\"value\"}'\n") +
+		L("  yao tui myapp '::{\"userId\":123,\"userName\":\"John\"}'\n") +
+		L("\n") +
+		L("For escaping the :: prefix, use '\\::{' at the start"),
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		Boot()
 
@@ -75,10 +83,136 @@ var Cmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// Parse external data arguments (JSON string with :: prefix)
+		var externalData map[string]interface{}
+		for i, arg := range args {
+			if i == 0 {
+				continue // Skip tuiID
+			}
+
+			// Check if argument is a JSON string with :: prefix
+			// Format: '::{"key":"value"}'
+			if strings.HasPrefix(arg, "::") {
+				// Remove the :: prefix to get the JSON string
+				jsonStr := strings.TrimPrefix(arg, "::")
+
+				// Try to parse as JSON
+				var v map[string]interface{}
+				err := jsoniter.Unmarshal([]byte(jsonStr), &v)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s Failed to parse external data JSON: %v\n", color.RedString("Error:"), err)
+					os.Exit(1)
+				}
+
+				// Merge external data (later args override previous ones)
+				if externalData == nil {
+					externalData = v
+				} else {
+					for k, val := range v {
+						externalData[k] = val
+					}
+				}
+
+				if Verbose {
+					fmt.Printf("TUI external data[%d]: parsed %d keys\n", i-1, len(v))
+					if Debug {
+						for k, val := range v {
+							fmt.Printf("  %s: %v\n", k, val)
+						}
+					}
+				}
+
+			} else if strings.HasPrefix(arg, "\\::") {
+				// Escaped :: prefix - treat as literal string "::"
+				// Remove the backslash and restore the ::
+				literalStr := "::" + strings.TrimPrefix(arg, "\\::")
+				if externalData == nil {
+					externalData = make(map[string]interface{})
+				}
+				// Store as _args for later access if needed
+				if argsKey, exists := externalData["_args"]; !exists {
+					externalData["_args"] = []interface{}{literalStr}
+				} else {
+					externalData["_args"] = append(argsKey.([]interface{}), literalStr)
+				}
+
+				if Verbose {
+					fmt.Printf("TUI arg[%d]: %s (escaped)\n", i-1, literalStr)
+				}
+			} else {
+				// Regular string argument
+				if externalData == nil {
+					externalData = make(map[string]interface{})
+				}
+				// Store as _args for later access if needed
+				if argsKey, exists := externalData["_args"]; !exists {
+					externalData["_args"] = []interface{}{arg}
+				} else {
+					externalData["_args"] = append(argsKey.([]interface{}), arg)
+				}
+
+				if Verbose {
+					fmt.Printf("TUI arg[%d]: %s\n", i-1, arg)
+				}
+			}
+		}
+
+		// Validate and flatten external data before merging
+		if externalData != nil {
+			var err error
+			externalData, err = tui.ValidateAndFlattenExternal(externalData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s Failed to validate external data: %v\n", color.RedString("Error:"), err)
+				os.Exit(1)
+			}
+		}
+
+		// Merge external data into config.Data (external data takes precedence)
+		if externalData != nil && len(externalData) > 0 {
+			if cfg.Data == nil {
+				cfg.Data = make(map[string]interface{})
+			}
+			// Merge external data - external data overrides static data
+			for k, v := range externalData {
+				cfg.Data[k] = v
+			}
+
+			if Verbose {
+				fmt.Printf("Merged %d external data keys into TUI configuration\n", len(externalData))
+			}
+		}
+
 		if Verbose {
 			if cfg.Name != "" {
 				log.Info("Running TUI: %s (%s)", tuiID, cfg.Name)
 			}
+		}
+
+		// Load TUI defaults if available (optional, static defaults that can be overridden)
+		defaults := tui.LoadTUIDefaults(tuiID)
+		if defaults != nil && len(defaults) > 0 {
+			if cfg.Data == nil {
+				cfg.Data = make(map[string]interface{})
+			}
+			// Merge defaults into config data (external data will override defaults)
+			// defaults have lower priority than config data, external has highest
+			cfg.Data = tui.MergeData(cfg.Data, defaults, false) // priorityHigher = false
+			if Verbose {
+				log.Info("Loaded %d default values for TUI: %s", len(defaults), tuiID)
+			}
+		}
+
+		// Prepare initial state using unified state management
+		// This is the ONLY entry point for preparing TUI state data
+		// Data flow (priority, highest to lowest):
+		//   1. External parameters (jsonStr from command-line args)
+		//   2. Static configuration data (from .tui.yao file)
+		//   3. TUI defaults (from data/tui/*.json)
+		// All data is flattened to support dot-notation access
+		tui.PrepareInitialState(cfg, externalData)
+
+		if externalData != nil && len(externalData) > 0 {
+			log.Info("External data loaded with %d keys", len(externalData))
 		}
 
 		// Create context for graceful shutdown
