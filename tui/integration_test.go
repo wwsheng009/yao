@@ -34,9 +34,9 @@ func TestComponentInstanceReuse(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
-
-	// Initialize model
+	model.Init()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	model.InitializeComponents()
 
 	// First render - should create component instance
 	firstRender := model.View()
@@ -206,13 +206,17 @@ func TestStateSynchronizationIntegration(t *testing.T) {
 	model := NewModel(cfg, nil)
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
+	// Initialize components before rendering
+	model.InitializeComponents()
+
 	// Render to create component instance
 	model.View()
 
 	// Verify component instance is created
 	comp, exists := model.ComponentInstanceRegistry.Get("username")
-	assert.True(t, exists)
-	assert.NotNil(t, comp)
+	require.True(t, exists)
+	require.NotNil(t, comp)
+	require.NotNil(t, comp.Instance) // 确保 Instance 不为 nil
 
 	// Test GetStateChanges method
 	stateChanges, hasChanges := comp.Instance.GetStateChanges()
@@ -640,6 +644,7 @@ func TestStateConsistencyIntegration(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.Init()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Set initial state

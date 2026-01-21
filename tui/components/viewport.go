@@ -500,6 +500,19 @@ func (m *ViewportModel) UpdateRenderConfig(config core.RenderConfig) error {
 		}
 	}
 
+	// Update dimensions from render config (Constraints)
+	if m.props.Width > 0 {
+		m.Model.Width = m.props.Width
+	} else if config.Width > 0 {
+		m.Model.Width = config.Width
+	}
+
+	if m.props.Height > 0 {
+		m.Model.Height = m.props.Height
+	} else if config.Height > 0 {
+		m.Model.Height = config.Height
+	}
+
 	return nil
 }
 
@@ -564,6 +577,20 @@ func (w *ViewportComponentWrapper) UpdateRenderConfig(config core.RenderConfig) 
 		}
 	}
 
+	// Update dimensions from render config (Constraints)
+	// Priority: Props (Fixed) > Config (Constraint)
+	if w.props.Width > 0 {
+		w.model.Width = w.props.Width
+	} else if config.Width > 0 {
+		w.model.Width = config.Width
+	}
+
+	if w.props.Height > 0 {
+		w.model.Height = w.props.Height
+	} else if config.Height > 0 {
+		w.model.Height = config.Height
+	}
+
 	return nil
 }
 
@@ -588,4 +615,43 @@ func (w *ViewportComponentWrapper) GetSubscribedMessageTypes() []string {
 		"core.ActionMsg",
 		"tea.WindowSizeMsg",
 	}
+}
+
+// SetSize 更新视口的实际显示尺寸
+func (w *ViewportComponentWrapper) SetSize(width, height int) {
+	// 直接设置底层 viewport.Model 的尺寸
+	w.model.Width = width
+	w.model.Height = height
+}
+
+// Measure returns the ideal size of the viewport
+func (w *ViewportComponentWrapper) Measure(maxWidth, maxHeight int) (width, height int) {
+	// Use content from props
+	content := w.props.Content
+
+	// Split into lines
+	lines := strings.Split(content, "\n")
+
+	maxWidthLine := 0
+	for _, line := range lines {
+		// lipgloss.Width handles ANSI codes and character width
+		w := lipgloss.Width(line)
+		if w > maxWidthLine {
+			maxWidthLine = w
+		}
+	}
+
+	// Add border padding (approximate)
+	width = maxWidthLine + 2
+	if width > maxWidth {
+		width = maxWidth
+	}
+
+	// Height is line count + border padding
+	height = len(lines) + 2
+	if height > maxHeight {
+		height = maxHeight
+	}
+
+	return width, height
 }

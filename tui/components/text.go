@@ -41,11 +41,17 @@ type TextProps struct {
 
 	// WordWrap enables word wrapping
 	WordWrap bool `json:"wordWrap"`
+
+	// VerticalAlign 指定垂直对齐方式
+	VerticalAlign string `json:"verticalAlign"` // "top", "center", "bottom"
+
+	// HorizontalAlign 指定水平对齐方式
+	HorizontalAlign string `json:"horizontalAlign"` // "left", "center", "right"
 }
 
 // RenderText renders a text component.
 // This is a flexible text component with various styling options.
-func RenderText(props TextProps, width int) string {
+func RenderText(props TextProps, width, height int) string {
 	// Default content
 	content := props.Content
 	if content == "" {
@@ -82,6 +88,7 @@ func RenderText(props TextProps, width int) string {
 
 	// Apply alignment
 	if props.Align != "" {
+		// Legacy support
 		switch props.Align {
 		case "center":
 			style = style.Align(lipgloss.Center)
@@ -89,6 +96,28 @@ func RenderText(props TextProps, width int) string {
 			style = style.Align(lipgloss.Right)
 		default:
 			style = style.Align(lipgloss.Left)
+		}
+	} else if props.HorizontalAlign != "" {
+		switch props.HorizontalAlign {
+		case "center":
+			style = style.Align(lipgloss.Center)
+		case "right":
+			style = style.Align(lipgloss.Right)
+		default:
+			style = style.Align(lipgloss.Left)
+		}
+	}
+
+	// Apply vertical alignment if height is provided
+	if height > 0 {
+		style = style.Height(height)
+		switch props.VerticalAlign {
+		case "center":
+			style = style.AlignVertical(lipgloss.Center)
+		case "bottom":
+			style = style.AlignVertical(lipgloss.Bottom)
+		default:
+			style = style.AlignVertical(lipgloss.Top)
 		}
 	}
 
@@ -152,9 +181,10 @@ func ParseTextProps(props map[string]interface{}) TextProps {
 
 // TextModel wraps the Text component to implement ComponentInterface
 type TextModel struct {
-	Props TextProps
-	Width int
-	id    string // Unique identifier for this instance
+	Props  TextProps
+	Width  int
+	Height int
+	id     string // Unique identifier for this instance
 }
 
 // NewTextComponent creates a new Text component wrapper
@@ -162,14 +192,14 @@ func NewTextComponent(config core.RenderConfig, id string) *TextComponentWrapper
 	model := &TextModel{
 		id: id,
 	}
-	
+
 	// Update with provided configuration if available
 	if config.Data != nil {
 		if err := model.UpdateRenderConfig(config); err != nil {
 			log.Error("Failed to update Text component config: %v", err)
 		}
 	}
-	
+
 	return &TextComponentWrapper{
 		model: *model,
 	}
@@ -187,7 +217,7 @@ func (m *TextModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, co
 	case core.TargetedMsg:
 		// Check if this message is targeted to this component
 		if msg.TargetID == m.id {
-			return m.UpdateMsg(msg.InnerMsg)
+			return m, nil, core.Handled
 		}
 		return m, nil, core.Ignored
 	}
@@ -198,7 +228,7 @@ func (m *TextModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, co
 
 // View implements ComponentInterface
 func (m *TextModel) View() string {
-	return RenderText(m.Props, m.Width)
+	return RenderText(m.Props, m.Width, m.Height)
 }
 
 // GetID implements ComponentInterface
@@ -232,7 +262,7 @@ func (m *TextModel) Render(config core.RenderConfig) (string, error) {
 	// 更新组件属性
 	m.Props = props
 	m.Width = config.Width
-
+	m.Height = config.Height
 
 	// 返回渲染结果
 	return m.View(), nil
@@ -251,6 +281,7 @@ func (m *TextModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// 更新组件属性
 	m.Props = props
 	m.Width = config.Width
+	m.Height = config.Height
 
 	return nil
 }
@@ -294,8 +325,6 @@ func NewTextComponentWrapper(props TextProps, id string) *TextComponentWrapper {
 	}
 }
 
-
-
 func (w *TextComponentWrapper) Init() tea.Cmd {
 	return w.model.Init()
 }
@@ -316,7 +345,7 @@ func (w *TextComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, 
 }
 
 func (w *TextComponentWrapper) View() string {
-	return RenderText(w.props, w.props.Width)
+	return RenderText(w.props, w.props.Width, w.model.Height)
 }
 
 func (w *TextComponentWrapper) GetID() string {
@@ -349,6 +378,7 @@ func (w *TextComponentWrapper) Render(config core.RenderConfig) (string, error) 
 	w.props = props
 	w.model.Props = props
 	w.model.Width = config.Width
+	w.model.Height = config.Height
 
 	// 返回渲染结果
 	return w.View(), nil
@@ -368,6 +398,7 @@ func (w *TextComponentWrapper) UpdateRenderConfig(config core.RenderConfig) erro
 	w.props = props
 	w.model.Props = props
 	w.model.Width = config.Width
+	w.model.Height = config.Height
 
 	return nil
 }
@@ -391,3 +422,8 @@ func (w *TextComponentWrapper) GetSubscribedMessageTypes() []string {
 	}
 }
 
+// SetSize 更新文本组件的实际显示尺寸
+func (w *TextComponentWrapper) SetSize(width, height int) {
+	w.model.Width = width
+	w.model.Height = height
+}

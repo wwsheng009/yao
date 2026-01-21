@@ -55,6 +55,9 @@ func (m *Model) renderLayoutNode(node *layout.LayoutNode) string {
 			}
 			config.Data = props
 
+			// Ensure component is updated with latest config
+			updateComponentInstanceConfig(compInstance, config, node.ID)
+
 			rendered, err := compInstance.Instance.Render(config)
 			if err != nil {
 				log.Error("renderLayoutNode: Failed to render component %s: %v", node.ID, err)
@@ -124,8 +127,8 @@ func (m *Model) renderNodeWithBounds(node *layout.LayoutNode) string {
 		Height: node.Bound.Height,
 	}
 
-	// Update last config before rendering
-	node.Component.LastConfig = config
+	// Update component configuration
+	updateComponentInstanceConfig(node.Component, config, node.ID)
 
 	rendered, err := node.Component.Instance.Render(config)
 	if err != nil {
@@ -136,7 +139,9 @@ func (m *Model) renderNodeWithBounds(node *layout.LayoutNode) string {
 	if node.Bound.Width > 0 || node.Bound.Height > 0 {
 		style := lipgloss.NewStyle().
 			Width(node.Bound.Width).
-			Height(node.Bound.Height)
+			Height(node.Bound.Height).
+			MaxWidth(node.Bound.Width).  // ✅ 限制最大宽度
+			MaxHeight(node.Bound.Height) // ✅ 限制最大高度
 
 		rendered = style.Render(rendered)
 	}

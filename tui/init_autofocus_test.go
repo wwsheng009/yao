@@ -2,6 +2,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/yaoapp/yao/tui/teatest"
 )
 
 func TestInitWithAutoFocus(t *testing.T) {
@@ -42,21 +44,23 @@ func TestInitWithAutoFocus(t *testing.T) {
 	t.Logf("Before processing Init commands, CurrentFocus: %s", model.CurrentFocus)
 	t.Logf("Before processing Init commands, AutoFocusApplied: %v", model.AutoFocusApplied)
 
-	// Process the command which should send FocusFirstComponentMsg
-	msg := cmd()
-	updatedModel, _ := model.Update(msg)
-	m := updatedModel.(*Model)
+	// Process the command (which might be a batch) using teatest helper
+	msgs := teatest.ExecuteBatchCommand(cmd)
+	for _, msg := range msgs {
+		updatedModel, _ := model.Update(msg)
+		model = updatedModel.(*Model)
+	}
 
-	t.Logf("After processing Init command, CurrentFocus: %s", m.CurrentFocus)
-	t.Logf("After processing Init command, AutoFocusApplied: %v", m.AutoFocusApplied)
+	t.Logf("After processing Init command, CurrentFocus: %s", model.CurrentFocus)
+	t.Logf("After processing Init command, AutoFocusApplied: %v", model.AutoFocusApplied)
 
 	// Verify focus was set to first component
-	if m.CurrentFocus != "input1" {
-		t.Errorf("Expected CurrentFocus to be 'input1', got '%s'", m.CurrentFocus)
+	if model.CurrentFocus != "input1" {
+		t.Errorf("Expected CurrentFocus to be 'input1', got '%s'", model.CurrentFocus)
 	}
 
 	// Verify AutoFocusApplied flag is set
-	if !m.AutoFocusApplied {
+	if !model.AutoFocusApplied {
 		t.Error("Expected AutoFocusApplied to be true after Init")
 	}
 }
@@ -87,10 +91,12 @@ func TestInitWithoutAutoFocus(t *testing.T) {
 	cmd := model.Init()
 
 	if cmd != nil {
-		// Process command
-		msg := cmd()
-		updatedModel, _ := model.Update(msg)
-		model = updatedModel.(*Model)
+		// Process command (which might be a batch) using teatest helper
+		msgs := teatest.ExecuteBatchCommand(cmd)
+		for _, msg := range msgs {
+			updatedModel, _ := model.Update(msg)
+			model = updatedModel.(*Model)
+		}
 	}
 
 	t.Logf("After Init, CurrentFocus: %s", model.CurrentFocus)
@@ -102,5 +108,14 @@ func TestInitWithoutAutoFocus(t *testing.T) {
 	}
 
 	// AutoFocusApplied should be true even when disabled (flag gets set regardless)
-	t.Logf("AutoFocusApplied flag: %v", model.AutoFocusApplied)
+	// Wait, checking the implementation in message_handlers.go:
+	// handlers["FocusFirstComponentMsg"] only sets AutoFocusApplied=true IF it actually applies focus.
+	// So if AutoFocus is false, AutoFocusApplied might remain false or depend on logic.
+	// Let's check if the test expects true or false. Original test implied expectation.
+	// Actually, if AutoFocus is false, FocusFirstComponentMsg is NOT sent in Init().
+	// So Update handler is never called for it.
+	// So AutoFocusApplied should be false.
+	if model.AutoFocusApplied {
+		t.Errorf("Expected AutoFocusApplied to be false when AutoFocus=false (commands not sent), got %v", model.AutoFocusApplied)
+	}
 }

@@ -58,6 +58,16 @@ type ComponentInterface interface {
 	GetSubscribedMessageTypes() []string // 返回组件关心的消息类型（字符串形式）
 }
 
+// Measurable 接口允许组件报告其理想大小
+// 组件可以可选实现此接口以参与布局计算
+type Measurable interface {
+	// 根据父容器提供的最大约束，返回组件理想的大小
+	// maxWidth 和 maxHeight 是父容器可提供的最大空间（减去 padding 和 gap）
+	// 返回的 width 和 height 是组件期望的理想尺寸
+	// 如果组件希望填充所有可用空间，可以返回 maxWidth 和 maxHeight
+	Measure(maxWidth, maxHeight int) (width, height int)
+}
+
 // FocusableComponent 接口标记一个组件是否可聚焦
 // 组件可以选择实现此接口来自动声明其聚焦能力
 type FocusableComponent interface {

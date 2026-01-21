@@ -109,8 +109,15 @@ func (r *Renderer) RenderNode(node *LayoutNode) string {
 
 	lines := r.renderNodeInternal(node, containerWidth, containerHeight)
 
+	// ✅ 改进：添加 MaxWidth 和 MaxHeight
+	style = style.
+		Width(containerWidth).
+		Height(containerHeight).
+		MaxWidth(containerWidth).
+		MaxHeight(containerHeight)
+
 	for i, line := range lines {
-		styled := style.Width(containerWidth).Render(line)
+		styled := style.Render(line)
 		builder.WriteString(styled)
 		if i < len(lines)-1 {
 			builder.WriteString("\n")

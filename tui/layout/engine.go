@@ -5,6 +5,9 @@ import (
 	"math"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/mattn/go-runewidth"
+	"github.com/muesli/reflow/wrap"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -56,9 +59,74 @@ func (e *Engine) Layout() *LayoutResult {
 	}
 
 	result := &LayoutResult{}
+
+	// ✅ 阶段1：约束传递
+	e.passConstraints(e.root, e.window.Width, e.window.Height)
+
+	// 阶段2：子节点响应并计算实际 Bound
 	e.layoutNode(e.root, 0, 0, e.window.Width, e.window.Height, result)
 
+	// 阶段3：通知组件其实际分配的大小
+	e.notifyComponentSizes(result.Nodes)
+
 	return result
+}
+
+// passConstraints 传递约束给节点树
+func (e *Engine) passConstraints(node *LayoutNode, maxWidth, maxHeight int) {
+	if node == nil {
+		return
+	}
+
+	// 计算内部可用空间（减去 padding）
+	innerWidth := maxWidth
+	innerHeight := maxHeight
+
+	if node.Style.Padding != nil {
+		innerWidth = max(0, innerWidth-node.Style.Padding.Left-node.Style.Padding.Right)
+		innerHeight = max(0, innerHeight-node.Style.Padding.Top-node.Style.Padding.Bottom)
+	}
+
+	// 设置节点的可用约束
+	node.AvailableWidth = innerWidth
+	node.AvailableHeight = innerHeight
+
+	// 对于没有子节点的叶子节点，调用 Measure
+	if len(node.Children) == 0 && node.Component != nil && node.Component.Instance != nil {
+		if measurable, ok := node.Component.Instance.(core.Measurable); ok {
+			node.PreferredWidth, node.PreferredHeight = measurable.Measure(innerWidth, innerHeight)
+		}
+	}
+
+	// 递归传递约束给子节点
+	for _, child := range node.Children {
+		e.passConstraints(child, innerWidth, innerHeight)
+	}
+}
+
+// notifyComponentSizes 通知所有组件其实际分配的尺寸
+func (e *Engine) notifyComponentSizes(nodes []*LayoutNode) {
+	for _, node := range nodes {
+		// 只通知有组件实例的节点
+		if node.Component == nil || node.Component.Instance == nil {
+			continue
+		}
+
+		// 尝试调用 SetSize 方法
+		// 方案 A：如果 ComponentInterface 有 SetSize (通过类型断言)
+		if component, ok := node.Component.Instance.(interface{ SetSize(w, h int) }); ok {
+			component.SetSize(node.Bound.Width, node.Bound.Height)
+			continue
+		}
+
+		// 兜底：尝试调用 SetWidth/SetHeight（向后兼容）
+		if setter, ok := node.Component.Instance.(interface{ SetWidth(w int) }); ok {
+			setter.SetWidth(node.Bound.Width)
+		}
+		if setter, ok := node.Component.Instance.(interface{ SetHeight(h int) }); ok {
+			setter.SetHeight(node.Bound.Height)
+		}
+	}
 }
 
 func (e *Engine) layoutNode(
@@ -192,27 +260,41 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 	}
 
 	// 检查 size 是否有有效值
+	isStyleSet := false
 	if size != nil && size.Value != nil {
 		switch v := size.Value.(type) {
 		case float64:
 			info.Size = int(v)
+			isStyleSet = true
 		case int:
 			info.Size = v
+			isStyleSet = true
 		case string:
 			if v == "flex" {
 				info.Grow.Value = 1
 				info.Size = 0 // 初始为0，稍后分配
-			}
-		default:
-			// 未知类型，使用默认测量
-			if config.Direction == DirectionRow {
-				info.Size = e.measureChildWidth(child, parentHeight)
-			} else {
-				info.Size = e.measureChildHeight(child, parentWidth)
+				isStyleSet = true
 			}
 		}
-	} else {
-		// size 为 nil 或 size.Value 为 nil，使用默认测量
+	}
+
+	// 如果没有样式定义，检查是否实现 Measurable 接口
+	if !isStyleSet && child.Component != nil && child.Component.Instance != nil {
+		if measurable, ok := child.Component.Instance.(core.Measurable); ok {
+			// 使用组件提供的测量结果
+			measuredWidth, measuredHeight := measurable.Measure(parentWidth, parentHeight)
+
+			if config.Direction == DirectionRow {
+				info.Size = measuredWidth
+			} else {
+				info.Size = measuredHeight
+			}
+			isStyleSet = true
+		}
+	}
+
+	// 如果仍未确定尺寸，使用默认测量逻辑
+	if !isStyleSet {
 		if config.Direction == DirectionRow {
 			info.Size = e.measureChildWidth(child, parentHeight)
 		} else {
@@ -572,18 +654,23 @@ func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 		}
 
 		props := e.getProps(node)
+
+		// ✅ 对于 text 组件，使用 runewidth 计算中文宽度
+		if node.Component.Instance.GetComponentType() == "text" {
+			if props != nil {
+				if content, ok := props["content"].(string); ok {
+					// 剥离 ANSI 转义符
+					stripped := ansi.Strip(content)
+					// 计算视觉宽度（中文算2个字符宽度）
+					return runewidth.StringWidth(stripped)
+				}
+			}
+		}
+
 		renderConfig := core.RenderConfig{
 			Width:  200,
 			Height: height,
 			Data:   props,
-		}
-
-		if node.Component.Instance.GetComponentType() == "text" {
-			if props != nil {
-				if content, ok := props["content"].(string); ok {
-					return len(content)
-				}
-			}
 		}
 
 		content, err := node.Component.Instance.Render(renderConfig)
@@ -591,7 +678,10 @@ func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 			lines := strings.Split(content, "\n")
 			maxWidth := 0
 			for _, line := range lines {
-				w := len(line)
+				// ✅ 剥离 ANSI 转义符
+				stripped := ansi.Strip(line)
+				// ✅ 使用 runewidth 计算视觉宽度
+				w := runewidth.StringWidth(stripped)
 				if w > maxWidth {
 					maxWidth = w
 				}
@@ -679,6 +769,7 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 		}
 		content, err := node.Component.Instance.Render(renderConfig)
 		if err == nil {
+			// ✅ 改进：使用 runewidth 计算行高（考虑中文换行）
 			lines := strings.Split(content, "\n")
 			lineCount := len(lines)
 			if lineCount > 0 && lineCount < 1000 {
@@ -701,11 +792,13 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 			// Try to estimate text height based on content and width
 			if props != nil {
 				if content, ok := props["content"].(string); ok {
-					// Simple estimation: content length / width
-					// This is a fallback if Render() above failed or wasn't called
+					// Use reflow/wrap for accurate height calculation with ANSI support
 					if width > 0 {
-						return int(math.Ceil(float64(len(content)) / float64(width)))
+						wrapped := wrap.String(content, width)
+						return strings.Count(wrapped, "\n") + 1
 					}
+					// Fallback if width is unknown (should assume 1 line or max width)
+					return 1
 				}
 			}
 			return 1

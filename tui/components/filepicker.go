@@ -66,7 +66,7 @@ func RenderFilePicker(props FilePickerProps, width int) string {
 
 	// Set height
 	if props.Height > 0 {
-		fp.SetHeight(props.Height)
+		fp.Height = props.Height
 	}
 
 	// Apply basic styles
@@ -125,7 +125,7 @@ func NewFilePickerModel(props FilePickerProps, id string) FilePickerModel {
 
 	// Set height
 	if props.Height > 0 {
-		fp.SetHeight(props.Height)
+		fp.Height = props.Height
 	}
 
 	return FilePickerModel{
@@ -204,7 +204,7 @@ func NewFilePickerComponentWrapper(props FilePickerProps, id string) *FilePicker
 
 	// Set height
 	if props.Height > 0 {
-		fp.SetHeight(props.Height)
+		fp.Height = props.Height
 	}
 
 	return &FilePickerComponentWrapper{
@@ -310,7 +310,7 @@ func (w *FilePickerComponentWrapper) Render(config core.RenderConfig) (string, e
 
 	// Update height if changed
 	if props.Height > 0 {
-		w.model.SetHeight(props.Height)
+		w.model.Height = props.Height
 	}
 
 	return w.View(), nil
@@ -341,15 +341,11 @@ func (w *FilePickerComponentWrapper) UpdateRenderConfig(config core.RenderConfig
 
 	// Update height if changed
 	if props.Height > 0 {
-		w.model.SetHeight(props.Height)
+		w.model.Height = props.Height
 	}
 
 	return nil
 }
-
-
-
-
 
 // GetSelectedFiles returns the selected files
 func (w *FilePickerComponentWrapper) GetSelectedFiles() []string {
@@ -410,7 +406,3 @@ func (m *FilePickerModel) Render(config core.RenderConfig) (string, error) {
 	_ = m.UpdateRenderConfig(config)
 	return m.View(), nil
 }
-
-
-
-

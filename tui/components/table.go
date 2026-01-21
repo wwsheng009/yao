@@ -338,12 +338,17 @@ func updateTableModelStyles(model *table.Model, props TableProps) {
 }
 
 // updateTableModelDimensions updates table dimensions without recreating the model
-func updateTableModelDimensions(model *table.Model, props TableProps) {
+func updateTableModelDimensions(model *table.Model, props TableProps, config core.RenderConfig) {
 	if props.Width > 0 {
 		model.SetWidth(props.Width)
+	} else if config.Width > 0 {
+		model.SetWidth(config.Width)
 	}
+
 	if props.Height > 0 {
 		model.SetHeight(props.Height)
+	} else if config.Height > 0 {
+		model.SetHeight(config.Height)
 	}
 }
 
@@ -443,10 +448,10 @@ func (m *TableModel) GetComponentType() string {
 func (m *TableModel) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
 	// Use the wrapper's UpdateMsg implementation for consistency
 	wrapper := &TableComponentWrapper{
-		model:       m.Model,
-		props:       m.props,
-		id:          m.id,
-		bindings:    m.props.Bindings,
+		model:    m.Model,
+		props:    m.props,
+		id:       m.id,
+		bindings: m.props.Bindings,
 		stateHelper: &TableStateHelper{
 			Indexer:     m,
 			Selector:    m,
@@ -780,7 +785,7 @@ func (w *TableComponentWrapper) Render(config core.RenderConfig) (string, error)
 	// Update the existing model instead of recreating it
 	updateTableModelData(&w.model, props.Data, props.Columns)
 	updateTableModelStyles(&w.model, props)
-	updateTableModelDimensions(&w.model, props)
+	updateTableModelDimensions(&w.model, props, config)
 	// updateTableModelFocus(&w.model, props.Focused)
 	w.props = props
 
@@ -805,7 +810,7 @@ func (w *TableComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	// Update table data, styles, dimensions, and focus using helper functions
 	updateTableModelData(&w.model, props.Data, props.Columns)
 	updateTableModelStyles(&w.model, props)
-	updateTableModelDimensions(&w.model, props)
+	updateTableModelDimensions(&w.model, props, config)
 	// don't update the focused property
 	// updateTableModelFocus(&w.model, props.Focused)
 
@@ -840,6 +845,46 @@ func (w *TableComponentWrapper) GetSubscribedMessageTypes() []string {
 		"tea.KeyMsg",
 		"core.TargetedMsg",
 	}
+}
+
+// Measure 返回表格的理想尺寸
+func (w *TableComponentWrapper) Measure(maxWidth, maxHeight int) (width, height int) {
+	// 宽度：计算所有列宽总和 + 边框
+	totalColumnWidth := 0
+	columns := w.model.Columns()
+	for _, col := range columns {
+		totalColumnWidth += col.Width
+	}
+
+	// 加上边框（左边框1个字符 + 每列间隔1个字符）
+	width = totalColumnWidth + len(columns) + 1
+
+	// 限制在 maxWidth 内
+	if width > maxWidth {
+		width = maxWidth
+	}
+
+	// 高度：行数 + 表头 + 边框
+	rows := w.model.Rows()
+	rowHeight := len(rows)
+	headerHeight := 1
+	borderHeight := 2 // 上下边框
+
+	height = rowHeight + headerHeight + borderHeight
+
+	// 限制在 maxHeight 内
+	if height > maxHeight {
+		height = maxHeight
+	}
+
+	return width, height
+}
+
+// SetSize 更新表格的实际显示尺寸
+func (w *TableComponentWrapper) SetSize(width, height int) {
+	// 直接设置底层 table.Model 的尺寸
+	w.model.SetWidth(width)
+	w.model.SetHeight(height)
 }
 
 // SetFocus sets or removes focus from table component
@@ -889,7 +934,7 @@ func (m *TableModel) UpdateRenderConfig(config core.RenderConfig) error {
 	// Update table data, styles, dimensions, and focus using helper functions
 	updateTableModelData(&m.Model, props.Data, props.Columns)
 	updateTableModelStyles(&m.Model, props)
-	updateTableModelDimensions(&m.Model, props)
+	updateTableModelDimensions(&m.Model, props, config)
 	// updateTableModelFocus(&m.Model, props.Focused)
 	m.data = props.Data
 

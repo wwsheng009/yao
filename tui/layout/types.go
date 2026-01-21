@@ -76,6 +76,18 @@ type LayoutNode struct {
 	Metrics       *LayoutMetrics
 	Parent        *LayoutNode
 	Dirty         bool
+
+	// AvailableWidth 是布局引擎传递给节点的可用宽度约束
+	AvailableWidth int
+
+	// AvailableHeight 是布局引擎传递给节点的可用高度约束
+	AvailableHeight int
+
+	// PreferredWidth 是节点根据约束反馈的理想宽度
+	PreferredWidth int
+
+	// PreferredHeight 是节点根据约束反馈的理想高度
+	PreferredHeight int
 }
 
 type LayoutStyle struct {

@@ -14,7 +14,7 @@ func TestRenderText(t *testing.T) {
 		Bold:    true,
 	}
 
-	result := RenderText(props, 20)
+	result := RenderText(props, 20, 5)
 	if result == "" {
 		t.Error("RenderText should return non-empty string")
 	}
@@ -43,6 +43,7 @@ func TestTextModel_UpdateMsg(t *testing.T) {
 	model := &TextModel{
 		Props: TextProps{Content: "Test"},
 		Width: 20,
+		id:    "text",
 	}
 
 	// Test targeted message
@@ -82,7 +83,7 @@ func TestTextModel_View(t *testing.T) {
 }
 
 func TestTextModel_GetID(t *testing.T) {
-	model := &TextModel{}
+	model := &TextModel{id: "text"}
 	if model.GetID() != "text" {
 		t.Errorf("Expected ID 'text', got '%s'", model.GetID())
 	}

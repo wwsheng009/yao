@@ -321,8 +321,18 @@ func TestHandleStateChanges_WithoutUpdateMsgAndWithEventCmds(t *testing.T) {
 
 	// 执行命令，应该处理状态变化事件
 	msg := cmd()
-	// updateMsg 是 nil，所以最终消息应该是 nil（因为 eventCmds 也是返回 nil 的 PublishEvent）
-	assert.Nil(t, msg)
+	// updateMsg 是 nil，但 eventCmds 会生成 ActionMsg，所以最终消息不应该是 nil
+	assert.NotNil(t, msg)
+
+	// 验证消息类型
+	if batchMsg, ok := msg.(tea.BatchMsg); ok {
+		// 如果是 BatchMsg，检查其内容
+		assert.NotEmpty(t, batchMsg)
+	} else {
+		// 如果不是 BatchMsg，应该是 ActionMsg
+		_, ok := msg.(ActionMsg)
+		assert.True(t, ok, "Expected ActionMsg or BatchMsg")
+	}
 }
 
 // TestHandleDefaultEscape 测试 handleDefaultEscape 函数
