@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
-	"github.com/yaoapp/yao/tui/layout"
+	"github.com/yaoapp/yao/tui/legacy/layout"
 )
 
 // RenderLayout renders the entire layout using the flexible layout engine.

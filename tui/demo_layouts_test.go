@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yaoapp/yao/tui/layout"
+	"github.com/yaoapp/yao/tui/legacy/layout"
 )
 
 // DemoDir 指向 demo 文件的目录

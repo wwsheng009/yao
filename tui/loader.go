@@ -13,6 +13,7 @@ import (
 	"github.com/yaoapp/yao/data"
 	"github.com/yaoapp/yao/share"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/dsl"
 )
 
 // systemTUIs defines built-in TUI configurations
@@ -331,6 +332,7 @@ func List() []string {
 }
 
 // loadFile loads and parses a TUI configuration file.
+// Supports both JSON (.json, .jsonc) and YAML (.yml, .yaml) formats.
 func loadFile(file string) (*Config, error) {
 	// Read file content
 	data, err := application.App.Read(file)
@@ -338,11 +340,14 @@ func loadFile(file string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Parse JSON (supports .json, .jsonc - JSON with comments will be handled by parser)
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	// Parse using DSL parser (auto-detects JSON vs YAML)
+	dslCfg, err := dsl.ParseFile(data, file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse file: %w", err)
 	}
+
+	// Convert DSL Config to legacy Config format for backward compatibility
+	cfg := convertDSLToLegacyConfig(dslCfg)
 
 	// If the config has data property, flatten it using unified flattening function
 	if cfg.Data != nil {
@@ -385,9 +390,106 @@ func loadFile(file string) (*Config, error) {
 	}
 
 	// Add default submit bindings for input components
-	setDefaultInputSubmitBindings(&cfg)
+	setDefaultInputSubmitBindings(cfg)
 
-	return &cfg, nil
+	return cfg, nil
+}
+
+// convertDSLToLegacyConfig converts a DSL Config to the legacy Config format.
+// This maintains backward compatibility with existing code.
+func convertDSLToLegacyConfig(dslCfg *dsl.Config) *Config {
+	cfg := &Config{
+		ID:             dslCfg.ID,
+		Name:           dslCfg.Name,
+		Data:           dslCfg.Data,
+		OnLoad:         dslCfg.OnLoad,
+		Bindings:       dslCfg.Bindings,
+		LogLevel:       dslCfg.LogLevel,
+		AutoFocus:      dslCfg.AutoFocus,
+		NavigationMode: dslCfg.NavigationMode,
+		TabCycles:      dslCfg.TabCycles,
+	}
+
+	// Convert DSL Node tree to legacy Layout
+	if dslCfg.Layout != nil {
+		cfg.Layout = convertDSLNodeToLegacyLayout(dslCfg.Layout)
+	}
+
+	return cfg
+}
+
+// convertDSLNodeToLegacyLayout converts a DSL Node to a legacy Layout.
+func convertDSLNodeToLegacyLayout(dslNode *dsl.Node) Layout {
+	layout := Layout{
+		Direction: dslNode.Direction,
+		Style:     "", // Style name not used in DSL
+		Padding:   dslNode.Padding,
+	}
+
+	// Convert children
+	if len(dslNode.Children) > 0 {
+		layout.Children = make([]Component, len(dslNode.Children))
+		for i, child := range dslNode.Children {
+			layout.Children[i] = convertDSLNodeToLegacyComponent(child)
+		}
+	}
+
+	return layout
+}
+
+// convertDSLNodeToLegacyComponent converts a DSL Node to a legacy Component.
+func convertDSLNodeToLegacyComponent(dslNode *dsl.Node) Component {
+	comp := Component{
+		ID:        dslNode.ID,
+		Type:      dslNode.Type,
+		Bind:      dslNode.Bind,
+		Props:     dslNode.Props,
+		Actions:   dslNode.Actions,
+		Direction: dslNode.Direction,
+	}
+
+	// Convert size properties
+	if dslNode.Width != nil {
+		comp.Width = dslNode.Width
+	}
+	if dslNode.Height != nil {
+		comp.Height = dslNode.Height
+	}
+	if dslNode.FlexGrow > 0 {
+		if comp.Props == nil {
+			comp.Props = make(map[string]interface{})
+		}
+		comp.Props["flexGrow"] = dslNode.FlexGrow
+	}
+
+	// Convert style properties to props for backward compatibility
+	if dslNode.Style != nil {
+		if comp.Props == nil {
+			comp.Props = make(map[string]interface{})
+		}
+		if dslNode.Style.Width != nil {
+			comp.Props["width"] = dslNode.Style.Width
+		}
+		if dslNode.Style.Height != nil {
+			comp.Props["height"] = dslNode.Style.Height
+		}
+		if len(dslNode.Style.Padding) > 0 {
+			comp.Props["padding"] = dslNode.Style.Padding
+		}
+		if dslNode.Style.Gap > 0 {
+			comp.Props["gap"] = dslNode.Style.Gap
+		}
+	}
+
+	// Convert children
+	if len(dslNode.Children) > 0 {
+		comp.Children = make([]Component, len(dslNode.Children))
+		for i, child := range dslNode.Children {
+			comp.Children[i] = convertDSLNodeToLegacyComponent(child)
+		}
+	}
+
+	return comp
 }
 
 // setDefaultInputSubmitBindings adds default submit bindings for input components

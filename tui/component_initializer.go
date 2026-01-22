@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
-	"github.com/yaoapp/yao/tui/layout"
+	"github.com/yaoapp/yao/tui/legacy/layout"
 )
 
 const maxLayoutDepth = 50

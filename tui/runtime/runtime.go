@@ -1,11 +1,28 @@
 package runtime
 
+import "strings"
+
 // Event is a placeholder for future event system
 // v1: simplified, will be expanded in Phase 3
 type Event struct {
 	X, Y int
 	Type string
 	Data interface{}
+}
+
+// FocusableComponent is an interface for components that can receive focus.
+// This is the minimal interface required for focus management.
+type FocusableComponent interface {
+	SetFocus(focus bool)
+	IsFocusable() bool
+}
+
+// Rect represents a rectangle region.
+type Rect struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
 }
 
 // Runtime is the main interface for the Yao TUI Runtime.
@@ -95,36 +112,9 @@ type Cell struct {
 type CellStyle struct {
 	Bold      bool
 	Underline bool
+	Italic    bool
 	// v1: foreground/background will be handled by text rendering
 	// Full lipgloss.Style support will be in render module
-}
-
-// NewCellBuffer creates a new CellBuffer with the given dimensions.
-func NewCellBuffer(width, height int) *CellBuffer {
-	if width <= 0 {
-		width = 80
-	}
-	if height <= 0 {
-		height = 24
-	}
-
-	cells := make([][]Cell, height)
-	for y := 0; y < height; y++ {
-		cells[y] = make([]Cell, width)
-		for x := 0; x < width; x++ {
-			cells[y][x] = Cell{
-				Char:   ' ',
-				Style:  CellStyle{},
-				ZIndex: 0,
-			}
-		}
-	}
-
-	return &CellBuffer{
-		cells:  cells,
-		width:  width,
-		height: height,
-	}
 }
 
 // SetContent sets a cell at the given position.
@@ -142,6 +132,26 @@ func (b *CellBuffer) SetContent(x, y, z int, char rune, style CellStyle, nodeID 
 	b.cells[y][x] = Cell{
 		Char:   char,
 		Style:  style,
+		ZIndex: z,
+		NodeID: nodeID,
+	}
+}
+
+// SetContentRuntime sets a cell at the given position using individual style parameters.
+// This method is used by the render package adapter to avoid circular imports.
+func (b *CellBuffer) SetContentRuntime(x, y, z int, char rune, bold, underline, italic bool, nodeID string) {
+	if x < 0 || x >= b.width || y < 0 || y >= b.height {
+		return
+	}
+
+	// Check Z-Index
+	if z < b.cells[y][x].ZIndex {
+		return
+	}
+
+	b.cells[y][x] = Cell{
+		Char:   char,
+		Style:  CellStyle{Bold: bold, Underline: underline, Italic: italic},
 		ZIndex: z,
 		NodeID: nodeID,
 	}
@@ -178,19 +188,68 @@ func (b *CellBuffer) Height() int {
 	return b.height
 }
 
-// String returns the buffer as a string.
-// This is a simple implementation that will be enhanced in the render module
-// to properly handle styles and lipgloss integration.
+// String returns the buffer as a string with ANSI escape codes for styling.
+// This outputs the buffer with proper terminal styling support.
 func (b *CellBuffer) String() string {
+	if b.height == 0 {
+		return ""
+	}
+
 	lines := make([]string, b.height)
 	for y := 0; y < b.height; y++ {
-		runes := make([]rune, b.width)
+		var lineBuilder strings.Builder
+		currentStyle := b.cells[y][0].Style
+
+		// Start with the initial style
+		lineBuilder.WriteString(styleToANSI(currentStyle))
+
 		for x := 0; x < b.width; x++ {
-			runes[x] = b.cells[y][x].Char
+			cell := b.cells[y][x]
+
+			// Check if style changed
+			if cell.Style != currentStyle {
+				lineBuilder.WriteString(styleToANSI(cell.Style))
+				currentStyle = cell.Style
+			}
+
+			// Append character
+			lineBuilder.WriteRune(cell.Char)
 		}
-		lines[y] = string(runes)
+
+		// Reset style at end of line
+		lineBuilder.WriteString("\x1b[0m")
+		lines[y] = lineBuilder.String()
 	}
+
 	return joinLines(lines)
+}
+
+// styleToANSI converts a CellStyle to ANSI escape codes
+func styleToANSI(style CellStyle) string {
+	if !style.Bold && !style.Underline && !style.Italic {
+		return "\x1b[0m" // Reset
+	}
+
+	codes := []string{}
+	if style.Bold {
+		codes = append(codes, "1")
+	}
+	if style.Underline {
+		codes = append(codes, "4")
+	}
+	if style.Italic {
+		codes = append(codes, "3")
+	}
+
+	result := "\x1b["
+	for i, code := range codes {
+		if i > 0 {
+			result += ";"
+		}
+		result += code
+	}
+	result += "m"
+	return result
 }
 
 // joinLines joins lines with newline characters

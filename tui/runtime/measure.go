@@ -26,18 +26,46 @@ func measure(node *LayoutNode, c BoxConstraints) Size {
 		return Size{Width: 0, Height: 0}
 	}
 
-	// Calculate inner constraints (subtract padding)
+	// Calculate inner constraints (subtract padding and border)
 	innerC := c
-	innerC.MaxWidth = max(0, c.MaxWidth-node.Style.Padding.Left-node.Style.Padding.Right)
-	innerC.MaxHeight = max(0, c.MaxHeight-node.Style.Padding.Top-node.Style.Padding.Bottom)
+	innerC.MaxWidth = max(0, c.MaxWidth-node.Style.Padding.Left-node.Style.Padding.Right-node.Style.Border.Left-node.Style.Border.Right)
+	innerC.MaxHeight = max(0, c.MaxHeight-node.Style.Padding.Top-node.Style.Padding.Bottom-node.Style.Border.Top-node.Style.Border.Bottom)
 
 	// Leaf node: use component's Measure interface
 	if len(node.Children) == 0 {
+		// Resolve percentages against parent constraints
+		explicitWidth := node.Style.Width
+		explicitHeight := node.Style.Height
+
+		// Resolve width percentage
+		if IsPercent(node.Style.Width) {
+			explicitWidth, _ = ResolvePercent(node.Style.Width, c.MaxWidth)
+		}
+		// Resolve height percentage
+		if IsPercent(node.Style.Height) {
+			explicitHeight, _ = ResolvePercent(node.Style.Height, c.MaxHeight)
+		}
+
+		// If both width and height are explicitly set (including resolved percentages)
+		if explicitWidth >= 0 && explicitHeight >= 0 {
+			node.MeasuredWidth = explicitWidth
+			node.MeasuredHeight = explicitHeight
+			return Size{Width: explicitWidth, Height: explicitHeight}
+		}
+
 		size := node.Measure(innerC)
 
-		// Add padding back to total size
-		size.Width += node.Style.Padding.Left + node.Style.Padding.Right
-		size.Height += node.Style.Padding.Top + node.Style.Padding.Bottom
+		// Apply explicit width or height if set
+		if explicitWidth >= 0 {
+			size.Width = explicitWidth
+		}
+		if explicitHeight >= 0 {
+			size.Height = explicitHeight
+		}
+
+		// Add padding and border back to total size
+		size.Width += node.Style.Padding.Left + node.Style.Padding.Right + node.Style.Border.Left + node.Style.Border.Right
+		size.Height += node.Style.Padding.Top + node.Style.Padding.Bottom + node.Style.Border.Top + node.Style.Border.Bottom
 
 		// Constrain to parent's constraints
 		size.Width, size.Height = c.Constrain(size.Width, size.Height)
@@ -72,9 +100,9 @@ func measureContainer(node *LayoutNode, innerC, outerC BoxConstraints) Size {
 		size = Size{Width: 0, Height: 0}
 	}
 
-	// Add padding back to total size
-	size.Width += node.Style.Padding.Left + node.Style.Padding.Right
-	size.Height += node.Style.Padding.Top + node.Style.Padding.Bottom
+	// Add padding and border back to total size
+	size.Width += node.Style.Padding.Left + node.Style.Padding.Right + node.Style.Border.Left + node.Style.Border.Right
+	size.Height += node.Style.Padding.Top + node.Style.Padding.Bottom + node.Style.Border.Top + node.Style.Border.Bottom
 
 	// Constrain to parent's constraints
 	size.Width, size.Height = outerC.Constrain(size.Width, size.Height)
@@ -203,16 +231,26 @@ func measureFlexContainer(node *LayoutNode, innerC, outerC BoxConstraints) Size 
 		}
 	}
 
-	// Apply min/max constraints from node's explicit size
+	// Apply explicit size constraints
+	// When a node has explicit width/height, use that instead of calculated size
+	// Resolve percentages against parent constraints
 	if node.Style.Width >= 0 {
-		if isRow {
-			containerMainSize = max(containerMainSize, node.Style.Width)
-		}
+		containerMainSize = node.Style.Width
+	} else if IsPercent(node.Style.Width) {
+		containerMainSize, _ = ResolvePercent(node.Style.Width, outerC.MaxWidth)
 	}
 
 	if node.Style.Height >= 0 {
-		if !isRow {
-			containerMainSize = max(containerMainSize, node.Style.Height)
+		if isRow {
+			containerCrossSize = node.Style.Height
+		} else {
+			containerMainSize = node.Style.Height
+		}
+	} else if IsPercent(node.Style.Height) {
+		if isRow {
+			containerCrossSize, _ = ResolvePercent(node.Style.Height, outerC.MaxHeight)
+		} else {
+			containerMainSize, _ = ResolvePercent(node.Style.Height, outerC.MaxHeight)
 		}
 	}
 

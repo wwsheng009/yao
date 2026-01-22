@@ -84,25 +84,67 @@ type LayoutNode struct {
 
 ```go
 type Style struct {
-    Width     int  // -1 auto
-    Height    int  // -1 auto
+    Width     int  // -1 auto, -2~-101 表示 2%~101%
+    Height    int  // -1 auto, -2~-101 表示 2%~101%
     FlexGrow  float64
     Direction Direction // Row / Column
 
     Padding   Insets
+    Border    Insets  // v1.1: 物理边框，占用布局空间
     ZIndex    int
     Overflow  Overflow // Visible / Hidden / Scroll
+
+    AlignItems Align     // v1: 交叉轴对齐
+    Justify    Justify   // v1: 主轴对齐
+    Gap        int       // v1: 子节点间距
 }
 ```
 
 ### v1 明确不支持
 
-* ❌ 百分比
 * ❌ Grid（v2）
 * ❌ Wrap（v2）
 * ❌ CSS Selector
 * ❌ 动画系统（v2）
 * ❌ 富文本编辑（v2）
+
+### v1.1 新增特性（2026-01-22）
+
+#### Border 支持
+Border 现在作为物理空间参与布局计算：
+
+```go
+// 设置 1 字符宽度的边框
+style := runtime.NewStyle().WithBorderWidth(1)
+
+// 设置不对称边框
+style := runtime.NewStyle().WithBorder(runtime.Insets{
+    Top:    1,
+    Right:  2,
+    Bottom: 1,
+    Left:   2,
+})
+```
+
+Border 会：
+* ✅ 占用物理空间（从父容器可用空间中扣除）
+* ✅ 影响子节点可用区域
+* ✅ 被计入节点的总尺寸中
+
+#### 百分比支持
+Width/Height 现在支持百分比：
+
+```go
+// 50% 宽度
+style := runtime.NewStyle().WithWidthPercent(50)
+
+// 100% 高度
+style := runtime.NewStyle().WithHeightPercent(100)
+```
+
+百分比编码：
+- 负值 `-2` 到 `-101` 表示 `2%` 到 `101%`
+- 在 measure 阶段自动解析为父容器约束的百分比
 
 ---
 
@@ -239,10 +281,12 @@ Yao TUI Runtime 实现了一个简化的 Flexbox 算法，专注于企业级 TUI
 #### v1（当前版本）
 - ✅ Direction: Row / Column
 - ✅ Flex-Grow: 比例分配剩余空间
-- ✅ Justify: Start / Center / End / Space-Between
+- ✅ Justify: Start / Center / End / Space-Between / Space-Around / Space-Evenly
 - ✅ AlignItems: Start / Center / End / Stretch
 - ✅ Padding: 内边距
+- ✅ Border: 边框（v1.1，物理占位）
 - ✅ Gap: 子节点间距
+- ✅ 百分比: Width/Height 百分比（v1.1）
 
 #### v2（未来版本）
 - 🔄 Flex-Shrink: 空间不足时的收缩（部分实现）

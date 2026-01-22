@@ -1,5 +1,15 @@
 package runtime
 
+import (
+	"github.com/yaoapp/yao/tui/runtime/render"
+)
+
+// NOTE: Component rendering with lipgloss styling is now handled by the render module
+// to maintain module boundary rules (runtime MUST NOT import lipgloss directly).
+//
+// The render module provides RenderNode() and RenderNodeWithStyle() functions
+// for component rendering.
+
 // RuntimeImpl is the default implementation of the Runtime interface.
 //
 // v1: Implementation focuses on basic layout and rendering.
@@ -8,10 +18,17 @@ package runtime
 //   - Performs Measure phase using PerformMeasure
 //   - Performs Layout phase using PerformLayout
 //   - Performs Render phase to generate frames
+//   - Manages event dispatch and focus navigation (Phase 3)
+//   - Supports diff rendering for performance optimization (Phase 4)
 type RuntimeImpl struct {
-	width     int
-	height    int
-	lastFrame *Frame
+	width       int
+	height      int
+	lastFrame   *Frame
+	lastResult  LayoutResult // Cached for event dispatch
+	dirtyRegions []Rect      // Track dirty regions for optimization
+	forceFullRender bool     // Force full render on next frame
+	focusMgr    *FocusManager
+	lastRoot    *LayoutNode  // Cached for focus updates
 }
 
 // NewRuntime creates a new RuntimeImpl with the given dimensions.
@@ -23,8 +40,9 @@ func NewRuntime(width, height int) *RuntimeImpl {
 		height = 24
 	}
 	return &RuntimeImpl{
-		width:  width,
-		height: height,
+		width:    width,
+		height:   height,
+		focusMgr: NewFocusManager(),
 	}
 }
 
@@ -33,12 +51,16 @@ func NewRuntime(width, height int) *RuntimeImpl {
 // This includes:
 //  1. Measure phase: Calculate intrinsic sizes
 //  2. Layout phase: Assign positions
+//  3. Focus management: Update focusable components
 //
 // Returns a LayoutResult containing all positioned nodes.
 func (r *RuntimeImpl) Layout(root *LayoutNode, c BoxConstraints) LayoutResult {
 	if root == nil {
 		return LayoutResult{}
 	}
+
+	// Cache root for focus updates
+	r.lastRoot = root
 
 	// Phase 1: Measure (bottom-up)
 	PerformMeasure(root, c)
@@ -50,11 +72,28 @@ func (r *RuntimeImpl) Layout(root *LayoutNode, c BoxConstraints) LayoutResult {
 	// Collect boxes
 	boxes := r.collectBoxes(root)
 
-	return LayoutResult{
+	result := LayoutResult{
 		Boxes:      boxes,
 		RootWidth:  root.MeasuredWidth,
 		RootHeight: root.MeasuredHeight,
-		Dirty:      false, // Will be enhanced in v1.1 with dirty tracking
+		Dirty:      false,
+	}
+
+	// Cache result for event dispatch
+	r.lastResult = result
+
+	// Update focus manager with new layout
+	r.updateFocusManager(root)
+
+	return result
+}
+
+// updateFocusManager updates the focus manager with focusable components from the layout.
+func (r *RuntimeImpl) updateFocusManager(root *LayoutNode) {
+	// Collect focusable components from the layout
+	focusable := CollectFocusableFromNode(root)
+	if len(focusable) > 0 {
+		r.focusMgr.SetFocusable(focusable)
 	}
 }
 
@@ -84,84 +123,14 @@ func (r *RuntimeImpl) layoutNode(node *LayoutNode, c BoxConstraints) {
 }
 
 // layoutFlexChildren layouts children in a flex layout.
+// Uses the enhanced flex algorithm with full justify and align support.
 func (r *RuntimeImpl) layoutFlexChildren(node *LayoutNode) {
 	if len(node.Children) == 0 {
 		return
 	}
 
-	innerX := node.X + node.Style.Padding.Left
-	innerY := node.Y + node.Style.Padding.Top
-	availableWidth := node.MeasuredWidth - node.Style.Padding.Left - node.Style.Padding.Right
-	availableHeight := node.MeasuredHeight - node.Style.Padding.Top - node.Style.Padding.Bottom
-
-	isRow := node.Style.Direction == DirectionRow
-
-	if isRow {
-		// Row layout: place children horizontally
-		curX := innerX
-		totalChildWidth := 0
-		for _, child := range node.Children {
-			totalChildWidth += child.MeasuredWidth
-		}
-
-		// Calculate starting position based on justify
-		switch node.Style.Justify {
-		case JustifyCenter:
-			curX = innerX + (availableWidth-totalChildWidth)/2
-		case JustifyEnd:
-			curX = innerX + availableWidth - totalChildWidth
-		case JustifyStart, JustifySpaceBetween, JustifySpaceAround, JustifySpaceEvenly:
-			curX = innerX
-		}
-
-		for _, child := range node.Children {
-			child.X = curX
-			child.Y = innerY
-
-			// Recursively layout child
-			r.layoutNode(child, BoxConstraints{
-				MinWidth:  child.MeasuredWidth,
-				MaxWidth:  child.MeasuredWidth,
-				MinHeight: child.MeasuredHeight,
-				MaxHeight: child.MeasuredHeight,
-			})
-
-			curX += child.MeasuredWidth + node.Style.Gap
-			r.layoutNode(child, BoxConstraints{}) // Ensure children are laid out
-		}
-	} else {
-		// Column layout: place children vertically
-		curY := innerY
-		totalChildHeight := 0
-		for _, child := range node.Children {
-			totalChildHeight += child.MeasuredHeight
-		}
-
-		// Calculate starting position based on justify
-		switch node.Style.Justify {
-		case JustifyCenter:
-			curY = innerY + (availableHeight-totalChildHeight)/2
-		case JustifyEnd:
-			curY = innerY + availableHeight - totalChildHeight
-		case JustifyStart, JustifySpaceBetween, JustifySpaceAround, JustifySpaceEvenly:
-			curY = innerY
-		}
-
-		for _, child := range node.Children {
-			child.X = innerX
-			child.Y = curY
-
-			// Recursively layout child
-			r.layoutNode(child, BoxConstraints{
-				MinWidth:  child.MeasuredWidth,
-				MaxWidth:  child.MeasuredWidth,
-				MinHeight: child.MeasuredHeight,
-				MaxHeight: child.MeasuredHeight,
-			})
-
-			curY += child.MeasuredHeight + node.Style.Gap
-		}
-	}
+	// Use the enhanced flex layout algorithm
+	layoutFlexChildrenEnhanced(node, r.layoutNode)
 }
 
 // layoutDefault is a fallback layout that stacks children vertically.
@@ -207,7 +176,7 @@ func (r *RuntimeImpl) collectBoxesRecursive(node *LayoutNode, boxes *[]LayoutBox
 // Render generates a Frame from a LayoutResult.
 //
 // This creates a CellBuffer and renders all nodes in Z-Index order.
-// v1: Simple implementation, will be enhanced in render module.
+// v1: Enhanced with diff rendering for performance optimization.
 func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 	// Sort boxes by Z-Index
 	sortedBoxes := make([]LayoutBox, len(result.Boxes))
@@ -225,10 +194,38 @@ func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 	// Create buffer
 	buf := NewCellBuffer(r.width, r.height)
 
-	// Render each node
-	for _, box := range sortedBoxes {
-		if box.Node != nil && box.Node.Component != nil {
-			r.renderComponent(buf, box)
+	// Optimize: If forceFullRender is set or no last frame, render everything
+	// Otherwise, only render dirty regions
+	if r.forceFullRender || r.lastFrame == nil {
+		// Full render
+		for _, box := range sortedBoxes {
+			if box.Node != nil && box.Node.Component != nil {
+				r.renderComponent(buf, box)
+			}
+		}
+		r.forceFullRender = false
+		r.dirtyRegions = nil
+	} else {
+		// Partial render based on dirty regions
+		if len(r.dirtyRegions) > 0 {
+			for _, region := range r.dirtyRegions {
+				// Clear dirty region
+				for y := region.Y; y < region.Y+region.Height && y < r.height; y++ {
+					for x := region.X; x < region.X+region.Width && x < r.width; x++ {
+						buf.SetContentRuntime(x, y, 0, ' ', false, false, false, "")
+					}
+				}
+			}
+		}
+		// Render all components (they will check dirty state internally)
+		for _, box := range sortedBoxes {
+			if box.Node != nil && box.Node.Component != nil {
+				// Check if component intersects any dirty region or if no regions tracked
+				shouldRender := len(r.dirtyRegions) == 0 || r.intersectsDirtyRegion(box)
+				if shouldRender {
+					r.renderComponent(buf, box)
+				}
+			}
 		}
 	}
 
@@ -236,43 +233,147 @@ func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 		Buffer: buf,
 		Width:  r.width,
 		Height: r.height,
-		Dirty:  false, // Will be enhanced in v1.1
+		Dirty:  len(r.dirtyRegions) > 0,
 	}
 
+	// Compute diff for next frame
+	r.computeDiff(&frame)
+
 	r.lastFrame = &frame
+	r.lastResult = result
 	return frame
 }
 
 // renderComponent renders a component to the CellBuffer.
-// v1: Very basic implementation, just renders Text components.
+// Uses the render module for styling to maintain module boundary rules.
 func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 	if box.Node == nil || box.Node.Component == nil || box.Node.Component.Instance == nil {
 		return
 	}
 
-	// Try to render using core.ComponentInterface.View
+	// Get component view text
 	text := box.Node.Component.Instance.View()
 	if text == "" {
 		return
 	}
 
-	style := CellStyle{} // v1: simplified, will use lipgloss.Style in v1.1
+	// Wrap the buffer with an adapter to avoid circular dependency
+	adapter := render.NewCellBufferAdapter(buf)
 
-	// Render text to buffer
-	y := box.Y
-	lines := splitLines(text)
-	for _, line := range lines {
-		if y >= box.Y+box.H {
-			break
+	// Render text to buffer using the render module
+	// This handles multi-line text, wrapping, and styling
+	render.RenderNode(adapter, text, box.X, box.Y, box.ZIndex, box.W)
+}
+
+// intersectsDirtyRegion checks if a layout box intersects any dirty region.
+func (r *RuntimeImpl) intersectsDirtyRegion(box LayoutBox) bool {
+	for _, region := range r.dirtyRegions {
+		// Check if box intersects region
+		if !(box.X+box.W <= region.X || box.X >= region.X+region.Width ||
+			box.Y+box.H <= region.Y || box.Y >= region.Y+region.Height) {
+			return true
 		}
-		for x, r := range line {
-			if x >= box.W {
-				break
-			}
-			buf.SetContent(box.X+x, y, box.ZIndex, r, style, box.NodeID)
-		}
-		y++
 	}
+	return false
+}
+
+// computeDiff computes the difference between the new frame and the last frame.
+// This stores dirty regions for the next render cycle.
+func (r *RuntimeImpl) computeDiff(newFrame *Frame) {
+	if r.lastFrame == nil || r.lastFrame.Buffer == nil {
+		// No previous frame, mark entire frame as dirty
+		r.dirtyRegions = []Rect{{
+			X:      0,
+			Y:      0,
+			Width:  r.width,
+			Height: r.height,
+		}}
+		return
+	}
+
+	// Convert frames to render.Frame format for diff computation
+	oldRenderFrame := render.Frame{
+		Buffer: &cellBufferAdapter{r.lastFrame.Buffer},
+		Width:  r.lastFrame.Width,
+		Height: r.lastFrame.Height,
+	}
+	newRenderFrame := render.Frame{
+		Buffer: &cellBufferAdapter{newFrame.Buffer},
+		Width:  newFrame.Width,
+		Height: newFrame.Height,
+	}
+
+	// Compute diff
+	diffResult := render.ComputeDiff(oldRenderFrame, newRenderFrame)
+
+	// Convert render.Rect to runtime.Rect and store
+	if diffResult.HasChanges {
+		r.dirtyRegions = make([]Rect, len(diffResult.DirtyRegions))
+		for i, region := range diffResult.DirtyRegions {
+			r.dirtyRegions[i] = Rect{
+				X:      region.X,
+				Y:      region.Y,
+				Width:  region.Width,
+				Height: region.Height,
+			}
+		}
+	} else {
+		r.dirtyRegions = nil
+	}
+}
+
+// MarkDirty marks a specific region as dirty, forcing a re-render on the next frame.
+func (r *RuntimeImpl) MarkDirty(x, y, width, height int) {
+	r.dirtyRegions = append(r.dirtyRegions, Rect{
+		X:      x,
+		Y:      y,
+		Width:  width,
+		Height: height,
+	})
+}
+
+// MarkFullRender forces a full render on the next frame.
+func (r *RuntimeImpl) MarkFullRender() {
+	r.forceFullRender = true
+}
+
+// GetDirtyRegions returns the current dirty regions.
+func (r *RuntimeImpl) GetDirtyRegions() []Rect {
+	return r.dirtyRegions
+}
+
+// cellBufferAdapter adapts runtime.CellBuffer to render.FrameBuffer interface.
+type cellBufferAdapter struct {
+	buffer *CellBuffer
+}
+
+func (a *cellBufferAdapter) GetContent(x, y int) render.Cell {
+	if a.buffer == nil {
+		return render.Cell{}
+	}
+	cell := a.buffer.GetContent(x, y)
+	return render.Cell{
+		Char: cell.Char,
+		Style: render.CellStyle{
+			Bold:      cell.Style.Bold,
+			Underline: cell.Style.Underline,
+			Italic:    cell.Style.Italic,
+		},
+	}
+}
+
+func (a *cellBufferAdapter) Width() int {
+	if a.buffer == nil {
+		return 0
+	}
+	return a.buffer.Width()
+}
+
+func (a *cellBufferAdapter) Height() int {
+	if a.buffer == nil {
+		return 0
+	}
+	return a.buffer.Height()
 }
 
 // UpdateDimensions updates the runtime dimensions.
@@ -285,14 +386,41 @@ func (r *RuntimeImpl) UpdateDimensions(width, height int) {
 	}
 }
 
-// Dispatch is a placeholder for event handling (Phase 3).
+// Dispatch handles an input event (keyboard, mouse, etc.).
+// Phase 3: Implementation uses the event dispatch system.
 func (r *RuntimeImpl) Dispatch(ev Event) {
-	// v1: Placeholder - will be implemented in Phase 3
+	// Check for keyboard navigation keys
+	if ev.Type == "key" {
+		// Check for Tab key (could be in ev.Data)
+		if key, ok := ev.Data.(rune); ok {
+			if key == '\t' {
+				r.focusMgr.FocusNext()
+				return
+			}
+		}
+	}
+
+	// For other events, we'd dispatch to the appropriate component
+	// This is a simplified implementation - full integration with Bubble Tea
+	// would require converting Bubble Tea messages to our Event format
+	_ = ev // Placeholder for mouse and other events
 }
 
-// FocusNext is a placeholder for focus management (Phase 3).
+// FocusNext moves focus to the next focusable component.
+// Phase 3: Implementation uses the focus manager.
 func (r *RuntimeImpl) FocusNext() {
-	// v1: Placeholder - will be implemented in Phase 3
+	r.focusMgr.FocusNext()
+}
+
+// FocusPrev moves focus to the previous focusable component.
+func (r *RuntimeImpl) FocusPrev() {
+	r.focusMgr.FocusPrev()
+}
+
+// GetFocusManager returns the runtime's focus manager.
+// This allows external code to query or manipulate focus state.
+func (r *RuntimeImpl) GetFocusManager() *FocusManager {
+	return r.focusMgr
 }
 
 // GetWidth returns the runtime width.
