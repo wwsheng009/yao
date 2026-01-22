@@ -79,6 +79,11 @@ func (m *Model) InitializeComponents() []tea.Cmd {
 
 // createLayoutTree creates a LayoutNode tree from the Config.Layout structure.
 func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry, depth int) *layout.LayoutNode {
+	return m.createLayoutTreeWithCounter(layoutCfg, registry, depth, make(map[string]int))
+}
+
+// createLayoutTreeWithCounter creates a LayoutNode tree with type counters for ID generation
+func (m *Model) createLayoutTreeWithCounter(layoutCfg *Layout, registry *ComponentRegistry, depth int, typeCounters map[string]int) *layout.LayoutNode {
 	if layoutCfg == nil || depth > maxLayoutDepth {
 		return nil
 	}
@@ -117,24 +122,29 @@ func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry,
 		)
 	}
 
-	for _, child := range layoutCfg.Children {
+	for i := range layoutCfg.Children {
+		child := &layoutCfg.Children[i] // Use pointer to modify original
 		if child.Type == "layout" {
 			// Support both old format (children + direction) and new format (props.layout)
 			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
 				// New format: nested layout in props.layout
-				nestedNode := m.createLayoutTree(nestedLayout, registry, depth+1)
+				nestedNode := m.createLayoutTreeWithCounter(nestedLayout, registry, depth+1, typeCounters)
 				if nestedNode != nil {
 					builder.AddNode(nestedNode)
 				}
 			} else if len(child.Children) > 0 {
 				// Old format: type="layout" has its own direction and children
-				// Create a temporary Layout structure from child
+				// Create a new counter map for nested layouts
+				nestedCounters := make(map[string]int)
+				for k, v := range typeCounters {
+					nestedCounters[k] = v
+				}
 				oldFormatLayout := &Layout{
 					Direction: child.Direction,
 					Children:  child.Children,
 					Padding:   layoutCfg.Padding, // Inherit padding from parent
 				}
-				nestedNode := m.createLayoutTree(oldFormatLayout, registry, depth+1)
+				nestedNode := m.createLayoutTreeWithCounter(oldFormatLayout, registry, depth+1, nestedCounters)
 				if nestedNode != nil {
 					// Apply properties from the layout component to the nested node
 					if child.Width != nil {
@@ -157,13 +167,21 @@ func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry,
 				}
 			} else {
 				// Empty layout node (e.g. spacer)
-				componentNode := m.createComponentNode(child)
+				componentNode := m.createComponentNode(*child)
 				componentNode.Parent = builder.Current()
 				builder.Current().Children = append(builder.Current().Children, componentNode)
 			}
 		} else {
+			// Generate ID for components without one and update original config
+			if child.ID == "" {
+				// Use type-specific counter
+				count := typeCounters[child.Type]
+				typeCounters[child.Type] = count + 1
+				child.ID = fmt.Sprintf("comp_%s_%d", child.Type, count)
+				log.Trace("createLayoutTree: Generated ID %s for component type %s", child.ID, child.Type)
+			}
 			// Regular component - create placeholder node
-			componentNode := m.createComponentNode(child)
+			componentNode := m.createComponentNode(*child)
 			componentNode.Parent = builder.Current()
 			builder.Current().Children = append(builder.Current().Children, componentNode)
 		}
@@ -224,7 +242,13 @@ func (m *Model) initializeLayoutComponents(node *layout.LayoutNode, registry *Co
 			compConfig = m.findComponentConfig(node.ID)
 		}
 
-		// If no ID or no config found, create a temporary config for rendering
+		// If no ID or no config found, try to find by type and props
+		if compConfig == nil && node.ComponentType != "" && node.Props != nil {
+			compConfig = findComponentByTypeAndProps(&m.Config.Layout, node.ComponentType, node.Props)
+			log.Trace("initializeLayoutComponents: Found config by type and props for component type %s", node.ComponentType)
+		}
+
+		// If still no config found, create a temporary config for rendering
 		if compConfig == nil && node.ComponentType != "" && node.Props != nil {
 			compConfig = &Component{
 				Type:  node.ComponentType,
@@ -242,13 +266,17 @@ func (m *Model) initializeLayoutComponents(node *layout.LayoutNode, registry *Co
 				log.Trace("initializeLayoutComponents: Generated ID %s for component type %s", compID, node.ComponentType)
 			}
 
+			// Update node ID if different
+			if node.ID == "" || node.ID != compID {
+				node.ID = compID
+			}
+
 			if err := m.initializeComponent(compConfig, registry, cmds); err != nil {
 				log.Error("Failed to initialize component %s: %v", compID, err)
 			} else {
 				// Bind component instance to layout node
 				if instance, exists := m.ComponentInstanceRegistry.Get(compID); exists {
 					node.Component = instance
-					node.ID = compID
 					log.Trace("Initialized and bound component %s (type: %s)", compID, compConfig.Type)
 				} else {
 					log.Warn("Component instance not found in registry for %s", compID)
@@ -291,6 +319,64 @@ func findComponentInLayout(l *Layout, id string) *Component {
 	}
 
 	return nil
+}
+
+// findComponentByTypeAndProps finds a component by matching type and props
+func findComponentByTypeAndProps(l *Layout, componentType string, props map[string]interface{}) *Component {
+	if l == nil {
+		return nil
+	}
+
+	for _, child := range l.Children {
+		// Check if type matches
+		if child.Type == componentType && child.ID == "" {
+			// Check if props match (simple comparison by checking if all keys in target props exist in child props)
+			if propsMatch(child.Props, props) {
+				return &child
+			}
+		}
+
+		// Recursively search in nested layouts
+		if child.Type == "layout" {
+			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
+				if found := findComponentByTypeAndProps(nestedLayout, componentType, props); found != nil {
+					return found
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// propsMatch checks if two props maps match (target is a subset of source)
+func propsMatch(source, target map[string]interface{}) bool {
+	if target == nil {
+		return true // Empty target always matches
+	}
+	if source == nil {
+		return false // Non-empty target cannot match nil source
+	}
+
+	for k, targetValue := range target {
+		sourceValue, exists := source[k]
+		if !exists {
+			return false // Key not found in source
+		}
+
+		// Simple comparison - for strings, check if they match
+		if targetStr, ok := targetValue.(string); ok {
+			if sourceStr, ok := sourceValue.(string); ok {
+				if targetStr != sourceStr {
+					return false
+				}
+			} else {
+				return false // Type mismatch
+			}
+		}
+	}
+
+	return true
 }
 
 // initializeComponent creates and registers a component instance.
