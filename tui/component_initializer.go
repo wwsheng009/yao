@@ -95,6 +95,14 @@ func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry,
 		Type: layout.LayoutFlex,
 	})
 
+	if depth == 0 {
+		// Root container should fill available space
+		layout.ApplyStyle(builder.Current(),
+			layout.WithWidth("flex"),
+			layout.WithHeight("flex"),
+		)
+	}
+
 	layout.ApplyStyle(builder.Current(),
 		layout.WithFlexDirection(direction),
 	)
@@ -128,8 +136,30 @@ func (m *Model) createLayoutTree(layoutCfg *Layout, registry *ComponentRegistry,
 				}
 				nestedNode := m.createLayoutTree(oldFormatLayout, registry, depth+1)
 				if nestedNode != nil {
+					// Apply properties from the layout component to the nested node
+					if child.Width != nil {
+						nestedNode.Style.Width = layout.NewSize(child.Width)
+					}
+					if child.Height != nil {
+						nestedNode.Style.Height = layout.NewSize(child.Height)
+					}
+					// Copy props (including style)
+					if child.Props != nil {
+						if nestedNode.Props == nil {
+							nestedNode.Props = make(map[string]interface{})
+						}
+						for k, v := range child.Props {
+							nestedNode.Props[k] = v
+						}
+					}
+
 					builder.AddNode(nestedNode)
 				}
+			} else {
+				// Empty layout node (e.g. spacer)
+				componentNode := m.createComponentNode(child)
+				componentNode.Parent = builder.Current()
+				builder.Current().Children = append(builder.Current().Children, componentNode)
 			}
 		} else {
 			// Regular component - create placeholder node

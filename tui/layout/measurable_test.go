@@ -60,7 +60,15 @@ func (m *MockMeasurableComponent) Cleanup() {}
 
 // 实现 Measurable 接口
 func (m *MockMeasurableComponent) Measure(maxWidth, maxHeight int) (int, int) {
-	return m.preferredWidth, m.preferredHeight
+	w := m.preferredWidth
+	if w > maxWidth && maxWidth > 0 {
+		w = maxWidth
+	}
+	h := m.preferredHeight
+	if h > maxHeight && maxHeight > 0 {
+		h = maxHeight
+	}
+	return w, h
 }
 
 func TestMeasurableInterface(t *testing.T) {
@@ -115,17 +123,17 @@ func TestMeasurableInterface(t *testing.T) {
 func TestLayoutWithMeasurableComponent(t *testing.T) {
 	// 创建一个包含 Measurable 组件的简单布局
 	root := NewFlexContainer("root", DirectionColumn)
-	
+
 	mockComponent := &MockMeasurableComponent{
 		preferredWidth:  50,
 		preferredHeight: 20,
 	}
-	
+
 	componentInstance := &core.ComponentInstance{
 		Type:     "mock",
 		Instance: mockComponent,
 	}
-	
+
 	childNode := &LayoutNode{
 		ID:        "child",
 		Type:      LayoutFlex,
@@ -135,7 +143,7 @@ func TestLayoutWithMeasurableComponent(t *testing.T) {
 			Height: NewSize(20),
 		},
 	}
-	
+
 	root.Children = []*LayoutNode{childNode}
 	childNode.Parent = root
 
@@ -148,7 +156,7 @@ func TestLayoutWithMeasurableComponent(t *testing.T) {
 
 	// 验证布局结果
 	assert.Len(t, result.Nodes, 2) // root + child
-	
+
 	child := result.Nodes[1]
 	assert.Equal(t, 50, child.Bound.Width)
 	assert.Equal(t, 20, child.Bound.Height)
@@ -158,27 +166,27 @@ func TestLayoutWithFlexibleMeasurableComponent(t *testing.T) {
 	// 创建一个包含灵活尺寸组件的布局
 	root := NewFlexContainer("root", DirectionRow)
 	root.Style.Direction = DirectionRow
-	
+
 	mockComponent1 := &MockMeasurableComponent{
 		preferredWidth:  30,
 		preferredHeight: 20,
 	}
-	
+
 	mockComponent2 := &MockMeasurableComponent{
 		preferredWidth:  40,
 		preferredHeight: 20,
 	}
-	
+
 	componentInstance1 := &core.ComponentInstance{
 		Type:     "mock1",
 		Instance: mockComponent1,
 	}
-	
+
 	componentInstance2 := &core.ComponentInstance{
 		Type:     "mock2",
 		Instance: mockComponent2,
 	}
-	
+
 	childNode1 := &LayoutNode{
 		ID:        "child1",
 		Type:      LayoutFlex,
@@ -187,7 +195,7 @@ func TestLayoutWithFlexibleMeasurableComponent(t *testing.T) {
 			Width: NewSize("flex"), // flex: 1
 		},
 	}
-	
+
 	childNode2 := &LayoutNode{
 		ID:        "child2",
 		Type:      LayoutFlex,
@@ -196,7 +204,7 @@ func TestLayoutWithFlexibleMeasurableComponent(t *testing.T) {
 			Width: NewSize(30),
 		},
 	}
-	
+
 	root.Children = []*LayoutNode{childNode1, childNode2}
 	childNode1.Parent = root
 	childNode2.Parent = root
@@ -210,7 +218,7 @@ func TestLayoutWithFlexibleMeasurableComponent(t *testing.T) {
 
 	// 验证布局结果
 	assert.Len(t, result.Nodes, 3) // root + 2 children
-	
+
 	// 查找子节点
 	var child1, child2 *LayoutNode
 	for _, node := range result.Nodes {
@@ -220,10 +228,10 @@ func TestLayoutWithFlexibleMeasurableComponent(t *testing.T) {
 			child2 = node
 		}
 	}
-	
+
 	assert.NotNil(t, child1)
 	assert.NotNil(t, child2)
-	
+
 	// child2 有固定宽度 30，所以 child1 应该获得剩余空间
 	assert.Equal(t, 30, child2.Bound.Width)
 	assert.InDelta(t, 70, child1.Bound.Width, 5) // 允许少量误差

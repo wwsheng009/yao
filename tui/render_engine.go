@@ -10,24 +10,19 @@ import (
 )
 
 // RenderLayout renders the entire layout using the flexible layout engine.
+// It delegates to the Renderer for actual rendering.
 func (m *Model) RenderLayout() string {
-	if m.LayoutEngine == nil || m.LayoutRoot == nil {
-		log.Error("RenderLayout: LayoutEngine or LayoutRoot is nil")
+	if m.Renderer == nil {
+		// Fallback for tests or uninitialized models
+		if m.LayoutEngine != nil && m.LayoutRoot != nil {
+			// Initialize a temporary renderer
+			renderer := layout.NewRenderer(m.LayoutEngine, m)
+			return renderer.Render()
+		}
+		log.Error("RenderLayout: Renderer is nil")
 		return ""
 	}
-
-	result := m.LayoutEngine.Layout()
-	if result == nil {
-		log.Error("RenderLayout: Layout result is nil")
-		return ""
-	}
-
-	log.Trace("RenderLayout: Got %d nodes from layout engine", len(result.Nodes))
-
-	// Start from root and recursively render
-	rendered := m.renderLayoutNode(m.LayoutRoot)
-	log.Trace("RenderLayout: Rendered length: %d", len(rendered))
-	return rendered
+	return m.Renderer.Render()
 }
 
 // renderLayoutNode recursively renders a layout node and all its children
@@ -119,6 +114,12 @@ func (m *Model) renderNodeWithBounds(node *layout.LayoutNode) string {
 	props := map[string]interface{}{}
 	if compConfig != nil {
 		props = m.resolveProps(compConfig)
+	} else if node.Props != nil {
+		// Fallback to node props if component config not found
+		// This handles dynamically created components with generated IDs
+		// We still need to resolve expressions in props
+		tempComp := &Component{Props: node.Props}
+		props = m.resolveProps(tempComp)
 	}
 
 	config := core.RenderConfig{

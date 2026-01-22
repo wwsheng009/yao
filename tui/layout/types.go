@@ -109,6 +109,12 @@ type LayoutStyle struct {
 	Top        int
 	Right      int
 	Bottom     int
+	Grow       *Grow
+	Shrink     *Grow
+}
+
+func NewGrow(value float64) *Grow {
+	return &Grow{Value: value}
 }
 
 type Position string

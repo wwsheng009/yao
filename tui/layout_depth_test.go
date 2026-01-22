@@ -24,6 +24,7 @@ func TestMaxLayoutDepth(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// 渲染应该不会崩溃
@@ -51,6 +52,7 @@ func TestNormalLayoutDepth(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	render := model.View()
@@ -68,6 +70,7 @@ func TestEmptyLayoutChildren(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	render := model.View()
@@ -96,6 +99,7 @@ func TestSingleLevelLayout(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	render := model.View()
@@ -134,6 +138,7 @@ func TestLayoutDepthWithMixedComponents(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	render := model.View()
@@ -158,6 +163,7 @@ func TestLayoutDepthErrorDoesNotCrash(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// 渲染不应该崩溃
@@ -195,6 +201,7 @@ func BenchmarkLayoutRendering(b *testing.B) {
 	}
 
 	model := NewModel(cfg, nil)
+	model.InitializeComponents()
 	model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	b.ResetTimer()

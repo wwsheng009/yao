@@ -2,10 +2,11 @@ package layout
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/kun/log"
+	"github.com/yaoapp/yao/tui/core"
 )
 
 // RenderContext provides all data and callbacks needed for rendering
@@ -19,8 +20,8 @@ type RenderContext interface {
 }
 
 type Renderer struct {
-	engine   *Engine
-	context  RenderContext
+	engine  *Engine
+	context RenderContext
 }
 
 // NewRenderer creates a new Renderer with the given engine and render context
@@ -127,6 +128,46 @@ func (r *Renderer) renderLayoutNode(node *LayoutNode) string {
 	} else {
 		result = lipgloss.JoinVertical(lipgloss.Left, children...)
 	}
+
+	// Apply container styles (Padding, Size)
+	// This ensures the container node respects its calculated bounds and renders padding
+	if node.Style != nil && (node.Bound.Width > 0 || node.Bound.Height > 0) {
+		log.Trace("Renderer.renderLayoutNode: Applying container style for %s (Bound: %dx%d)", node.ID, node.Bound.Width, node.Bound.Height)
+		style := lipgloss.NewStyle()
+
+		// Apply Padding
+		var pTop, pRight, pBottom, pLeft int
+		if node.Style.Padding != nil {
+			pTop = node.Style.Padding.Top
+			pRight = node.Style.Padding.Right
+			pBottom = node.Style.Padding.Bottom
+			pLeft = node.Style.Padding.Left
+			style = style.Padding(pTop, pRight, pBottom, pLeft)
+		}
+
+		// Apply Content Size (Bound - Padding)
+		// Lipgloss Width/Height refers to the content area
+		contentWidth := node.Bound.Width - pLeft - pRight
+		contentHeight := node.Bound.Height - pTop - pBottom
+
+		if contentWidth > 0 {
+			style = style.Width(contentWidth).MaxWidth(contentWidth)
+		}
+		if contentHeight > 0 {
+			style = style.Height(contentHeight).MaxHeight(contentHeight)
+		}
+
+		result = style.Render(result)
+
+		// Force strict clipping for container as well, just in case
+		if node.Bound.Height > 0 {
+			lines := strings.Split(result, "\n")
+			if len(lines) > node.Bound.Height {
+				result = strings.Join(lines[:node.Bound.Height], "\n")
+			}
+		}
+	}
+
 	log.Trace("Renderer.renderLayoutNode: Node %s result length: %d", node.ID, len(result))
 	return result
 }
@@ -167,6 +208,15 @@ func (r *Renderer) renderNodeWithBounds(node *LayoutNode) string {
 			MaxHeight(node.Bound.Height)
 
 		rendered = style.Render(rendered)
+
+		// Force clip height if content exceeds bound height
+		// Lipgloss MaxHeight doesn't strictly clip vertical content in all cases
+		if node.Bound.Height > 0 {
+			lines := strings.Split(rendered, "\n")
+			if len(lines) > node.Bound.Height {
+				rendered = strings.Join(lines[:node.Bound.Height], "\n")
+			}
+		}
 	}
 
 	return rendered
@@ -178,7 +228,7 @@ func (r *Renderer) renderErrorComponent(componentID string, componentType string
 	if r.context != nil {
 		return r.context.RenderError(componentID, componentType, err)
 	}
-	
+
 	// Fallback: render directly
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196")).
@@ -196,7 +246,7 @@ func (r *Renderer) renderUnknownComponent(typeName string) string {
 	if r.context != nil {
 		return r.context.RenderUnknown(typeName)
 	}
-	
+
 	// Fallback: render directly
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196")).

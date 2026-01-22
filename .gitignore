@@ -60,4 +60,6 @@ introduction/*
 yao-docs
 AGENTS.md
 bindata.go
-.vscode
+tui/docs
+tui/demo
+.opencode

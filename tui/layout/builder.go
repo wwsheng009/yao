@@ -244,6 +244,18 @@ func WithMaxWidth(maxWidth int) func(*LayoutStyle) {
 	}
 }
 
+func WithGrow(value float64) func(*LayoutStyle) {
+	return func(style *LayoutStyle) {
+		style.Grow = NewGrow(value)
+	}
+}
+
+func WithShrink(value float64) func(*LayoutStyle) {
+	return func(style *LayoutStyle) {
+		style.Shrink = NewGrow(value)
+	}
+}
+
 func WithMaxHeight(maxHeight int) func(*LayoutStyle) {
 	return func(style *LayoutStyle) {
 		style.MaxHeight = maxHeight

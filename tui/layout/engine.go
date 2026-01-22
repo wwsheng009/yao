@@ -60,18 +60,19 @@ func (e *Engine) Layout() *LayoutResult {
 
 	result := &LayoutResult{}
 
-	fmt.Printf("[Layout] Layout() called - window: %dx%d, root.Dirty=%v\n", e.window.Width, e.window.Height, e.root.Dirty)
-
 	// ✅ 阶段1：约束传递
 	e.passConstraints(e.root, e.window.Width, e.window.Height)
 
 	// 阶段2：子节点响应并计算实际 Bound
+	// 优先检查节点是否dirty，只有dirty的节点才需要重新计算
 	if e.root.Dirty {
-		fmt.Printf("[Layout] Recalculating layout (root is dirty)\n")
 		e.layoutNode(e.root, 0, 0, e.window.Width, e.window.Height, result)
 		e.root.Dirty = false
 	} else {
-		fmt.Printf("[Layout] Skipping layout (root not dirty)\n")
+		// 如果节点不是dirty，也需要确保result.Nodes包含所有节点
+		// 这里简单处理：如果没有dirty，也重新计算一次，避免layout结果为空
+		// 在实际优化中应该缓存LayoutResult
+		e.layoutNode(e.root, 0, 0, e.window.Width, e.window.Height, result)
 	}
 
 	// 阶段3：通知组件其实际分配的大小
@@ -212,10 +213,12 @@ func (e *Engine) layoutFlex(
 
 		if info.Grow.Value > 0 {
 			growSum += info.Grow.Value
-		} else if info.Shrink.Value > 0 {
-			shrinkSum += info.Shrink.Value
 		} else {
 			totalFixedSize += info.Size
+		}
+
+		if info.Shrink.Value > 0 {
+			shrinkSum += info.Shrink.Value
 		}
 	}
 
@@ -230,13 +233,17 @@ func (e *Engine) layoutFlex(
 	}
 	availableSpace := containerSize - totalFixedSize - totalGap
 
+	fmt.Printf("[Layout]   available=%d, shrinkSum=%v, growSum=%v\n", availableSpace, shrinkSum, growSum)
+
 	// ✅ 新增：处理空间不足的情况（Shrink）
 	if availableSpace < 0 && shrinkSum > 0 {
 		// 按照收缩比例减少子元素大小
 		for _, info := range allChildren {
 			if info.Shrink.Value > 0 {
 				shrinkAmount := int(float64(-availableSpace) * (info.Shrink.Value / shrinkSum))
+				oldSize := info.Size
 				info.Size = max(0, info.Size-shrinkAmount)
+				fmt.Printf("[Layout]     Shrink child %s: %d -> %d (shrinkAmount=%d)\n", info.Node.ID, oldSize, info.Size, shrinkAmount)
 			}
 		}
 	} else if availableSpace > 0 && growSum > 0 {
@@ -249,8 +256,13 @@ func (e *Engine) layoutFlex(
 		}
 	}
 
+	fmt.Printf("[Layout]   After distribution:\n")
+	for i, info := range allChildren {
+		fmt.Printf("[Layout]     Child %d (%s): Size=%d, Y=%d\n", i, info.Node.ID, info.Size, y)
+	}
+
 	e.distributeFlexChildrenOrdered(
-		allChildren, config, x, y, width, height, result,
+		allChildren, config, x, y, width, height, totalGap, result,
 	)
 }
 
@@ -292,7 +304,8 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		case string:
 			if v == "flex" {
 				info.Grow.Value = 1
-				info.Size = 0 // 初始为0，稍后分配
+				info.Shrink.Value = 1 // Set shrink to 1 for flex items
+				info.Size = 0         // Start with 0 size
 				isStyleSet = true
 			}
 		}
@@ -329,18 +342,27 @@ func (e *Engine) measureChild(child *LayoutNode, config *FlexConfig, parentWidth
 		info.Size = child.Style.MinHeight
 	}
 
+	// Apply explicit Grow/Shrink from style if present
+	if child.Style != nil {
+		if child.Style.Grow != nil {
+			info.Grow.Value = child.Style.Grow.Value
+		}
+		if child.Style.Shrink != nil {
+			info.Shrink.Value = child.Style.Shrink.Value
+		}
+	}
+
 	return info
 }
 
-func (e *Engine) distributeFlexChildren(
-	fixedChildren, flexibleChildren []*flexChildInfo,
+func (e *Engine) distributeFlexChildrenOrdered(
+	allChildren []*flexChildInfo,
 	config *FlexConfig, x, y, width, height int,
 	totalGap int,
 	result *LayoutResult,
 ) {
-	allChildren := append(append([]*flexChildInfo{}, fixedChildren...), flexibleChildren...)
-
 	offset := 0
+	currentGap := config.Gap
 
 	switch config.Direction {
 	case DirectionRow:
@@ -363,16 +385,22 @@ func (e *Engine) distributeFlexChildren(
 				for _, child := range allChildren {
 					availableSpace -= child.Size
 				}
-				totalGap = int(float64(availableSpace) / float64(len(allChildren)-1))
+				// 避免负间距
+				if availableSpace > 0 {
+					currentGap = int(float64(availableSpace) / float64(len(allChildren)-1))
+				}
 			}
 		case JustifySpaceAround:
 			totalWidth := totalGap
 			for _, child := range allChildren {
 				totalWidth += child.Size
 			}
-			space := (width - totalWidth) / (2 * len(allChildren))
-			offset += space
-			totalGap = space * 2
+			availableSpace := width - totalWidth
+			if availableSpace > 0 {
+				space := availableSpace / (2 * len(allChildren))
+				offset += space
+				currentGap = space * 2
+			}
 		case JustifyStart:
 			offset = 0
 		}
@@ -383,7 +411,26 @@ func (e *Engine) distributeFlexChildren(
 			childHeight := height
 
 			switch config.AlignItems {
+			case AlignStart:
+				// If child has height="flex" in Row layout (cross axis), treat as Stretch
+				isCrossFlex := false
+				if childInfo.Node.Style != nil && childInfo.Node.Style.Height != nil && childInfo.Node.Style.Height.Value == "flex" {
+					isCrossFlex = true
+				}
+
+				if isCrossFlex {
+					e.layoutNode(childInfo.Node, childX, y, childWidth, height, result)
+				} else {
+					measureHeight := e.measureChildHeight(childInfo.Node, childWidth)
+					// Use min(height, measureHeight) to constrain height
+					if measureHeight < height && measureHeight > 0 {
+						childHeight = measureHeight
+					}
+					// ✅ Always call layoutNode regardless of height
+					e.layoutNode(childInfo.Node, childX, y, childWidth, childHeight, result)
+				}
 			case AlignCenter:
+
 				measureHeight := e.measureChildHeight(childInfo.Node, childWidth)
 				if measureHeight < height {
 					childY := y + (height-measureHeight)/2
@@ -407,7 +454,7 @@ func (e *Engine) distributeFlexChildren(
 				e.layoutNode(childInfo.Node, childX, y, childWidth, childHeight, result)
 			}
 
-			offset += childWidth + nodeStyleGap(nodeFromInfo(childInfo))
+			offset += childWidth + currentGap
 		}
 
 	case DirectionColumn:
@@ -426,6 +473,28 @@ func (e *Engine) distributeFlexChildren(
 			offset = height - totalHeight
 		case JustifyStart:
 			offset = 0
+		case JustifySpaceBetween:
+			if len(allChildren) > 1 {
+				availableSpace := height - totalGap
+				for _, child := range allChildren {
+					availableSpace -= child.Size
+				}
+				// 避免负间距
+				if availableSpace > 0 {
+					currentGap = int(float64(availableSpace) / float64(len(allChildren)-1))
+				}
+			}
+		case JustifySpaceAround:
+			totalHeight := totalGap
+			for _, child := range allChildren {
+				totalHeight += child.Size
+			}
+			availableSpace := height - totalHeight
+			if availableSpace > 0 {
+				space := availableSpace / (2 * len(allChildren))
+				offset += space
+				currentGap = space * 2
+			}
 		}
 
 		for _, childInfo := range allChildren {
@@ -434,75 +503,22 @@ func (e *Engine) distributeFlexChildren(
 			childWidth := width
 
 			switch config.AlignItems {
-			case AlignCenter:
+			case AlignStart:
+				// ✅ Always call layoutNode, just with potentially smaller width
 				measureWidth := e.measureChildWidth(childInfo.Node, childHeight)
-				if measureWidth < width {
-					childX := x + (width-measureWidth)/2
+				// Use min(width, measureWidth) to constrain width
+				if measureWidth < width && measureWidth > 0 {
 					childWidth = measureWidth
-					e.layoutNode(childInfo.Node, childX, childY, childWidth, childHeight, result)
-				} else {
-					e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
 				}
-			case AlignEnd:
-				measureWidth := e.measureChildWidth(childInfo.Node, childHeight)
-				if measureWidth < width {
-					childX := x + (width - measureWidth)
-					childWidth = measureWidth
-					e.layoutNode(childInfo.Node, childX, childY, childWidth, childHeight, result)
-				} else {
-					e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
-				}
+				// ✅ Always call layoutNode regardless of width
+				e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
 			case AlignStretch:
 				e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
 			default:
 				e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
 			}
 
-			offset += childHeight + nodeStyleGap(nodeFromInfo(childInfo))
-		}
-	}
-}
-
-// distributeFlexChildrenOrdered 按原始顺序布局子元素
-func (e *Engine) distributeFlexChildrenOrdered(
-	children []*flexChildInfo,
-	config *FlexConfig, x, y, width, height int,
-	result *LayoutResult,
-) {
-	if len(children) == 0 {
-		return
-	}
-
-	offset := 0
-	gap := config.Gap
-
-	switch config.Direction {
-	case DirectionRow:
-		for i, childInfo := range children {
-			childX := x + offset
-			childWidth := childInfo.Size
-			childHeight := height
-
-			e.layoutNode(childInfo.Node, childX, y, childWidth, childHeight, result)
-
-			offset += childWidth
-			if i < len(children)-1 {
-				offset += gap
-			}
-		}
-
-	case DirectionColumn:
-		for i, childInfo := range children {
-			childY := y + offset
-			childHeight := childInfo.Size
-			childWidth := width
-
-			e.layoutNode(childInfo.Node, x, childY, childWidth, childHeight, result)
-
-			offset += childHeight
-			if i < len(children)-1 {
-				offset += gap
-			}
+			offset += childHeight + currentGap
 		}
 	}
 }
@@ -749,11 +765,38 @@ func (e *Engine) measureChildWidth(node *LayoutNode, height int) int {
 			return 50
 		}
 	}
+	// If node has children, calculate width based on children
+	if len(node.Children) > 0 {
+		w := 0
+		if node.Style != nil && node.Style.Direction == DirectionColumn {
+			// For column direction, width is the max width of children
+			for _, child := range node.Children {
+				cw := e.measureChildWidth(child, height)
+				if cw > w {
+					w = cw
+				}
+			}
+		} else {
+			// For row direction, width is sum of children widths
+			for _, child := range node.Children {
+				w += e.measureChildWidth(child, height)
+			}
+			// Add gaps
+			if node.Style != nil && node.Style.Gap > 0 && len(node.Children) > 1 {
+				w += node.Style.Gap * (len(node.Children) - 1)
+			}
+		}
+		if w > 0 {
+			return w
+		}
+	}
 
 	return 20
+
 }
 
 func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
+	fmt.Printf("[Measure] measureChildHeight called for node=%s, width=%d\n", node.ID, width)
 	if node.Style != nil && node.Style.Height != nil {
 		switch v := node.Style.Height.Value.(type) {
 		case string:
@@ -774,9 +817,8 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 	props := e.getProps(node)
 
 	if node.Component != nil && node.Component.Instance != nil {
-		if config := node.Component.LastConfig; config.Height > 0 {
-			return config.Height
-		}
+		// Do not use LastConfig.Height as preferred height, as it may reflect
+		// the allocated size from previous layout (or initialization), not the content height.
 
 		if config := node.Component.LastConfig; config.Width > 0 {
 			width = config.Width
@@ -856,6 +898,32 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 			return 1
 		default:
 			return 5
+		}
+	}
+
+	// If node has children, calculate height based on children
+	if len(node.Children) > 0 {
+		height := 0
+		if node.Style != nil && node.Style.Direction == DirectionRow {
+			// For row direction, height is the max height of children
+			for _, child := range node.Children {
+				h := e.measureChildHeight(child, width)
+				if h > height {
+					height = h
+				}
+			}
+		} else {
+			// For column direction (default), height is sum of children heights
+			for _, child := range node.Children {
+				height += e.measureChildHeight(child, width)
+			}
+			// Add gaps
+			if node.Style != nil && node.Style.Gap > 0 && len(node.Children) > 1 {
+				height += node.Style.Gap * (len(node.Children) - 1)
+			}
+		}
+		if height > 0 {
+			return height
 		}
 	}
 

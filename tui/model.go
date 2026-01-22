@@ -23,6 +23,10 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 		exprCache:                  NewExpressionCache(),
 		logLevel:                   cfg.LogLevel,
 		propsCache:                 NewPropsCache(),
+		// Set default dimensions to avoid 0x0 initialization issues
+		// These will be updated when the first WindowSizeMsg is received
+		Width:  80,
+		Height: 24,
 	}
 
 	// Initialize the Bridge after EventBus is created
@@ -112,6 +116,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Window size changes are handled globally
 		// but also need to be propagated to all components
 		// Store dimensions and let the handler process it
+		m.Width = msg.Width
+		m.Height = msg.Height
+		m.Ready = true
+		if m.LayoutEngine != nil {
+			m.LayoutEngine.UpdateWindowSize(msg.Width, msg.Height)
+		}
 	}
 
 	// Dispatch phase: Route message to focused component
@@ -306,4 +316,3 @@ func (m *Model) RenderError(componentID, componentType string, err error) string
 func (m *Model) RenderUnknown(typeName string) string {
 	return m.renderUnknownComponent(typeName)
 }
-

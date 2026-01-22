@@ -28,6 +28,12 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 			return m.(tea.Model), nil
 		}
 		sizeMsg := msg.(tea.WindowSizeMsg)
+
+		// Optimization: Skip if size hasn't changed AND model is already ready
+		if model.Ready && model.Width == sizeMsg.Width && model.Height == sizeMsg.Height {
+			return model, nil
+		}
+
 		model.Width = sizeMsg.Width
 		model.Height = sizeMsg.Height
 		model.Ready = true
@@ -35,18 +41,10 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		// Update layout engine with new window size
 		if model.LayoutEngine != nil {
 			model.LayoutEngine.UpdateWindowSize(sizeMsg.Width, sizeMsg.Height)
-		}
-
-		// Update all component instances with new window size
-		// This ensures components receive the correct dimensions
-		allComponents := model.ComponentInstanceRegistry.GetAll()
-		for _, comp := range allComponents {
-			updatedConfig := core.RenderConfig{
-				Data:   comp.LastConfig.Data,
-				Width:  sizeMsg.Width,
-				Height: sizeMsg.Height,
-			}
-			updateComponentInstanceConfig(comp, updatedConfig, comp.ID)
+			// Trigger layout calculation immediately to ensure components receive new dimensions
+			// before their Update method is called (via dispatchMessageToAllComponents).
+			// This allows components to adjust their internal state (like pagination) based on new size.
+			model.LayoutEngine.Layout()
 		}
 
 		// Broadcast window size to all components
