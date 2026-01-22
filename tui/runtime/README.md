@@ -551,6 +551,440 @@ type RuntimeImpl struct {
 
 ---
 
+## 配置示例
+
+### 1. 侧边栏布局 (Holy Grail)
+
+```
+┌─────────────────────────────────┐
+│ Header                          │
+├──────┬──────────────────────────┤
+│      │                          │
+│ Side │     Main Content          │
+│ bar  │                          │
+│      │                          │
+├──────┴──────────────────────────┤
+│ Footer                          │
+└─────────────────────────────────┘
+```
+
+```yaml
+layout:
+  direction: column
+  children:
+    - type: header
+      height: 3
+
+    - type: layout
+      direction: row
+      flexGrow: 1
+      children:
+        - type: sidebar
+          width: 20          # 固定宽度
+        - type: main
+          flexGrow: 1        # 占据剩余空间
+
+    - type: footer
+      height: 1
+```
+
+### 2. 卡片网格 (使用 Flex 组合)
+
+```
+┌────────┬────────┬────────┐
+│ Card 1 │ Card 2 │ Card 3 │
+├────────┼────────┼────────┤
+│ Card 4 │ Card 5 │ Card 6 │
+└────────┴────────┴────────┘
+```
+
+```yaml
+layout:
+  direction: column
+  children:
+    - type: row
+      height: 10
+      children:
+        - type: card
+          width: flex
+        - type: card
+          width: flex
+        - type: card
+          width: flex
+
+    - type: row
+      height: 10
+      children:
+        - type: card
+          width: flex
+        - type: card
+          width: flex
+        - type: card
+          width: flex
+```
+
+### 3. 表单布局
+
+```
+┌─────────────────────────────┐
+│ 用户注册                    │
+│                             │
+│ 用户名: [_____________]  *   │
+│ 邮箱:   [_____________]  *   │
+│ 密码:   [_____________]  *   │
+│                             │
+│    [取消]  [注册]           │
+└─────────────────────────────┘
+```
+
+```yaml
+layout:
+  direction: column
+  padding: [2, 4, 2, 4]
+  gap: 1
+  children:
+    - type: text
+      content: "用户注册"
+      style: {bold: true, underline: true}
+
+    - type: field
+      props: {label: "用户名", placeholder: "输入用户名"}
+
+    - type: field
+      props: {label: "邮箱", placeholder: "user@example.com"}
+
+    - type: field
+      props: {label: "密码", placeholder: "********"}
+
+    - type: layout
+      direction: row
+      justifyContent: center
+      gap: 2
+      children:
+        - type: button
+          props: {label: "取消"}
+        - type: button
+          props: {label: "注册", style: {background: "#080"}}
+```
+
+### 4. 仪表板布局
+
+```
+┌─────────────────────────────────┐
+│  系统仪表板    [刷新] [退出]     │
+├────────┬────────────────────────┤
+│        │  💰 Revenue             │
+│ Menu   │  👥 Users              │
+│        │  📦 Orders             │
+│        │  ⭐ Satisfaction       │
+├────────┴────────────────────────┤
+│ 状态: Online | Ping: 14ms        │
+└─────────────────────────────────┘
+```
+
+```yaml
+layout:
+  direction: column
+  children:
+    - type: header
+      height: 3
+      props: {title: "系统仪表板"}
+
+    - type: layout
+      direction: row
+      flexGrow: 1
+      children:
+        - type: sidebar
+          width: 20
+          props: {borderRight: true}
+
+        - type: layout
+          direction: column
+          flexGrow: 1
+          gap: 1
+          children:
+            - type: layout
+              direction: row
+              height: 5
+              children:
+                - type: metric-card
+                  width: flex
+                - type: metric-card
+                  width: flex
+
+    - type: footer
+      height: 1
+      props: {text: "状态: Online | Ping: 14ms"}
+```
+
+### 5. 居中模态框
+
+```
+┌─────────────────────────────────┐
+│                         ┌─────┐  │
+│                         │Modal│  │
+│                         │     │  │
+│                         └─────┘  │
+└─────────────────────────────────┘
+```
+
+```yaml
+# 覆盖层容器
+layout:
+  direction: column
+  alignItems: center
+  justifyContent: center
+  style: {background: "#00000088"}  # 半透明背景
+  children:
+    - type: modal
+      width: 40
+      height: 15
+      style:
+        background: "#fff"
+        color: "#000"
+        zIndex: 100
+      children:
+        - type: text
+          content: "确认删除？"
+          align: center
+        - type: text
+          content: ""
+        - type: layout
+          direction: row
+          justifyContent: center
+          gap: 2
+          children:
+            - type: button
+              props: {label: "取消"}
+            - type: button
+              props: {label: "确认"}
+```
+
+### 6. 响应式布局 (百分比)
+
+```yaml
+# 左侧 30%，右侧 70%
+layout:
+  direction: row
+  children:
+    - type: sidebar
+      style:
+        widthPercent: 30    # -30 编码为百分比
+
+    - type: main
+      flexGrow: 1
+
+# 或者使用固定 + 自适应
+layout:
+  direction: row
+  children:
+    - type: sidebar
+      width: 20           # 固定 20 列
+
+    - type: main
+      flexGrow: 1         # 占据剩余空间
+```
+
+### 7. 带间距的表单
+
+```yaml
+layout:
+  direction: column
+  style:
+    gap: 1                # 子元素之间 1 行间距
+    padding: [2, 2, 2, 2]  # 上下左右 2 行内边距
+  children:
+    - type: text
+      content: "用户名"
+
+    - type: input
+      width: 30
+
+    - type: text
+      content: "密码"
+
+    - type: input
+      width: 30
+```
+
+### 8. 对齐方式示例
+
+```yaml
+# 主轴对齐 (justify)
+layout:
+  direction: row
+  justifyContent: space-between  # start | center | end | space-between | space-around
+  children:
+    - type: text
+      content: "左"
+    - type: text
+      content: "中"
+    - type: text
+      content: "右"
+
+# 交叉轴对齐 (alignItems)
+layout:
+  direction: row
+  alignItems: center           # start | center | end | stretch
+  height: 10
+  children:
+    - type: text
+      content: "短"
+      height: 3
+    - type: text
+      content: "高内容"
+      height: 8
+    - type: text
+      content: "短"
+      height: 3
+```
+
+### 9. 滚动容器
+
+```yaml
+layout:
+  direction: column
+  children:
+    - type: header
+      content: "长列表"
+
+    - type: list
+      style:
+        overflow: scroll      # hidden | visible | scroll
+      height: 15
+      children:
+        # 100 个项目...
+```
+
+### 10. 边框和层级
+
+```yaml
+# 带边框的面板
+layout:
+  style:
+    borderWidth: 1        # 四周 1 字符边框
+  children:
+    - type: text
+      content: "带边框的内容"
+
+# 不对称边框
+layout:
+  style:
+    border: [1, 2, 1, 0]  # 上1 右2 下1 左0
+  children:
+    - type: text
+      content: "内容"
+
+# 层级控制 (Z-Index)
+layout:
+  children:
+    - type: background
+      style: {zIndex: 0}
+
+    - type: content
+      style: {zIndex: 10}
+
+    - type: modal
+      style: {zIndex: 100}   # 最上层
+```
+
+---
+
+## 常用布局模式
+
+### 模式 1: 固定侧边栏 + 自适应主内容
+
+```yaml
+layout:
+  direction: row
+  children:
+    - type: sidebar
+      width: 20           # 固定 20 列
+
+    - type: main
+      flexGrow: 1         # 占据剩余空间
+```
+
+### 模式 2: 三列布局 (左中右)
+
+```yaml
+layout:
+  direction: row
+  children:
+    - type: left-panel
+      width: 15
+
+    - type: center-panel
+      flexGrow: 1         # 中间自适应
+
+    - type: right-panel
+      width: 15
+```
+
+### 模式 3: 顶部固定 + 内容可滚动
+
+```yaml
+layout:
+  direction: column
+  children:
+    - type: header
+      height: 3           # 固定高度
+
+    - type: content
+      flexGrow: 1
+      overflow: scroll     # 内容溢出时滚动
+```
+
+### 模式 4: 卡片列表
+
+```yaml
+layout:
+  direction: column
+  gap: 1                  # 卡片间距
+  children:
+    - type: card
+      height: 8
+
+    - type: card
+      height: 8
+
+    - type: card
+      height: 8
+```
+
+### 模式 5: 居中对齐
+
+```yaml
+layout:
+  direction: column
+  alignItems: center      # 水平居中
+  justifyContent: center  # 垂直居中
+  children:
+    - type: modal
+      width: 40
+      height: 15
+```
+
+---
+
+## 样式属性速查表
+
+| 属性 | 类型 | 说明 | 示例 |
+|------|------|------|------|
+| `width` | int | 固定宽度 (列) | `width: 20` |
+| `height` | int | 固定高度 (行) | `height: 5` |
+| `flexGrow` | float64 | 弹性增长系数 | `flexGrow: 1` |
+| `direction` | Direction | 布局方向 | `direction: row` |
+| `padding` | Insets | 内边距 [上,右,下,左] | `padding: [1,2,1,2]` |
+| `border` | Insets | 边框宽度 [上,右,下,左] | `border: [1,1,1,1]` |
+| `gap` | int | 子元素间距 | `gap: 1` |
+| `alignItems` | Align | 交叉轴对齐 | `alignItems: center` |
+| `justifyContent` | Justify | 主轴对齐 | `justifyContent: center` |
+| `overflow` | Overflow | 溢出处理 | `overflow: scroll` |
+| `zIndex` | int | 渲染层级 | `zIndex: 100` |
+
+---
+
 ## 联系
 
 - **维护者**: Yao TUI Team

@@ -136,6 +136,7 @@ func measureFlexContainer(node *LayoutNode, innerC, outerC BoxConstraints) Size 
 	}
 
 	// Phase 1: Calculate fixed sizes and flex grow sum
+	// Also update child measured sizes to match explicit dimensions
 	totalFixedSize := 0
 	var growSum float64
 
@@ -147,12 +148,14 @@ func measureFlexContainer(node *LayoutNode, innerC, outerC BoxConstraints) Size 
 		if isRow {
 			if child.Style.Width >= 0 {
 				childMainSize = child.Style.Width
+				child.MeasuredWidth = child.Style.Width
 			} else {
 				childMainSize = child.MeasuredWidth
 			}
 		} else {
 			if child.Style.Height >= 0 {
 				childMainSize = child.Style.Height
+				child.MeasuredHeight = child.Style.Height
 			} else {
 				childMainSize = child.MeasuredHeight
 			}
