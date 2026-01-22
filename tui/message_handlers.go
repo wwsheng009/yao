@@ -30,11 +30,23 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		sizeMsg := msg.(tea.WindowSizeMsg)
 		model.Width = sizeMsg.Width
 		model.Height = sizeMsg.Height
-		model.Ready = true // Mark model as ready after receiving window size
+		model.Ready = true
 
 		// Update layout engine with new window size
 		if model.LayoutEngine != nil {
 			model.LayoutEngine.UpdateWindowSize(sizeMsg.Width, sizeMsg.Height)
+		}
+
+		// Update all component instances with new window size
+		// This ensures components receive the correct dimensions
+		allComponents := model.ComponentInstanceRegistry.GetAll()
+		for _, comp := range allComponents {
+			updatedConfig := core.RenderConfig{
+				Data:   comp.LastConfig.Data,
+				Width:  sizeMsg.Width,
+				Height: sizeMsg.Height,
+			}
+			updateComponentInstanceConfig(comp, updatedConfig, comp.ID)
 		}
 
 		// Broadcast window size to all components

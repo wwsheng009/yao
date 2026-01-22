@@ -47,9 +47,9 @@ func (e *Engine) MarkDirty(node *LayoutNode) {
 	if node == nil {
 		return
 	}
-	if node.ID == "root" {
-		node.Dirty = true
-		return
+	node.Dirty = true
+	for _, child := range node.Children {
+		e.MarkDirty(child)
 	}
 }
 
@@ -60,11 +60,19 @@ func (e *Engine) Layout() *LayoutResult {
 
 	result := &LayoutResult{}
 
+	fmt.Printf("[Layout] Layout() called - window: %dx%d, root.Dirty=%v\n", e.window.Width, e.window.Height, e.root.Dirty)
+
 	// ✅ 阶段1：约束传递
 	e.passConstraints(e.root, e.window.Width, e.window.Height)
 
 	// 阶段2：子节点响应并计算实际 Bound
-	e.layoutNode(e.root, 0, 0, e.window.Width, e.window.Height, result)
+	if e.root.Dirty {
+		fmt.Printf("[Layout] Recalculating layout (root is dirty)\n")
+		e.layoutNode(e.root, 0, 0, e.window.Width, e.window.Height, result)
+		e.root.Dirty = false
+	} else {
+		fmt.Printf("[Layout] Skipping layout (root not dirty)\n")
+	}
 
 	// 阶段3：通知组件其实际分配的大小
 	e.notifyComponentSizes(result.Nodes)
@@ -182,6 +190,8 @@ func (e *Engine) layoutFlex(
 		return
 	}
 
+	fmt.Printf("[Layout] layoutFlex called: node=%s, container: %dx%d\n", node.ID, width, height)
+
 	config := &FlexConfig{
 		Direction:  node.Style.Direction,
 		AlignItems: node.Style.AlignItems,
@@ -194,7 +204,7 @@ func (e *Engine) layoutFlex(
 	var allChildren []*flexChildInfo
 	var totalFixedSize int
 	var growSum float64
-	var shrinkSum float64  // 新增: 计算 shrink 总和
+	var shrinkSum float64 // 新增: 计算 shrink 总和
 
 	for _, child := range node.Children {
 		info := e.measureChild(child, config, width, height)
@@ -226,7 +236,7 @@ func (e *Engine) layoutFlex(
 		for _, info := range allChildren {
 			if info.Shrink.Value > 0 {
 				shrinkAmount := int(float64(-availableSpace) * (info.Shrink.Value / shrinkSum))
-				info.Size = max(0, info.Size - shrinkAmount)
+				info.Size = max(0, info.Size-shrinkAmount)
 			}
 		}
 	} else if availableSpace > 0 && growSum > 0 {
@@ -850,74 +860,4 @@ func (e *Engine) measureChildHeight(node *LayoutNode, width int) int {
 	}
 
 	return 1
-}
-
-func nodeFromInfo(info *flexChildInfo) *LayoutNode {
-	return info.Node
-}
-
-func nodeStyleGap(node *LayoutNode) int {
-	if node != nil && node.Style != nil {
-		return node.Style.Gap
-	}
-	return 0
-}
-
-func FindNodeByID(root *LayoutNode, id string) *LayoutNode {
-	if root == nil {
-		return nil
-	}
-	if root.ID == id {
-		return root
-	}
-	for _, child := range root.Children {
-		if found := FindNodeByID(child, id); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
-func GetNodePath(root *LayoutNode, id string) []*LayoutNode {
-	var path []*LayoutNode
-	findPath(root, id, &path)
-	return path
-}
-
-func findPath(node *LayoutNode, id string, path *[]*LayoutNode) bool {
-	if node == nil {
-		return false
-	}
-	*path = append(*path, node)
-	if node.ID == id {
-		return true
-	}
-	for _, child := range node.Children {
-		if findPath(child, id, path) {
-			return true
-		}
-	}
-	*path = (*path)[:len(*path)-1]
-	return false
-}
-
-func ValidateLayoutTree(node *LayoutNode, parent *LayoutNode) error {
-	if node == nil {
-		return nil
-	}
-
-	if node.Parent != parent {
-		return fmt.Errorf("node '%s' has incorrect parent", node.ID)
-	}
-
-	for i, child := range node.Children {
-		if child.Parent != node {
-			return fmt.Errorf("child %d of node '%s' has incorrect parent", i, node.ID)
-		}
-		if err := ValidateLayoutTree(child, node); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

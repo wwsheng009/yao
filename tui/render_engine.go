@@ -171,15 +171,15 @@ func (m *Model) RenderComponent(comp *Component) string {
 		factory, factoryExists := registry.GetComponentFactory(ComponentType(comp.Type))
 		if !factoryExists {
 			log.Error("RenderComponent: Unknown component type %s for %s", comp.Type, comp.ID)
-			return m.renderErrorComponent(comp.ID, comp.Type, fmt.Errorf("unknown component type: %s", comp.Type))
+			return m.renderUnknownComponent(comp.Type)
 		}
 
 		// Create component instance on-demand
 		instance := factory(renderConfig, comp.ID)
 		componentInstance = &core.ComponentInstance{
-			ID:        comp.ID,
-			Type:      comp.Type,
-			Instance:  instance,
+			ID:         comp.ID,
+			Type:       comp.Type,
+			Instance:   instance,
 			LastConfig: renderConfig,
 		}
 

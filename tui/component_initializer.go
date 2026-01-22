@@ -184,25 +184,48 @@ func (m *Model) initializeLayoutComponents(node *layout.LayoutNode, registry *Co
 	log.Trace("initializeLayoutComponents: Processing node %s (children: %d, component: %v)",
 		node.ID, len(node.Children), node.Component != nil)
 
-	// Initialize component if this node has an ID and no children (leaf node)
+	// Initialize component if this node has no children (leaf node)
 	// This is a regular component, not a layout container
-	if node.ID != "" && node.Component == nil && len(node.Children) == 0 {
-		compConfig := m.findComponentConfig(node.ID)
-		log.Trace("initializeLayoutComponents: Found config for %s: %v", node.ID, compConfig != nil)
+	if node.Component == nil && len(node.Children) == 0 {
+		var compConfig *Component
+
+		// Try to find config by ID first
+		if node.ID != "" {
+			compConfig = m.findComponentConfig(node.ID)
+		}
+
+		// If no ID or no config found, create a temporary config for rendering
+		if compConfig == nil && node.ComponentType != "" && node.Props != nil {
+			compConfig = &Component{
+				Type:  node.ComponentType,
+				Props: node.Props,
+			}
+			log.Trace("initializeLayoutComponents: Created temporary config for component type %s", node.ComponentType)
+		}
+
 		if compConfig != nil {
+			// Generate an ID for components without one
+			compID := compConfig.ID
+			if compID == "" {
+				compID = fmt.Sprintf("comp_%s_%d", node.ComponentType, m.ComponentInstanceRegistry.Len())
+				compConfig.ID = compID
+				log.Trace("initializeLayoutComponents: Generated ID %s for component type %s", compID, node.ComponentType)
+			}
+
 			if err := m.initializeComponent(compConfig, registry, cmds); err != nil {
-				log.Error("Failed to initialize component %s: %v", node.ID, err)
+				log.Error("Failed to initialize component %s: %v", compID, err)
 			} else {
 				// Bind component instance to layout node
-				if instance, exists := m.ComponentInstanceRegistry.Get(node.ID); exists {
+				if instance, exists := m.ComponentInstanceRegistry.Get(compID); exists {
 					node.Component = instance
-					log.Trace("Initialized and bound component %s (type: %s)", node.ID, compConfig.Type)
+					node.ID = compID
+					log.Trace("Initialized and bound component %s (type: %s)", compID, compConfig.Type)
 				} else {
-					log.Warn("Component instance not found in registry for %s", node.ID)
+					log.Warn("Component instance not found in registry for %s", compID)
 				}
 			}
 		} else {
-			log.Warn("Could not find config for component %s", node.ID)
+			log.Warn("Could not find or create config for component type %s", node.ComponentType)
 		}
 	}
 
