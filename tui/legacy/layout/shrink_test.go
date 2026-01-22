@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/yaoapp/yao/tui/core"
-	"github.com/yaoapp/yao/tui/layout"
+	"github.com/yaoapp/yao/tui/legacy/layout"
 )
 
 // MockShrinkableComponent 模拟一个组件
