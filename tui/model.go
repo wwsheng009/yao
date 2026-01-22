@@ -28,6 +28,10 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 	// Initialize the Bridge after EventBus is created
 	model.Bridge = NewBridge(model.EventBus)
 
+	// Initialize the Layout Engine
+	// Note: LayoutEngine and LayoutRoot will be initialized in InitializeComponents()
+	// The Renderer will be initialized later with the LayoutEngine and this Model as context
+
 	// Copy initial data to State
 	if cfg.Data != nil {
 		for key, value := range cfg.Data {
@@ -178,10 +182,14 @@ func (m *Model) UpdateState(updates map[string]interface{}) {
 	}
 }
 
-// renderLayout renders the TUI layout using the render module.
-// The actual rendering logic is in render_engine.go
+// renderLayout renders the TUI layout using the Renderer.
+// The Renderer handles all layout tree traversal and component rendering.
 func (m *Model) renderLayout() string {
-	return m.RenderLayout()
+	if m.Renderer == nil {
+		log.Error("Model.renderLayout: Renderer is not initialized")
+		return ""
+	}
+	return m.Renderer.Render()
 }
 
 // syncInputComponentState synchronizes the state of an input component
@@ -261,3 +269,41 @@ func (m *Model) dispatchMessageToAllComponents(msg tea.Msg) (tea.Model, tea.Cmd)
 
 	return m, tea.Batch(cmds...)
 }
+
+// ============================================================================
+// RenderContext Interface Implementation
+// Model implements the RenderContext interface to work with the Renderer
+// ============================================================================
+
+// GetComponentInstance retrieves a component instance from the registry
+func (m *Model) GetComponentInstance(id string) (*core.ComponentInstance, bool) {
+	if m.ComponentInstanceRegistry != nil {
+		return m.ComponentInstanceRegistry.Get(id)
+	}
+	return nil, false
+}
+
+// ResolveProps resolves component properties using the Model's props resolution logic
+func (m *Model) ResolveProps(compID string) (map[string]interface{}, error) {
+	compConfig := m.findComponentConfig(compID)
+	if compConfig == nil {
+		return make(map[string]interface{}), nil
+	}
+	return m.resolveProps(compConfig), nil
+}
+
+// UpdateComponentConfig updates a component's render configuration
+func (m *Model) UpdateComponentConfig(instance *core.ComponentInstance, config core.RenderConfig, id string) bool {
+	return updateComponentInstanceConfig(instance, config, id)
+}
+
+// RenderError renders an error display for a failed component
+func (m *Model) RenderError(componentID, componentType string, err error) string {
+	return m.renderErrorComponent(componentID, componentType, err)
+}
+
+// RenderUnknown renders a placeholder for unknown component types
+func (m *Model) RenderUnknown(typeName string) string {
+	return m.renderUnknownComponent(typeName)
+}
+

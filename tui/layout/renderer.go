@@ -1,255 +1,206 @@
 package layout
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/kun/log"
 )
 
-type Renderer struct {
-	engine *Engine
+// RenderContext provides all data and callbacks needed for rendering
+// This interface allows the Renderer to be independent of Model implementation
+type RenderContext interface {
+	GetComponentInstance(id string) (*core.ComponentInstance, bool)
+	ResolveProps(compID string) (map[string]interface{}, error)
+	UpdateComponentConfig(instance *core.ComponentInstance, config core.RenderConfig, id string) bool
+	RenderError(componentID, componentType string, err error) string
+	RenderUnknown(typeName string) string
 }
 
-func NewRenderer(engine *Engine) *Renderer {
+type Renderer struct {
+	engine   *Engine
+	context  RenderContext
+}
+
+// NewRenderer creates a new Renderer with the given engine and render context
+func NewRenderer(engine *Engine, context RenderContext) *Renderer {
 	return &Renderer{
-		engine: engine,
+		engine:  engine,
+		context: context,
 	}
 }
 
+// Render renders the entire layout tree using the provided RenderContext
 func (r *Renderer) Render() string {
 	if r.engine.root == nil {
+		log.Error("Renderer.Render: Layout root is nil")
 		return ""
 	}
 
-	// For Flex and Grid layouts, use the recursive line-based renderer
-	// which preserves ANSI escape codes correctly.
-	if r.engine.root.Type != LayoutAbsolute {
-		// Ensure layout is calculated before rendering
-		r.engine.Layout()
-		return r.RenderNode(r.engine.root)
-	}
-
-	// For Absolute layouts, use the buffer approach
 	result := r.engine.Layout()
-	if len(result.Nodes) == 0 {
+	if result == nil {
+		log.Error("Renderer.Render: Layout result is nil")
 		return ""
 	}
 
-	return r.renderToBuffer(result)
+	log.Trace("Renderer.Render: Got %d nodes from layout engine", len(result.Nodes))
+
+	// Render the entire layout tree
+	rendered := r.renderLayoutNode(r.engine.root)
+	log.Trace("Renderer.Render: Rendered length: %d", len(rendered))
+	return rendered
 }
 
-func (r *Renderer) renderToBuffer(result *LayoutResult) string {
-	if r.engine.root == nil {
+// renderLayoutNode recursively renders a layout node and all its children
+func (r *Renderer) renderLayoutNode(node *LayoutNode) string {
+	if node == nil {
 		return ""
 	}
 
-	bound := r.engine.root.Bound
-	if bound.Width == 0 || bound.Height == 0 {
-		return ""
-	}
+	log.Trace("Renderer.renderLayoutNode: Rendering node %s with %d children", node.ID, len(node.Children))
 
-	buffer := make([][]rune, bound.Height)
-	for i := range buffer {
-		buffer[i] = make([]rune, bound.Width)
-		for j := range buffer[i] {
-			buffer[i][j] = ' '
-		}
-	}
-
-	for _, node := range result.Nodes {
-		if node.Component != nil && node.Component.Instance != nil {
+	// Handle leaf nodes (actual components)
+	if len(node.Children) == 0 && node.ID != "" {
+		// This is a leaf - try to get the component from context
+		if compInstance, exists := r.context.GetComponentInstance(node.ID); exists {
+			log.Trace("Renderer.renderLayoutNode: Found component instance for %s", node.ID)
 			config := core.RenderConfig{
 				Width:  node.Bound.Width,
 				Height: node.Bound.Height,
-				Data:   node.Props,
 			}
-			content, err := node.Component.Instance.Render(config)
+			// Resolve props via context
+			props, err := r.context.ResolveProps(node.ID)
 			if err != nil {
-				content = err.Error()
+				log.Error("Renderer.renderLayoutNode: Failed to resolve props for %s: %v", node.ID, err)
+				props = make(map[string]interface{})
 			}
+			config.Data = props
 
-			lines := strings.Split(content, "\n")
-			for i, line := range lines {
-				targetY := node.Bound.Y + i
-				if targetY >= 0 && targetY < bound.Height {
-					runes := []rune(line)
-					for j, ch := range runes {
-						targetX := node.Bound.X + j
-						if targetX >= 0 && targetX < bound.Width {
-							buffer[targetY][targetX] = ch
-						}
-					}
-				}
+			// Update component config via context
+			r.context.UpdateComponentConfig(compInstance, config, node.ID)
+
+			rendered, err := compInstance.Instance.Render(config)
+			if err != nil {
+				log.Error("Renderer.renderLayoutNode: Failed to render component %s: %v", node.ID, err)
+				// Use context to render error
+				return r.renderErrorComponent(node.ID, compInstance.Type, err)
 			}
+			log.Trace("Renderer.renderLayoutNode: Rendered component %s, length: %d", node.ID, len(rendered))
+			return rendered
+		} else {
+			log.Trace("Renderer.renderLayoutNode: No component instance found for %s", node.ID)
 		}
-	}
-
-	var builder strings.Builder
-	for _, row := range buffer {
-		builder.WriteString(string(row) + "\n")
-	}
-
-	if builder.Len() > 0 {
-		return builder.String()[:builder.Len()-1]
-	}
-	return ""
-}
-
-func (r *Renderer) RenderNode(node *LayoutNode) string {
-	if node == nil {
 		return ""
 	}
 
-	var builder strings.Builder
+	var children []string
 
-	style := r.createStyle(node)
-	containerWidth := r.getWidth(node)
-	containerHeight := r.getHeight(node)
-
-	lines := r.renderNodeInternal(node, containerWidth, containerHeight)
-
-	// ✅ 改进：添加 MaxWidth 和 MaxHeight
-	style = style.
-		Width(containerWidth).
-		Height(containerHeight).
-		MaxWidth(containerWidth).
-		MaxHeight(containerHeight)
-
-	for i, line := range lines {
-		styled := style.Render(line)
-		builder.WriteString(styled)
-		if i < len(lines)-1 {
-			builder.WriteString("\n")
-		}
-	}
-
-	return builder.String()
-}
-
-func (r *Renderer) renderNodeInternal(node *LayoutNode, width, height int) []string {
-	if node == nil {
-		return []string{}
-	}
-
-	if node.Component != nil && node.Component.Instance != nil {
-		config := core.RenderConfig{
-			Width:  width,
-			Height: height,
-			Data:   node.Props,
-		}
-		content, err := node.Component.Instance.Render(config)
-		if err != nil {
-			return []string{err.Error()}
-		}
-		return strings.Split(content, "\n")
-	}
-
-	var lines []string
-	if r.isRow(node) {
-		lines = r.renderRow(node, width, height)
-	} else {
-		lines = r.renderColumn(node, width, height)
-	}
-
-	return lines
-}
-
-func (r *Renderer) renderRow(node *LayoutNode, width, height int) []string {
-	if len(node.Children) == 0 {
-		line := strings.Repeat(" ", width)
-		return []string{line}
-	}
-
-	result := r.engine.Layout()
-	lines := make([]string, height)
-
-	for i := range lines {
-		var builder strings.Builder
-		for _, child := range result.Nodes {
-			if child.Parent == node {
-				childLines := r.renderNodeInternal(child, child.Bound.Width, child.Bound.Height)
-				if len(childLines) > i {
-					builder.WriteString(childLines[i])
-				} else {
-					if len(childLines) > 0 {
-						builder.WriteString(strings.Repeat(" ", child.Bound.Width))
-					}
-				}
+	for _, child := range node.Children {
+		// Check if child has component bound
+		if child.Component != nil && child.Component.Instance != nil {
+			// Render actual component
+			rendered := r.renderNodeWithBounds(child)
+			log.Trace("Renderer.renderLayoutNode: Rendered component %s (via node.Component), length: %d", child.ID, len(rendered))
+			if rendered != "" {
+				children = append(children, rendered)
+			}
+		} else {
+			// Recursively render nested layout
+			rendered := r.renderLayoutNode(child)
+			log.Trace("Renderer.renderLayoutNode: Rendered nested layout %s, length: %d", child.ID, len(rendered))
+			if rendered != "" {
+				children = append(children, rendered)
 			}
 		}
-		lines[i] = builder.String()
 	}
 
-	return lines
+	if len(children) == 0 {
+		log.Trace("Renderer.renderLayoutNode: No children rendered for node %s", node.ID)
+		return ""
+	}
+
+	// Join children based on this node's direction
+	result := ""
+	if node.Style != nil && node.Style.Direction == DirectionRow {
+		result = lipgloss.JoinHorizontal(lipgloss.Top, children...)
+	} else {
+		result = lipgloss.JoinVertical(lipgloss.Left, children...)
+	}
+	log.Trace("Renderer.renderLayoutNode: Node %s result length: %d", node.ID, len(result))
+	return result
 }
 
-func (r *Renderer) renderColumn(node *LayoutNode, width, height int) []string {
-	if len(node.Children) == 0 {
-		line := strings.Repeat(" ", width)
-		return []string{line}
+// renderNodeWithBounds renders a component with its calculated bounds.
+func (r *Renderer) renderNodeWithBounds(node *LayoutNode) string {
+	if node == nil || node.Component == nil || node.Component.Instance == nil {
+		return ""
 	}
 
-	var allLines []string
-
-	result := r.engine.Layout()
-	for _, child := range result.Nodes {
-		if child.Parent == node {
-			childLines := r.renderNodeInternal(child, child.Bound.Width, child.Bound.Height)
-			allLines = append(allLines, childLines...)
-		}
+	// Resolve props for this component from context
+	props, err := r.context.ResolveProps(node.ID)
+	if err != nil {
+		log.Error("Renderer.renderNodeWithBounds: Failed to resolve props for %s: %v", node.ID, err)
+		props = make(map[string]interface{})
 	}
 
-	return allLines
+	config := core.RenderConfig{
+		Data:   props,
+		Width:  node.Bound.Width,
+		Height: node.Bound.Height,
+	}
+
+	// Update component configuration via context
+	r.context.UpdateComponentConfig(node.Component, config, node.ID)
+
+	rendered, err := node.Component.Instance.Render(config)
+	if err != nil {
+		log.Error("Renderer.renderNodeWithBounds: Component %s render failed: %v", node.ID, err)
+		return r.renderErrorComponent(node.ID, node.Component.Type, err)
+	}
+
+	if node.Bound.Width > 0 || node.Bound.Height > 0 {
+		style := lipgloss.NewStyle().
+			Width(node.Bound.Width).
+			Height(node.Bound.Height).
+			MaxWidth(node.Bound.Width).
+			MaxHeight(node.Bound.Height)
+
+		rendered = style.Render(rendered)
+	}
+
+	return rendered
 }
 
-func (r *Renderer) createStyle(node *LayoutNode) lipgloss.Style {
-	var style lipgloss.Style
-
-	if node.Style != nil {
-		if node.Style.Padding != nil {
-			style = style.
-				Padding(node.Style.Padding.Top, node.Style.Padding.Right,
-					node.Style.Padding.Bottom, node.Style.Padding.Left)
-		}
-
-		if node.Style.Margin != nil {
-			style = style.
-				Margin(node.Style.Margin.Top, node.Style.Margin.Right,
-					node.Style.Margin.Bottom, node.Style.Margin.Left)
-		}
+// renderErrorComponent renders an error display for a failed component
+func (r *Renderer) renderErrorComponent(componentID string, componentType string, err error) string {
+	// Use context callback to render error
+	if r.context != nil {
+		return r.context.RenderError(componentID, componentType, err)
 	}
+	
+	// Fallback: render directly
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Background(lipgloss.Color("52")).
+		Padding(0, 2).
+		Bold(true)
 
-	return style
+	errorMsg := fmt.Sprintf("[ERROR] %s (%s): %v", componentID, componentType, err)
+	return style.Render(errorMsg)
 }
 
-func (r *Renderer) getWidth(node *LayoutNode) int {
-	if node.Style != nil && node.Style.Width != nil {
-		switch v := node.Style.Width.Value.(type) {
-		case int:
-			return v
-		case float64:
-			return int(v)
-		}
+// renderUnknownComponent renders a placeholder for unknown component types.
+func (r *Renderer) renderUnknownComponent(typeName string) string {
+	// Use context callback to render unknown component
+	if r.context != nil {
+		return r.context.RenderUnknown(typeName)
 	}
-	return node.Bound.Width
-}
+	
+	// Fallback: render directly
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Padding(0, 1)
 
-func (r *Renderer) getHeight(node *LayoutNode) int {
-	if node.Style != nil && node.Style.Height != nil {
-		switch v := node.Style.Height.Value.(type) {
-		case int:
-			return v
-		case float64:
-			return int(v)
-		}
-	}
-	return node.Bound.Height
-}
-
-func (r *Renderer) isRow(node *LayoutNode) bool {
-	if node.Style != nil {
-		return node.Style.Direction == DirectionRow
-	}
-	return false
+	return style.Render(fmt.Sprintf("[Unknown component: %s]", typeName))
 }

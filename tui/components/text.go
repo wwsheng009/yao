@@ -3,6 +3,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -426,4 +427,39 @@ func (w *TextComponentWrapper) GetSubscribedMessageTypes() []string {
 func (w *TextComponentWrapper) SetSize(width, height int) {
 	w.model.Width = width
 	w.model.Height = height
+}
+
+// Measure 返回文本组件的理想尺寸
+func (w *TextComponentWrapper) Measure(maxWidth, maxHeight int) (width, height int) {
+	content := w.props.Content
+	
+	// 计算内容宽度
+	contentWidth := lipgloss.Width(content)
+	
+	// 如果指定了宽度，则使用指定宽度，否则使用内容宽度
+	if w.props.Width > 0 {
+		width = w.props.Width
+	} else {
+		width = contentWidth
+		// 限制在 maxWidth 内
+		if width > maxWidth {
+			width = maxWidth
+		}
+	}
+	
+	// 计算内容高度（考虑换行）
+	lines := strings.Split(content, "\n")
+	height = len(lines)
+	
+	// 如果指定了高度，则使用指定高度，否则根据内容计算
+	if w.model.Height > 0 {
+		height = w.model.Height
+	} else {
+		// 限制在 maxHeight 内
+		if height > maxHeight {
+			height = maxHeight
+		}
+	}
+	
+	return width, height
 }

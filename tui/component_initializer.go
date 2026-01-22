@@ -53,6 +53,10 @@ func (m *Model) InitializeComponents() []tea.Cmd {
 	m.initializeLayoutComponents(m.LayoutRoot, registry, &allCmds)
 	log.Trace("InitializeComponents: Initialized components, got %d commands", len(allCmds))
 
+	// Initialize the Renderer with the LayoutEngine and this Model as context
+	m.Renderer = layout.NewRenderer(m.LayoutEngine, m)
+	log.Trace("InitializeComponents: Initialized renderer")
+
 	// Don't trigger layout calculation yet - wait for window size message
 	// Layout will be calculated on first render when window size is known
 

@@ -264,6 +264,9 @@ type Model struct {
 
 	// LayoutRoot is the root node of the layout tree
 	LayoutRoot *layout.LayoutNode
+
+	// Renderer is the layout renderer that renders the layout tree
+	Renderer *layout.Renderer
 }
 
 // Validate validates the Config structure.

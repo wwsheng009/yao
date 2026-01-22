@@ -121,6 +121,9 @@ func ParseInputProps(props map[string]interface{}) InputProps {
 
 // applyTextInputConfig applies InputProps configuration to textinput.Model
 func applyTextInputConfig(input *textinput.Model, props InputProps) {
+	// Save current focus state
+	wasFocused := input.Focused()
+
 	// Set placeholder
 	if props.Placeholder != "" {
 		input.Placeholder = props.Placeholder
@@ -154,11 +157,17 @@ func applyTextInputConfig(input *textinput.Model, props InputProps) {
 		input.Width = props.Width
 	}
 
-	// Disable if needed
+	// Handle disabled state without changing focus
 	if props.Disabled {
+		input.Blur() // Only blur if the component is currently focused and needs to be disabled
+		// But we'll restore focus state later
+	}
+
+	// Restore the original focus state to avoid interfering with component state
+	if wasFocused && !props.Disabled {
+		input.Focus()
+	} else if !wasFocused {
 		input.Blur()
-	} else {
-		// Do not call Focus() here, it should be handled by Init() method
 	}
 }
 
@@ -415,12 +424,22 @@ func (w *InputComponentWrapper) UpdateRenderConfig(config core.RenderConfig) err
 	// Update component properties
 	w.props = props
 
+	// Temporarily save focus state
+	wasFocused := w.model.Focused()
+
 	// Apply configuration to the model
 	applyTextInputConfig(&w.model, props)
 
 	// Update underlying model if value changed
 	if props.Value != "" && w.model.Value() != props.Value {
 		w.model.SetValue(props.Value)
+	}
+
+	// Restore the original focus state to avoid interfering with component state
+	if wasFocused {
+		w.model.Focus()
+	} else {
+		w.model.Blur()
 	}
 
 	return nil

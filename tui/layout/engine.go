@@ -194,12 +194,16 @@ func (e *Engine) layoutFlex(
 	var allChildren []*flexChildInfo
 	var totalFixedSize int
 	var growSum float64
+	var shrinkSum float64  // 新增: 计算 shrink 总和
 
 	for _, child := range node.Children {
 		info := e.measureChild(child, config, width, height)
 		allChildren = append(allChildren, info)
+
 		if info.Grow.Value > 0 {
 			growSum += info.Grow.Value
+		} else if info.Shrink.Value > 0 {
+			shrinkSum += info.Shrink.Value
 		} else {
 			totalFixedSize += info.Size
 		}
@@ -216,16 +220,22 @@ func (e *Engine) layoutFlex(
 	}
 	availableSpace := containerSize - totalFixedSize - totalGap
 
-	// 确保可用空间不为负
-	if availableSpace < 0 {
-		availableSpace = 0
-	}
-
-	// 为 flex 子元素分配空间
-	for _, info := range allChildren {
-		if info.Grow.Value > 0 && growSum > 0 {
-			extra := int(float64(availableSpace) * (info.Grow.Value / growSum))
-			info.Size = extra
+	// ✅ 新增：处理空间不足的情况（Shrink）
+	if availableSpace < 0 && shrinkSum > 0 {
+		// 按照收缩比例减少子元素大小
+		for _, info := range allChildren {
+			if info.Shrink.Value > 0 {
+				shrinkAmount := int(float64(-availableSpace) * (info.Shrink.Value / shrinkSum))
+				info.Size = max(0, info.Size - shrinkAmount)
+			}
+		}
+	} else if availableSpace > 0 && growSum > 0 {
+		// 处理空间充足的情况（Grow）
+		for _, info := range allChildren {
+			if info.Grow.Value > 0 {
+				extra := int(float64(availableSpace) * (info.Grow.Value / growSum))
+				info.Size = extra
+			}
 		}
 	}
 

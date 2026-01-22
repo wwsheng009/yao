@@ -94,7 +94,7 @@ func TestModelUpdateStateUpdate(t *testing.T) {
 
 	updatedModel, cmd := model.Update(msg)
 
-	assert.NotNil(t, cmd) // WindowSizeMsg returns commands
+	assert.Nil(t, cmd) // StateUpdateMsg returns nil
 	m := updatedModel.(*Model)
 	assert.Equal(t, 10, m.State["counter"])
 }
@@ -120,7 +120,7 @@ func TestModelUpdateStateBatchUpdate(t *testing.T) {
 
 	updatedModel, cmd := model.Update(msg)
 
-	assert.NotNil(t, cmd) // WindowSizeMsg returns commands
+	assert.Nil(t, cmd) // StateBatchUpdateMsg returns nil
 	m := updatedModel.(*Model)
 	assert.Equal(t, 20, m.State["counter"])
 	assert.Equal(t, "updated", m.State["message"])
