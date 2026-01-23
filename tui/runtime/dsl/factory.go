@@ -194,6 +194,8 @@ func (f *Factory) ApplyProps(component runtime.Component, config *ComponentConfi
 		f.applyHeaderProps(comp, props)
 	case *components.FooterComponent:
 		f.applyFooterProps(comp, props)
+	case *components.ListComponent:
+		f.applyListProps(comp, props)
 	}
 
 	return nil
@@ -462,6 +464,130 @@ func (f *Factory) applyFooterProps(comp *components.FooterComponent, props map[s
 	if marginBottom, ok := props["marginBottom"].(int); ok {
 		comp.WithMargin(0, marginBottom)
 	}
+}
+
+// applyListProps applies props to List components.
+func (f *Factory) applyListProps(comp *components.ListComponent, props map[string]interface{}) {
+	// Title
+	if title, ok := props["title"].(string); ok {
+		comp.WithTitle(title)
+	}
+
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+	// Display options
+	if showTitle, ok := props["showTitle"].(bool); ok {
+		comp.WithShowTitle(showTitle)
+	}
+	if showStatusBar, ok := props["showStatusBar"].(bool); ok {
+		comp.WithShowStatusBar(showStatusBar)
+	}
+	if showFilter, ok := props["showFilter"].(bool); ok {
+		comp.WithShowFilter(showFilter)
+	}
+	if filteringEnabled, ok := props["filteringEnabled"].(bool); ok {
+		comp.WithFilteringEnabled(filteringEnabled)
+	}
+
+	// Colors
+	if color, ok := props["color"].(string); ok {
+		comp.WithColor(color)
+	}
+	if background, ok := props["background"].(string); ok {
+		comp.WithBackground(background)
+	}
+
+	// Padding
+	if padding, ok := props["padding"]; ok {
+		if p, ok := parsePadding(padding); ok {
+			comp.WithPadding(p[0], p[1], p[2], p[3])
+		}
+	}
+
+	// Items - convert from various formats
+	if itemsData, ok := props["items"]; ok {
+		items := f.ParseListItems(itemsData)
+		comp.WithItems(items)
+	}
+
+	// Bind data support
+	if bindData, ok := props["__bind_data"]; ok {
+		items := f.ParseListItems(bindData)
+		comp.WithItems(items)
+	}
+}
+
+// ParseListItems parses items from various formats.
+func (f *Factory) ParseListItems(itemsData interface{}) []components.RuntimeListItem {
+	var items []components.RuntimeListItem
+
+	switch data := itemsData.(type) {
+	case []interface{}:
+		items = make([]components.RuntimeListItem, 0, len(data))
+		for _, itemData := range data {
+			if itemMap, ok := itemData.(map[string]interface{}); ok {
+				item := components.RuntimeListItem{}
+
+				// Extract title
+				var title string
+				if titleStr, ok := itemMap["title"].(string); ok {
+					title = titleStr
+				} else if titleInt, ok := itemMap["title"].(int); ok {
+					title = fmt.Sprintf("%d", titleInt)
+				} else if titleFloat, ok := itemMap["title"].(float64); ok {
+					title = fmt.Sprintf("%d", int(titleFloat))
+				}
+				item.SetTitle(title)
+
+				// Extract description
+				if desc, ok := itemMap["description"].(string); ok {
+					item.SetDescription(desc)
+				} else if desc, ok := itemMap["desc"].(string); ok {
+					item.SetDescription(desc)
+				}
+
+				// Extract value
+				if value, ok := itemMap["value"]; ok {
+					item.Value = value
+				} else {
+					item.Value = title
+				}
+
+				// Extract disabled
+				if disabled, ok := itemMap["disabled"].(bool); ok {
+					item.Disabled = disabled
+				}
+
+				items = append(items, item)
+			} else {
+				// Simple string or primitive value
+				text := fmt.Sprintf("%v", itemData)
+				item := components.NewRuntimeListItem(text, "")
+				item.Value = itemData
+				items = append(items, item)
+			}
+		}
+	case []string:
+		items = make([]components.RuntimeListItem, 0, len(data))
+		for _, str := range data {
+			item := components.NewRuntimeListItem(str, "")
+			items = append(items, item)
+		}
+	}
+
+	return items
 }
 
 // parseAlign parses align string to runtime.Align.

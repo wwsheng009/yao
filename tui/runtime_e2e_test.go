@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yaoapp/yao/tui/runtime"
 )
 
 // TestRuntimeE2E verifies Runtime integration with real TUI configuration
@@ -704,4 +705,127 @@ func TestRuntimeInputComponent(t *testing.T) {
 	}
 
 	t.Logf("Input component Runtime test passed. Output length: %d chars", len(output))
+}
+
+// TestRuntimeListComponent tests the native Runtime List component
+func TestRuntimeListComponent(t *testing.T) {
+	// Create a simple TUI configuration with a List component
+	config := &Config{
+		Name: "List Component Test",
+		Layout: Layout{
+			Direction: "row",
+			Children: []Component{
+				{
+					Type: "list",
+					ID:   "mylist",
+					Props: map[string]interface{}{
+						"title":            "Select an option:",
+						"width":            40,
+						"height":           10,
+						"showTitle":        true,
+						"showStatusBar":    true,
+						"showFilter":       false,
+						"filteringEnabled": false,
+						"items": []interface{}{
+							map[string]interface{}{
+								"title":       "Option 1",
+								"description": "First option",
+								"value":       "opt1",
+							},
+							map[string]interface{}{
+								"title":       "Option 2",
+								"description": "Second option",
+								"value":       "opt2",
+							},
+							map[string]interface{}{
+								"title":       "Option 3",
+								"description": "Third option",
+								"value":       "opt3",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with Runtime enabled
+	model := NewModel(config, nil)
+	model.UseRuntime = true
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model first!
+	model.Init()
+
+	// Then send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Verify RuntimeRoot was created
+	if model.RuntimeRoot == nil {
+		t.Fatalf("RuntimeRoot should not be nil after Init")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", model.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(model.RuntimeRoot.Children))
+
+	// Verify the list component exists in the registry
+	if comp, exists := model.ComponentInstanceRegistry.Get("mylist"); exists {
+		t.Logf("List component found in registry: %T", comp.Instance)
+		// The component rendering is verified below via View() output
+	} else {
+		t.Fatal("List component 'mylist' not found in registry")
+	}
+
+	// Render the model
+	output := model.View()
+	if output == "" {
+		t.Error("View output should not be empty")
+	}
+
+	// Truncate output for logging
+	outputPreview := output
+	if len(outputPreview) > 500 {
+		outputPreview = outputPreview[:500] + "..."
+	}
+	t.Logf("Output (first 500 chars):\n%s", outputPreview)
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the list box
+	var listBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "mylist" {
+			listBox = &box
+		}
+	}
+
+	if listBox != nil {
+		t.Logf("ListBox: X=%d, Y=%d, W=%d, H=%d", listBox.X, listBox.Y, listBox.W, listBox.H)
+
+		// Verify dimensions (may differ from props due to layout constraints)
+		if listBox.W < 20 || listBox.W > 80 {
+			t.Errorf("List width %d outside expected range [20, 80]", listBox.W)
+		}
+		if listBox.H < 5 || listBox.H > 24 {
+			t.Errorf("List height %d outside expected range [5, 24]", listBox.H)
+		}
+	} else {
+		t.Error("ListBox not found in LayoutResult")
+	}
+
+	// Verify output contains expected content
+	if !strings.Contains(output, "Select an option") {
+		t.Errorf("Output should contain 'Select an option', got: %s", outputPreview)
+	}
+	if !strings.Contains(output, "Option 1") {
+		t.Errorf("Output should contain 'Option 1', got: %s", outputPreview)
+	}
+
+	t.Logf("List component Runtime test passed. Output length: %d chars", len(output))
 }

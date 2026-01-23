@@ -111,6 +111,9 @@ func RegisterBuiltinComponents(r *Registry) {
 	r.Register("button", func() runtime.Component {
 		return components.NewButton("")
 	})
+	r.Register("list", func() runtime.Component {
+		return components.NewList()
+	})
 }
 
 // init registers all built-in components in the default registry.

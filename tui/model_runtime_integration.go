@@ -143,7 +143,7 @@ func (m *Model) componentToLayoutNode(comp runtime.Component, id string, directi
 		nodeType = runtime.NodeTypeFlex
 		nodeStyle = runtime.NewStyle().WithDirection(direction)
 	case *components.InputComponent, *components.ButtonComponent, *components.TextComponent,
-	     *components.HeaderComponent, *components.FooterComponent:
+	     *components.HeaderComponent, *components.FooterComponent, *components.ListComponent:
 		// 叶子组件
 		nodeType = runtime.NodeTypeCustom
 	default:
@@ -210,6 +210,8 @@ func getComponentTypeString(comp runtime.Component) string {
 		return "header"
 	case *components.FooterComponent:
 		return "footer"
+	case *components.ListComponent:
+		return "list"
 	case *components.RowComponent:
 		return "row"
 	case *components.ColumnComponent:
@@ -718,6 +720,17 @@ func (m *Model) updateNativeComponent(wrapper *NativeComponentWrapper, compID st
 		}
 		if placeholder, ok := freshProps["placeholder"].(string); ok {
 			comp.WithPlaceholder(placeholder)
+		}
+	case *components.ListComponent:
+		// Update list items if they changed
+		if itemsData, ok := freshProps["items"]; ok {
+			factory := dsl.NewFactory()
+			items := factory.ParseListItems(itemsData)
+			comp.WithItems(items)
+		}
+		// Update title
+		if title, ok := freshProps["title"].(string); ok {
+			comp.WithTitle(title)
 		}
 	}
 }
