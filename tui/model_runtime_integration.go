@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
+	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/yao/tui/runtime"
 )
 
@@ -296,17 +297,56 @@ func (m *Model) updateRuntimeWindowSize(width, height int) {
 
 // syncStateToRuntime 将 Model 的状态同步到 Runtime
 // 当 State 发生变化时调用此方法
+//
+// 此方法执行以下操作：
+// 1. 清除 Props 缓存
+// 2. 重新解析所有组件的 Props（基于新的 State）
+// 3. 更新所有组件实例的 RenderConfig
+// 4. 标记 Runtime 需要重新渲染
 func (m *Model) syncStateToRuntime() {
 	if !m.UseRuntime {
 		return
 	}
 
-	// 清除 Props 缓存
+	// 1. 清除 Props 缓存
 	if m.propsCache != nil {
 		m.propsCache.Clear()
 	}
 
-	// 标记 Runtime 需要重新渲染
+	// 2. 获取所有组件实例
+	allInstances := m.ComponentInstanceRegistry.GetAll()
+
+	// 3. 更新每个组件实例的配置
+	for compID, compInstance := range allInstances {
+		// 查找组件配置
+		compConfig := m.findComponentConfig(compID)
+		if compConfig == nil {
+			log.Trace("syncStateToRuntime: Component config not found for %s, skipping", compID)
+			continue
+		}
+
+		// 使用当前 State 重新解析 Props
+		freshProps := m.resolveProps(compConfig)
+
+		// 创建新的 RenderConfig
+		newConfig := core.RenderConfig{
+			Data:   freshProps,
+			Width:  m.Width,
+			Height: m.Height,
+		}
+
+		// 更新组件实例的配置
+		// 使用已有的 updateComponentInstanceConfig 函数，它会：
+		// - 检查配置是否真的改变了
+		// - 调用组件的 UpdateRenderConfig 方法
+		// - 更新 LastConfig
+		updated := updateComponentInstanceConfig(compInstance, newConfig, compID)
+		if updated {
+			log.Trace("syncStateToRuntime: Updated config for component %s", compID)
+		}
+	}
+
+	// 4. 标记 Runtime 需要重新渲染
 	if m.RuntimeEngine != nil {
 		m.RuntimeEngine.MarkFullRender()
 	}

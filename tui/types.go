@@ -66,6 +66,11 @@ type Config struct {
 
 	// TabCycles defines whether Tab navigation cycles through components (default: true)
 	TabCycles bool `json:"tabCycles,omitempty"`
+
+	// UseRuntime enables the new Runtime layout engine (default: false for backward compatibility)
+	// When true, the new Runtime engine is used for layout and rendering
+	// Set to true to opt-in to the new Runtime-based layout system
+	UseRuntime bool `json:"useRuntime,omitempty"`
 }
 
 // Layout describes the UI layout structure.

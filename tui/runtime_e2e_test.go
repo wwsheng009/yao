@@ -196,13 +196,49 @@ func TestRuntimeGeometricFocus(t *testing.T) {
 	model.Width = 80
 	model.Height = 24
 
-	// Initialize
+	// Initialize the model first!
+	model.Init()
+
+	// Then send WindowSizeMsg to trigger layout
 	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	newModel, _ := model.Update(windowMsg)
 	model = newModel.(*Model)
 
+	// Call View() to trigger focus list update
+	_ = model.View()
+
 	// Get Runtime focus list
 	focusList := model.runtimeFocusList
+
+	// Debug: check Components and ComponentInstanceRegistry
+	t.Logf("Components map has %d items", len(model.Components))
+	for id := range model.Components {
+		t.Logf("  Components[%s]", id)
+	}
+	t.Logf("ComponentInstanceRegistry has %d items", model.ComponentInstanceRegistry.Len())
+	for _, id := range []string{"input1", "input2", "input3", "input4", "row1", "row2"} {
+		if comp, exists := model.ComponentInstanceRegistry.Get(id); exists {
+			t.Logf("  Registry has %s: %T", id, comp.Instance)
+		} else {
+			t.Logf("  Registry missing %s", id)
+		}
+	}
+
+	// Debug: check LayoutResult boxes
+	if model.RuntimeEngine != nil {
+		result := model.GetLayoutResult()
+		t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+		for i, box := range result.Boxes {
+			t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d, Component=%v", i, box.NodeID, box.X, box.Y, box.W, box.H, box.Node.Component != nil)
+		}
+	}
+
+	// Debug: check which components are considered focusable
+	for _, id := range []string{"input1", "input2", "input3", "input4"} {
+		focusable := model.isComponentFocusable(id)
+		t.Logf("  isComponentFocusable(%s) = %v", id, focusable)
+	}
+
 	if len(focusList) != 4 {
 		t.Errorf("Expected 4 focusable components, got %d: %v", len(focusList), focusList)
 	}
@@ -244,7 +280,7 @@ func TestRuntimeVsLegacy(t *testing.T) {
 					ID:   "header",
 					Type: "header",
 					Props: map[string]interface{}{
-						"text": "{{.text}}",
+						"title": "{{text}}",
 					},
 					Height: 3,
 				},
@@ -257,6 +293,7 @@ func TestRuntimeVsLegacy(t *testing.T) {
 	runtimeModel.UseRuntime = true
 	runtimeModel.Width = 80
 	runtimeModel.Height = 24
+	runtimeModel.Init()
 	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	newModel, _ := runtimeModel.Update(windowMsg)
 	runtimeModel = newModel.(*Model)
@@ -267,6 +304,8 @@ func TestRuntimeVsLegacy(t *testing.T) {
 	legacyModel.UseRuntime = false
 	legacyModel.Width = 80
 	legacyModel.Height = 24
+	legacyModel.Init()
+	windowMsg = tea.WindowSizeMsg{Width: 80, Height: 24}
 	newModel, _ = legacyModel.Update(windowMsg)
 	legacyModel = newModel.(*Model)
 	legacyOutput := legacyModel.View()
@@ -486,4 +525,183 @@ func BenchmarkRuntimeLayout(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		model.View()
 	}
+}
+
+// TestRuntimeConfigOption verifies that the UseRuntime config option works correctly
+func TestRuntimeConfigOption(t *testing.T) {
+	// Test 1: UseRuntime=false in Config should result in Legacy engine
+	configLegacy := &Config{
+		Name:      "Legacy Test",
+		UseRuntime: false,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{ID: "header", Type: "header", Props: map[string]interface{}{"title": "Test"}},
+			},
+		},
+	}
+
+	modelLegacy := NewModel(configLegacy, nil)
+	modelLegacy.Width = 80
+	modelLegacy.Height = 24
+	modelLegacy.Init()
+
+	if modelLegacy.UseRuntime {
+		t.Error("UseRuntime should be false when config.UseRuntime is false")
+	}
+
+	// Test 2: UseRuntime=true in Config should result in Runtime engine
+	configRuntime := &Config{
+		Name:      "Runtime Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{ID: "header", Type: "header", Props: map[string]interface{}{"title": "Test"}},
+			},
+		},
+	}
+
+	modelRuntime := NewModel(configRuntime, nil)
+	modelRuntime.Width = 80
+	modelRuntime.Height = 24
+	modelRuntime.Init()
+
+	if !modelRuntime.UseRuntime {
+		t.Error("UseRuntime should be true when config.UseRuntime is true")
+	}
+
+	// Verify Runtime engine was initialized
+	if modelRuntime.RuntimeEngine == nil {
+		t.Error("RuntimeEngine should be initialized when UseRuntime is true")
+	}
+
+	// Test 3: Default (UseRuntime not set) should result in Legacy engine
+	configDefault := &Config{
+		Name: "Default Test",
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{ID: "header", Type: "header", Props: map[string]interface{}{"title": "Test"}},
+			},
+		},
+	}
+
+	modelDefault := NewModel(configDefault, nil)
+	if modelDefault.UseRuntime {
+		t.Error("UseRuntime should default to false for backward compatibility")
+	}
+
+	t.Logf("Runtime config option test passed")
+}
+
+// TestRuntimeInputComponent tests Input component rendering with Runtime engine
+func TestRuntimeInputComponent(t *testing.T) {
+	config := &Config{
+		Name:      "Input Runtime Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{
+					ID:   "username",
+					Type: "input",
+					Props: map[string]interface{}{
+						"placeholder": "Enter username",
+						"prompt":      "> ",
+						"width":       30,
+					},
+				},
+				{
+					ID:   "email",
+					Type: "input",
+					Props: map[string]interface{}{
+						"placeholder": "Enter email",
+						"prompt":      "@ ",
+						"width":       40,
+					},
+				},
+			},
+		},
+		TabCycles: true,
+	}
+
+	model := NewModel(config, nil)
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model
+	model.Init()
+
+	// Send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Call View() to trigger rendering
+	_ = model.View()
+
+	// Verify Runtime was initialized
+	if model.RuntimeEngine == nil {
+		t.Fatal("RuntimeEngine should be initialized")
+	}
+	if model.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should be initialized")
+	}
+
+	// Check component instances
+	if comp, exists := model.ComponentInstanceRegistry.Get("username"); exists {
+		t.Logf("Username component: %T", comp.Instance)
+	} else {
+		t.Error("Username component not found in registry")
+	}
+
+	if comp, exists := model.ComponentInstanceRegistry.Get("email"); exists {
+		t.Logf("Email component: %T", comp.Instance)
+	} else {
+		t.Error("Email component not found in registry")
+	}
+
+	// Verify geometric focus order includes both inputs
+	focusList := model.runtimeFocusList
+	if len(focusList) != 2 {
+		t.Errorf("Expected 2 focusable components, got %d: %v", len(focusList), focusList)
+	}
+
+	// Verify output contains expected elements
+	output := model.View()
+	if output == "" {
+		t.Error("View() should return non-empty output")
+	}
+
+	// Debug: print layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+	}
+
+	// Verify inputs have correct widths
+	usernameBox := result.FindBoxByID("username")
+	if usernameBox == nil {
+		t.Error("Username input box not found")
+	} else if usernameBox.W != 30 {
+		t.Errorf("Username width should be 30, got %d", usernameBox.W)
+	}
+
+	emailBox := result.FindBoxByID("email")
+	if emailBox == nil {
+		t.Error("Email input box not found")
+	} else if emailBox.W != 40 {
+		t.Errorf("Email width should be 40, got %d", emailBox.W)
+	}
+
+	// Verify inputs are stacked vertically (Y increases)
+	if usernameBox != nil && emailBox != nil {
+		if emailBox.Y <= usernameBox.Y {
+			t.Errorf("Email should be below username: username.Y=%d, email.Y=%d", usernameBox.Y, emailBox.Y)
+		}
+	}
+
+	t.Logf("Input component Runtime test passed. Output length: %d chars", len(output))
 }
