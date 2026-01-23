@@ -13,6 +13,7 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/yao/tui/legacy/layout"
+	"github.com/yaoapp/yao/tui/runtime"
 )
 
 // MessageHandler defines a function that handles a specific message type
@@ -267,6 +268,21 @@ type Model struct {
 
 	// Renderer is the layout renderer that renders the layout tree
 	Renderer *layout.Renderer
+
+	// ========== Runtime Integration (v1) ==========
+	// RuntimeEngine is the new runtime-based layout engine
+	RuntimeEngine *runtime.RuntimeImpl
+
+	// RuntimeRoot is the root node of the runtime layout tree
+	RuntimeRoot *runtime.LayoutNode
+
+	// UseRuntime enables the new runtime engine (default: false for compatibility)
+	// When true, RuntimeEngine is used instead of LayoutEngine
+	UseRuntime bool
+
+	// runtimeFocusList holds focusable component IDs sorted by geometric position
+	// This is used when UseRuntime is true for geometry-based focus navigation
+	runtimeFocusList []string
 }
 
 // Validate validates the Config structure.

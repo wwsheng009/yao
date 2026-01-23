@@ -124,52 +124,66 @@ func (m *Model) createLayoutTreeWithCounter(layoutCfg *Layout, registry *Compone
 
 	for i := range layoutCfg.Children {
 		child := &layoutCfg.Children[i] // Use pointer to modify original
-		if child.Type == "layout" {
-			// Support both old format (children + direction) and new format (props.layout)
-			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
-				// New format: nested layout in props.layout
-				nestedNode := m.createLayoutTreeWithCounter(nestedLayout, registry, depth+1, typeCounters)
-				if nestedNode != nil {
-					builder.AddNode(nestedNode)
-				}
-			} else if len(child.Children) > 0 {
-				// Old format: type="layout" has its own direction and children
-				// Create a new counter map for nested layouts
-				nestedCounters := make(map[string]int)
-				for k, v := range typeCounters {
-					nestedCounters[k] = v
-				}
-				oldFormatLayout := &Layout{
-					Direction: child.Direction,
-					Children:  child.Children,
-					Padding:   layoutCfg.Padding, // Inherit padding from parent
-				}
-				nestedNode := m.createLayoutTreeWithCounter(oldFormatLayout, registry, depth+1, nestedCounters)
-				if nestedNode != nil {
-					// Apply properties from the layout component to the nested node
-					if child.Width != nil {
-						nestedNode.Style.Width = layout.NewSize(child.Width)
-					}
-					if child.Height != nil {
-						nestedNode.Style.Height = layout.NewSize(child.Height)
-					}
-					// Copy props (including style)
-					if child.Props != nil {
-						if nestedNode.Props == nil {
-							nestedNode.Props = make(map[string]interface{})
-						}
-						for k, v := range child.Props {
-							nestedNode.Props[k] = v
-						}
-					}
 
-					builder.AddNode(nestedNode)
+		// Check if this is a container component with children (layout, row, column, flex, etc.)
+		if child.Type == "layout" || len(child.Children) > 0 {
+			// Support both old format (children + direction) and new format (props.layout)
+			if child.Type == "layout" {
+				if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
+					// New format: nested layout in props.layout
+					nestedNode := m.createLayoutTreeWithCounter(nestedLayout, registry, depth+1, typeCounters)
+					if nestedNode != nil {
+						builder.AddNode(nestedNode)
+					}
+					continue
 				}
-			} else {
-				// Empty layout node (e.g. spacer)
-				componentNode := m.createComponentNode(*child)
-				componentNode.Parent = builder.Current()
-				builder.Current().Children = append(builder.Current().Children, componentNode)
+			}
+
+			// Handle components with children (row, column, flex, or layout with old format)
+			// Create a new counter map for nested layouts
+			nestedCounters := make(map[string]int)
+			for k, v := range typeCounters {
+				nestedCounters[k] = v
+			}
+
+			// Determine direction for this container
+			nestedDirection := "column" // default
+			if child.Direction != "" {
+				nestedDirection = child.Direction
+			} else if child.Type == "row" || child.Type == "flex" {
+				nestedDirection = "row"
+			}
+
+			oldFormatLayout := &Layout{
+				Direction: nestedDirection,
+				Children:  child.Children,
+				Padding:   layoutCfg.Padding, // Inherit padding from parent
+			}
+			nestedNode := m.createLayoutTreeWithCounter(oldFormatLayout, registry, depth+1, nestedCounters)
+			if nestedNode != nil {
+				// Apply properties from the layout component to the nested node
+				if child.Width != nil {
+					nestedNode.Style.Width = layout.NewSize(child.Width)
+				}
+				if child.Height != nil {
+					nestedNode.Style.Height = layout.NewSize(child.Height)
+				}
+				// Copy props (including style)
+				if child.Props != nil {
+					if nestedNode.Props == nil {
+						nestedNode.Props = make(map[string]interface{})
+					}
+					for k, v := range child.Props {
+						nestedNode.Props[k] = v
+					}
+				}
+				// Store the original component ID and type
+				if child.ID != "" {
+					nestedNode.ID = child.ID
+				}
+				nestedNode.ComponentType = child.Type
+
+				builder.AddNode(nestedNode)
 			}
 		} else {
 			// Generate ID for components without one and update original config
@@ -309,11 +323,25 @@ func findComponentInLayout(l *Layout, id string) *Component {
 			return &child
 		}
 
+		// Search inside "layout" type components
 		if child.Type == "layout" {
 			if nestedLayout, ok := child.Props["layout"].(*Layout); ok {
 				if found := findComponentInLayout(nestedLayout, id); found != nil {
 					return found
 				}
+			}
+		}
+
+		// Also search inside components that have children (row, column, etc.)
+		if len(child.Children) > 0 {
+			// Create a temporary Layout to search
+			nestedLayout := &Layout{
+				Direction: child.Direction,
+				Children:  child.Children,
+				Padding:   l.Padding, // Inherit padding
+			}
+			if found := findComponentInLayout(nestedLayout, id); found != nil {
+				return found
 			}
 		}
 	}
@@ -342,6 +370,18 @@ func findComponentByTypeAndProps(l *Layout, componentType string, props map[stri
 				if found := findComponentByTypeAndProps(nestedLayout, componentType, props); found != nil {
 					return found
 				}
+			}
+		}
+
+		// Also search inside components that have children (row, column, etc.)
+		if len(child.Children) > 0 {
+			nestedLayout := &Layout{
+				Direction: child.Direction,
+				Children:  child.Children,
+				Padding:   l.Padding,
+			}
+			if found := findComponentByTypeAndProps(nestedLayout, componentType, props); found != nil {
+				return found
 			}
 		}
 	}

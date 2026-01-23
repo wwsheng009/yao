@@ -194,15 +194,22 @@ func NewTextComponent(config core.RenderConfig, id string) *TextComponentWrapper
 		id: id,
 	}
 
+	// Default props
+	props := TextProps{}
+
 	// Update with provided configuration if available
 	if config.Data != nil {
 		if err := model.UpdateRenderConfig(config); err != nil {
 			log.Error("Failed to update Text component config: %v", err)
 		}
+		// Set wrapper props from model props
+		props = model.Props
 	}
 
 	return &TextComponentWrapper{
 		model: *model,
+		props: props,
+		id:    id,
 	}
 }
 

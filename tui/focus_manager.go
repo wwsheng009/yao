@@ -238,7 +238,14 @@ func (m *Model) focusPrevComponent() tea.Cmd {
 
 // getFocusableComponentIDs returns IDs of all focusable components
 // Uses the global component registry to determine which component types are focusable
+// When UseRuntime is true, returns the geometrically-ordered focus list from Runtime
 func (m *Model) getFocusableComponentIDs() []string {
+	// Use Runtime focus list if enabled (geometric ordering)
+	if m.UseRuntime && len(m.runtimeFocusList) > 0 {
+		return m.runtimeFocusList
+	}
+
+	// Legacy mode: use registry order
 	registry := GetGlobalRegistry()
 	ids := []string{}
 	for id, comp := range m.Components {

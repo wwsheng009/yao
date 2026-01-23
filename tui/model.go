@@ -61,8 +61,15 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 func (m *Model) Init() tea.Cmd {
 	log.Trace("TUI Init: %s", m.Config.Name)
 
-	// Collect all component Init commands
+	// Collect all component Init commands FIRST
+	// This ensures Components map is populated before Runtime adapter uses it
 	componentCmds := m.InitializeComponents()
+
+	// Initialize Runtime engine if enabled
+	// Must happen AFTER InitializeComponents() so adapter can populate Component field
+	if m.UseRuntime {
+		m.initializeRuntime()
+	}
 
 	// Build a list of commands to execute
 	var cmds []tea.Cmd
@@ -122,6 +129,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.LayoutEngine != nil {
 			m.LayoutEngine.UpdateWindowSize(msg.Width, msg.Height)
 		}
+		// Update Runtime engine dimensions if enabled
+		if m.UseRuntime {
+			m.updateRuntimeWindowSize(msg.Width, msg.Height)
+		}
 	}
 
 	// Dispatch phase: Route message to focused component
@@ -158,7 +169,12 @@ func (m *Model) View() string {
 		return "Initializing..."
 	}
 
-	// Render the layout
+	// Use Runtime engine if enabled
+	if m.UseRuntime {
+		return m.renderWithRuntime()
+	}
+
+	// Render the layout using legacy engine
 	return m.renderLayout()
 }
 

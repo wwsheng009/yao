@@ -2,6 +2,16 @@ package runtime
 
 import "strings"
 
+// Component is the base interface for all UI components.
+//
+// This is the minimal interface that all components must implement.
+// The View() method returns the component's visual representation.
+type Component interface {
+	// View returns the component's visual representation as a string.
+	// This is called during the Render phase.
+	View() string
+}
+
 // Event is a placeholder for future event system
 // v1: simplified, will be expanded in Phase 3
 type Event struct {
