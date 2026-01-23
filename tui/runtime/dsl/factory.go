@@ -196,6 +196,16 @@ func (f *Factory) ApplyProps(component runtime.Component, config *ComponentConfi
 		f.applyFooterProps(comp, props)
 	case *components.ListComponent:
 		f.applyListProps(comp, props)
+	case *components.TableComponent:
+		f.applyTableProps(comp, props)
+	case *components.FormComponent:
+		f.applyFormProps(comp, props)
+	case *components.TextareaComponent:
+		f.applyTextareaProps(comp, props)
+	case *components.ProgressComponent:
+		f.applyProgressProps(comp, props)
+	case *components.SpinnerComponent:
+		f.applySpinnerProps(comp, props)
 	}
 
 	return nil
@@ -662,4 +672,410 @@ func parsePadding(padding interface{}) ([4]int, bool) {
 	}
 
 	return result, false
+}
+
+// applyTableProps applies props to Table components.
+func (f *Factory) applyTableProps(comp *components.TableComponent, props map[string]interface{}) {
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+	// Display options
+	if focused, ok := props["focused"].(bool); ok {
+		comp.WithFocused(focused)
+	}
+	if showBorder, ok := props["showBorder"].(bool); ok {
+		comp.WithShowBorder(showBorder)
+	}
+
+	// Columns
+	if columnsData, ok := props["columns"]; ok {
+		columns := f.ParseTableColumns(columnsData)
+		comp.WithColumns(columns)
+	}
+
+	// Rows/Data
+	if rowsData, ok := props["rows"]; ok {
+		rows := f.ParseTableRows(rowsData)
+		comp.WithRows(rows)
+	}
+	if dataData, ok := props["data"]; ok {
+		if dataArray, ok := dataData.([][]interface{}); ok {
+			comp.WithData(dataArray)
+		} else if dataArray, ok := dataData.([]interface{}); ok {
+			// Convert []interface{} to [][]interface{}
+			converted := make([][]interface{}, 0, len(dataArray))
+			for _, rowIntf := range dataArray {
+				if rowSlice, ok := rowIntf.([]interface{}); ok {
+					converted = append(converted, rowSlice)
+				}
+			}
+			comp.WithData(converted)
+		}
+	}
+
+	// Bind data support
+	if bindData, ok := props["__bind_data"]; ok {
+		if dataArray, ok := bindData.([][]interface{}); ok {
+			comp.WithData(dataArray)
+		}
+	}
+
+	// Padding
+	if padding, ok := props["padding"]; ok {
+		if p, ok := parsePadding(padding); ok {
+			comp.WithPadding(p[0], p[1], p[2], p[3])
+		}
+	}
+}
+
+// ParseTableColumns parses columns from DSL.
+func (f *Factory) ParseTableColumns(columnsData interface{}) []components.RuntimeColumn {
+	var columns []components.RuntimeColumn
+
+	switch data := columnsData.(type) {
+	case []interface{}:
+		columns = make([]components.RuntimeColumn, 0, len(data))
+		for _, colData := range data {
+			if colMap, ok := colData.(map[string]interface{}); ok {
+				col := components.RuntimeColumn{}
+
+				// Extract key
+				if key, ok := colMap["key"].(string); ok {
+					col.Key = key
+				}
+				// Extract title
+				if title, ok := colMap["title"].(string); ok {
+					col.Title = title
+				}
+				// Extract width
+				if width, ok := colMap["width"].(int); ok {
+					col.Width = width
+				} else if width, ok := colMap["width"].(float64); ok {
+					col.Width = int(width)
+				}
+
+				columns = append(columns, col)
+			}
+		}
+	}
+
+	return columns
+}
+
+// ParseTableRows parses rows from DSL.
+func (f *Factory) ParseTableRows(rowsData interface{}) []components.RuntimeTableRow {
+	var rows []components.RuntimeTableRow
+
+	switch data := rowsData.(type) {
+	case []interface{}:
+		rows = make([]components.RuntimeTableRow, 0, len(data))
+		for _, rowData := range data {
+			if rowSlice, ok := rowData.([]interface{}); ok {
+				row := components.RuntimeTableRow{}
+				cells := make([]components.RuntimeTableCell, 0, len(rowSlice))
+				for _, cellValue := range rowSlice {
+					cells = append(cells, components.RuntimeTableCell{Value: cellValue})
+				}
+				row.Cells = cells
+				rows = append(rows, row)
+			}
+		}
+	}
+
+	return rows
+}
+
+// applyFormProps applies props to Form components.
+func (f *Factory) applyFormProps(comp *components.FormComponent, props map[string]interface{}) {
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+	// Title and description
+	if title, ok := props["title"].(string); ok {
+		comp.WithTitle(title)
+	}
+	if description, ok := props["description"].(string); ok {
+		comp.WithDescription(description)
+	}
+
+	// Button labels
+	if submitLabel, ok := props["submitLabel"].(string); ok {
+		comp.WithSubmitLabel(submitLabel)
+	}
+	if cancelLabel, ok := props["cancelLabel"].(string); ok {
+		comp.WithCancelLabel(cancelLabel)
+	}
+
+	// Fields
+	if fieldsData, ok := props["fields"]; ok {
+		fields := f.ParseFormFields(fieldsData)
+		comp.WithFields(fields)
+	}
+
+	// Initial values
+	if valuesData, ok := props["values"]; ok {
+		if valuesMap, ok := valuesData.(map[string]interface{}); ok {
+			for key, value := range valuesMap {
+				if valueStr, ok := value.(string); ok {
+					comp.SetFieldValue(key, valueStr)
+				}
+			}
+		}
+	}
+}
+
+// ParseFormFields parses form fields from DSL data.
+func (f *Factory) ParseFormFields(fieldsData interface{}) []components.FormField {
+	var fields []components.FormField
+
+	switch data := fieldsData.(type) {
+	case []interface{}:
+		fields = make([]components.FormField, 0, len(data))
+		for _, fieldData := range data {
+			if fieldMap, ok := fieldData.(map[string]interface{}); ok {
+				field := components.FormField{}
+
+				// Extract type
+				if fieldType, ok := fieldMap["type"].(string); ok {
+					field.Type = fieldType
+				} else {
+					field.Type = "input" // Default
+				}
+
+				// Extract name
+				if name, ok := fieldMap["name"].(string); ok {
+					field.Name = name
+				}
+
+				// Extract label
+				if label, ok := fieldMap["label"].(string); ok {
+					field.Label = label
+				}
+
+				// Extract placeholder
+				if placeholder, ok := fieldMap["placeholder"].(string); ok {
+					field.Placeholder = placeholder
+				}
+
+				// Extract value
+				if value, ok := fieldMap["value"].(string); ok {
+					field.Value = value
+				}
+
+				// Extract required
+				if required, ok := fieldMap["required"].(bool); ok {
+					field.Required = required
+				}
+
+				// Extract validation
+				if validation, ok := fieldMap["validation"].(string); ok {
+					field.Validation = validation
+				}
+
+				// Extract options
+				if options, ok := fieldMap["options"].([]interface{}); ok {
+					field.Options = make([]string, len(options))
+					for i, opt := range options {
+						if optStr, ok := opt.(string); ok {
+							field.Options[i] = optStr
+						}
+					}
+				}
+
+				// Extract width
+				if width, ok := fieldMap["width"].(int); ok {
+					field.Width = width
+				} else if width, ok := fieldMap["width"].(float64); ok {
+					field.Width = int(width)
+				}
+
+				fields = append(fields, field)
+			}
+		}
+	}
+
+	return fields
+}
+
+// applyTextareaProps applies props to Textarea components.
+func (f *Factory) applyTextareaProps(comp *components.TextareaComponent, props map[string]interface{}) {
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+	if maxHeight, ok := props["maxHeight"].(int); ok {
+		comp.WithMaxHeight(maxHeight)
+	}
+	if maxHeight, ok := props["maxHeight"].(float64); ok {
+		comp.WithMaxHeight(int(maxHeight))
+	}
+
+	// Text properties
+	if placeholder, ok := props["placeholder"].(string); ok {
+		comp.WithPlaceholder(placeholder)
+	}
+	if value, ok := props["value"].(string); ok {
+		comp.WithValue(value)
+	}
+	if prompt, ok := props["prompt"].(string); ok {
+		comp.WithPrompt(prompt)
+	}
+
+	// Behavior
+	if charLimit, ok := props["charLimit"].(int); ok {
+		comp.WithCharLimit(charLimit)
+	}
+	if charLimit, ok := props["charLimit"].(float64); ok {
+		comp.WithCharLimit(int(charLimit))
+	}
+	if showLineNumbers, ok := props["showLineNumbers"].(bool); ok {
+		comp.WithShowLineNumbers(showLineNumbers)
+	}
+	if enterSubmits, ok := props["enterSubmits"].(bool); ok {
+		comp.WithEnterSubmits(enterSubmits)
+	}
+}
+
+// applyProgressProps applies props to Progress components.
+func (f *Factory) applyProgressProps(comp *components.ProgressComponent, props map[string]interface{}) {
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+	// Progress properties
+	if percent, ok := props["percent"].(float64); ok {
+		comp.WithPercent(percent)
+	}
+	if percent, ok := props["percent"].(int); ok {
+		comp.WithPercent(float64(percent))
+	}
+	if label, ok := props["label"].(string); ok {
+		comp.WithLabel(label)
+	}
+	if showPercentage, ok := props["showPercentage"].(bool); ok {
+		comp.WithShowPercentage(showPercentage)
+	}
+
+	// Characters
+	if filledChar, ok := props["filledChar"].(string); ok {
+		comp.WithFilledChar(filledChar)
+	}
+	if emptyChar, ok := props["emptyChar"].(string); ok {
+		comp.WithEmptyChar(emptyChar)
+	}
+
+	// Colors
+	if fullColor, ok := props["fullColor"].(string); ok {
+		comp.WithFullColor(fullColor)
+	} else if color, ok := props["color"].(string); ok {
+		comp.WithFullColor(color)
+	}
+	if emptyColor, ok := props["emptyColor"].(string); ok {
+		comp.WithEmptyColor(emptyColor)
+	}
+
+	// Behavior
+	if animated, ok := props["animated"].(bool); ok {
+		comp.WithAnimated(animated)
+	}
+}
+
+// applySpinnerProps applies props to Spinner components.
+func (f *Factory) applySpinnerProps(comp *components.SpinnerComponent, props map[string]interface{}) {
+	// Dimensions
+	if width, ok := props["width"].(int); ok {
+		comp.WithWidth(width)
+	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := props["height"].(int); ok {
+		comp.WithHeight(height)
+	}
+	if height, ok := props["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+	// Spinner properties
+	if style, ok := props["style"].(string); ok {
+		comp.WithStyle(style)
+	}
+	if label, ok := props["label"].(string); ok {
+		comp.WithLabel(label)
+	}
+	if labelPosition, ok := props["labelPosition"].(string); ok {
+		comp.WithLabelPosition(labelPosition)
+	}
+	if running, ok := props["running"].(bool); ok {
+		comp.WithRunning(running)
+	}
+
+	// Colors
+	if color, ok := props["color"].(string); ok {
+		comp.WithColor(color)
+	}
+	if background, ok := props["background"].(string); ok {
+		comp.WithBackground(background)
+	}
+
+	// Speed
+	if speed, ok := props["speed"].(int); ok {
+		comp.WithSpeed(speed)
+	} else if speed, ok := props["speed"].(float64); ok {
+		comp.WithSpeed(int(speed))
+	}
+
+	// Custom frames
+	if framesData, ok := props["frames"].([]interface{}); ok {
+		frames := make([]string, 0, len(framesData))
+		for _, f := range framesData {
+			if frameStr, ok := f.(string); ok {
+				frames = append(frames, frameStr)
+			}
+		}
+		if len(frames) > 0 {
+			comp.WithFrames(frames)
+		}
+	}
 }

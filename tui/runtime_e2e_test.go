@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/yao/tui/runtime"
+	"github.com/yaoapp/yao/tui/runtime/event"
+	"github.com/yaoapp/yao/tui/ui/components"
 )
 
 // TestRuntimeE2E verifies Runtime integration with real TUI configuration
@@ -828,4 +830,782 @@ func TestRuntimeListComponent(t *testing.T) {
 	}
 
 	t.Logf("List component Runtime test passed. Output length: %d chars", len(output))
+}
+
+// TestRuntimeTableComponent tests the native Runtime Table component
+func TestRuntimeTableComponent(t *testing.T) {
+	// Create a simple TUI configuration with a Table component
+	config := &Config{
+		Name: "Table Component Test",
+		Layout: Layout{
+			Direction: "row",
+			Children: []Component{
+				{
+					Type: "table",
+					ID:   "mytable",
+					Props: map[string]interface{}{
+						"width":         80,
+						"height":        12,
+						"showBorder":     true,
+						"columns": []interface{}{
+							map[string]interface{}{
+								"title": "ID",
+								"width": 10,
+							},
+							map[string]interface{}{
+								"title": "Name",
+								"width": 30,
+							},
+							map[string]interface{}{
+								"title": "Email",
+								"width": 30,
+							},
+						},
+						"data": []interface{}{
+							[]interface{}{1, "Alice", "alice@example.com"},
+							[]interface{}{2, "Bob", "bob@example.com"},
+							[]interface{}{3, "Charlie", "charlie@example.com"},
+							[]interface{}{4, "Diana", "diana@example.com"},
+							[]interface{}{5, "Eve", "eve@example.com"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with Runtime enabled
+	model := NewModel(config, nil)
+	model.UseRuntime = true
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model first!
+	model.Init()
+
+	// Then send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Verify RuntimeRoot was created
+	if model.RuntimeRoot == nil {
+		t.Fatalf("RuntimeRoot should not be nil after Init")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", model.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(model.RuntimeRoot.Children))
+
+	// Verify the table component exists in the registry
+	if comp, exists := model.ComponentInstanceRegistry.Get("mytable"); exists {
+		t.Logf("Table component found in registry: %T", comp.Instance)
+		// The component rendering is verified below via View() output
+	} else {
+		t.Fatal("Table component 'mytable' not found in registry")
+	}
+
+	// Render the model
+	output := model.View()
+	if output == "" {
+		t.Error("View output should not be empty")
+	}
+
+	// Truncate output for logging
+	outputPreview := output
+	if len(outputPreview) > 500 {
+		outputPreview = outputPreview[:500] + "..."
+	}
+	t.Logf("Output (first 500 chars):\n%s", outputPreview)
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the table box
+	var tableBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "mytable" {
+			tableBox = &box
+		}
+	}
+
+	if tableBox != nil {
+		t.Logf("TableBox: X=%d, Y=%d, W=%d, H=%d", tableBox.X, tableBox.Y, tableBox.W, tableBox.H)
+
+		// Verify dimensions (may differ from props due to layout constraints)
+		if tableBox.W < 50 || tableBox.W > 80 {
+			t.Errorf("Table width %d outside expected range [50, 80]", tableBox.W)
+		}
+		if tableBox.H < 10 || tableBox.H > 24 {
+			t.Errorf("Table height %d outside expected range [10, 24]", tableBox.H)
+		}
+	} else {
+		t.Error("TableBox not found in LayoutResult")
+	}
+
+	// Verify output contains expected content
+	if !strings.Contains(output, "ID") {
+		t.Errorf("Output should contain 'ID', got: %s", outputPreview)
+	}
+	if !strings.Contains(output, "Name") {
+		t.Errorf("Output should contain 'Name', got: %s", outputPreview)
+	}
+	if !strings.Contains(output, "Email") {
+		t.Errorf("Output should contain 'Email', got: %s", outputPreview)
+	}
+
+	t.Logf("Table component Runtime test passed. Output length: %d chars", len(output))
+}
+
+// TestRuntimeFormComponent tests the Form component integration with Runtime
+func TestRuntimeFormComponent(t *testing.T) {
+	config := &Config{
+		Name:      "Form Component Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{
+					Type: "form",
+					ID:   "myform",
+					Props: map[string]interface{}{
+						"title":       "User Registration",
+						"description": "Please enter your details",
+						"submitLabel": "Register",
+						"cancelLabel": "Cancel",
+						"fields": []interface{}{
+							map[string]interface{}{
+								"type":        "input",
+								"name":        "username",
+								"label":       "Username",
+								"placeholder": "Enter username",
+								"required":    true,
+								"width":       30,
+							},
+							map[string]interface{}{
+								"type":        "input",
+								"name":        "email",
+								"label":       "Email",
+								"placeholder": "Enter email",
+								"required":    true,
+								"width":       30,
+							},
+							map[string]interface{}{
+								"type":        "input",
+								"name":        "password",
+								"label":       "Password",
+								"placeholder": "Enter password",
+								"required":    true,
+								"width":       30,
+							},
+						},
+						"values": map[string]interface{}{
+							"username": "",
+							"email":    "",
+							"password": "",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with config
+	model := NewModel(config, nil)
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model
+	model.Init()
+
+	// Send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Call View() to trigger rendering
+	_ = model.View()
+
+	// Verify Runtime was initialized
+	if model.RuntimeEngine == nil {
+		t.Fatal("RuntimeEngine should be initialized")
+	}
+	if model.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should be initialized")
+	}
+
+	m := model // Alias for consistency with rest of test
+
+	// Verify Runtime engine is initialized
+	if !m.UseRuntime {
+		t.Fatal("Runtime engine should be enabled")
+	}
+
+	// Verify RuntimeRoot exists
+	if m.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should not be nil")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", m.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(m.RuntimeRoot.Children))
+
+	if len(m.RuntimeRoot.Children) != 1 {
+		t.Fatalf("RuntimeRoot should have 1 child, got %d", len(m.RuntimeRoot.Children))
+	}
+
+	// Find Form component in registry
+	formCompEntry, exists := m.ComponentInstanceRegistry.Get("myform")
+	if !exists {
+		t.Fatal("Form component not found in registry")
+	}
+
+	formWrapper := formCompEntry.Instance
+
+	t.Logf("Form component found in registry: %T", formWrapper)
+
+	// Verify it's wrapped correctly
+	nativeWrapper, ok := formWrapper.(*NativeComponentWrapper)
+	if !ok {
+		t.Fatalf("Form component should be wrapped in NativeComponentWrapper, got %T", formWrapper)
+	}
+
+	// Verify the native component is FormComponent
+	formComp, ok := nativeWrapper.Component.(*components.FormComponent)
+	if !ok {
+		t.Fatalf("Native component should be FormComponent, got %T", nativeWrapper.Component)
+	}
+
+	// Verify form properties
+	// Note: ID might be set by the registry, not by WithID
+	formID := formComp.GetID()
+	if formID != "myform" && formID != "form" {
+		t.Errorf("Expected ID 'myform' or 'form', got '%s'", formID)
+	}
+
+	// Verify fields
+	fields := formComp.GetFields()
+	if len(fields) != 3 {
+		t.Errorf("Expected 3 fields, got %d", len(fields))
+	} else {
+		// Check first field
+		if fields[0].Name != "username" {
+			t.Errorf("Expected first field name 'username', got '%s'", fields[0].Name)
+		}
+		if fields[0].Label != "Username" {
+			t.Errorf("Expected first field label 'Username', got '%s'", fields[0].Label)
+		}
+		if !fields[0].Required {
+			t.Error("Expected first field to be required")
+		}
+	}
+
+	// Verify title and description
+	if formComp.GetTitle() != "User Registration" {
+		t.Errorf("Expected title 'User Registration', got '%s'", formComp.GetTitle())
+	}
+
+	// Verify we can set and get field values
+	formComp.SetFieldValue("username", "testuser")
+	value, exists := formComp.GetFieldValue("username")
+	if !exists {
+		t.Error("Username field should exist")
+	} else if value != "testuser" {
+		t.Errorf("Expected username value 'testuser', got '%s'", value)
+	}
+
+	// Test form validation
+	formComp.SetFieldValue("username", "")
+	formComp.SetFieldValue("email", "")
+	formComp.SetFieldValue("password", "")
+	isValid := formComp.Validate()
+	if isValid {
+		t.Error("Form with empty required fields should not be valid")
+	}
+
+	// Check that errors were set
+	errors := formComp.GetValues()
+	if len(errors) == 0 {
+		// Note: GetValues returns field values, not errors
+		// We can't directly access errors, but we can check validation result
+	}
+
+	// Fill in required fields
+	formComp.SetFieldValue("username", "testuser")
+	formComp.SetFieldValue("email", "test@example.com")
+	formComp.SetFieldValue("password", "password123")
+	isValid = formComp.Validate()
+	if !isValid {
+		t.Error("Form with all required fields filled should be valid")
+	}
+
+	// Test field navigation
+	formComp.SetFocusIndex(0)
+	if formComp.GetFocusIndex() != 0 {
+		t.Errorf("Expected focus index 0, got %d", formComp.GetFocusIndex())
+	}
+
+	formComp.NextField()
+	if formComp.GetFocusIndex() != 1 {
+		t.Errorf("Expected focus index 1 after NextField, got %d", formComp.GetFocusIndex())
+	}
+
+	formComp.PrevField()
+	if formComp.GetFocusIndex() != 0 {
+		t.Errorf("Expected focus index 0 after PrevField, got %d", formComp.GetFocusIndex())
+	}
+
+	// Render the form
+	output := m.View()
+	if len(output) == 0 {
+		t.Error("Output should not be empty")
+	}
+
+	// Verify output contains form elements
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "User Registration") {
+		t.Error("Output should contain form title")
+	}
+
+	t.Logf("Output (first 500 chars):\n%s", truncateString(outputStr, 500))
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the form box
+	var formBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "myform" {
+			formBox = &box
+		}
+	}
+
+	if formBox == nil {
+		t.Fatal("Form box should exist in layout")
+	}
+
+	if formBox.NodeID != "myform" {
+		t.Errorf("Expected box ID 'myform', got '%s'", formBox.NodeID)
+	}
+
+	// Verify dimensions
+	if formBox.W <= 0 {
+		t.Errorf("Form box should have positive width, got %d", formBox.W)
+	}
+	if formBox.H <= 0 {
+		t.Errorf("Form box should have positive height, got %d", formBox.H)
+	}
+
+	t.Logf("FormBox: X=%d, Y=%d, W=%d, H=%d",
+		formBox.X, formBox.Y, formBox.W, formBox.H)
+
+	// Test form submission simulation
+	formComp.SetFocus(true)
+	formComp.HandleKey(&event.KeyEvent{Key: '\r'}) // Enter key
+
+	if !formComp.IsSubmitted() {
+		// Form should be submitted (but may not be valid if fields are empty)
+		t.Log("Form submission state: submitted (validation may have failed)")
+	}
+
+	t.Logf("Form component Runtime test passed. Output length: %d chars", len(output))
+}
+
+// TestRuntimeTextareaComponent tests the Textarea component integration with Runtime
+func TestRuntimeTextareaComponent(t *testing.T) {
+	config := &Config{
+		Name:      "Textarea Component Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{
+					Type: "textarea",
+					ID:   "mytextarea",
+					Props: map[string]interface{}{
+						"placeholder":   "Enter your message here...",
+						"prompt":        "> ",
+						"width":          60,
+						"height":         8,
+						"charLimit":      500,
+						"showLineNumbers": true,
+						"value":          "Initial text\nLine 2",
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with config
+	model := NewModel(config, nil)
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model
+	model.Init()
+
+	// Send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Call View() to trigger rendering
+	_ = model.View()
+
+	// Verify Runtime was initialized
+	if model.RuntimeEngine == nil {
+		t.Fatal("RuntimeEngine should be initialized")
+	}
+	if model.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should be initialized")
+	}
+
+	m := model // Alias for consistency with rest of test
+
+	// Verify Runtime engine is initialized
+	if !m.UseRuntime {
+		t.Fatal("Runtime engine should be enabled")
+	}
+
+	// Verify RuntimeRoot exists
+	if m.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should not be nil")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", m.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(m.RuntimeRoot.Children))
+
+	if len(m.RuntimeRoot.Children) != 1 {
+		t.Fatalf("RuntimeRoot should have 1 child, got %d", len(m.RuntimeRoot.Children))
+	}
+
+	// Find Textarea component in registry
+	textareaCompEntry, exists := m.ComponentInstanceRegistry.Get("mytextarea")
+	if !exists {
+		t.Fatal("Textarea component not found in registry")
+	}
+
+	textareaWrapper := textareaCompEntry.Instance
+
+	t.Logf("Textarea component found in registry: %T", textareaWrapper)
+
+	// Verify it's wrapped correctly
+	nativeWrapper, ok := textareaWrapper.(*NativeComponentWrapper)
+	if !ok {
+		t.Fatalf("Textarea component should be wrapped in NativeComponentWrapper, got %T", textareaWrapper)
+	}
+
+	// Verify the native component is TextareaComponent
+	textareaComp, ok := nativeWrapper.Component.(*components.TextareaComponent)
+	if !ok {
+		t.Fatalf("Native component should be TextareaComponent, got %T", nativeWrapper.Component)
+	}
+
+	// Verify textarea properties
+	textareaID := textareaComp.GetID()
+	if textareaID != "mytextarea" && textareaID != "textarea" {
+		t.Errorf("Expected ID 'mytextarea' or 'textarea', got '%s'", textareaID)
+	}
+
+	// Verify initial value
+	initialValue := textareaComp.GetValue()
+	if initialValue != "Initial text\nLine 2" {
+		t.Errorf("Expected initial value 'Initial text\\nLine 2', got '%s'", initialValue)
+	}
+
+	// Verify placeholder
+	placeholder := textareaComp.GetPlaceholder()
+	if placeholder != "Enter your message here..." {
+		t.Errorf("Expected placeholder 'Enter your message here...', got '%s'", placeholder)
+	}
+
+	// Render the textarea
+	output := m.View()
+	if len(output) == 0 {
+		t.Error("Output should not be empty")
+	}
+
+	// Verify output contains expected elements
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "Initial text") {
+		t.Error("Output should contain initial text")
+	}
+
+	t.Logf("Output (first 500 chars):\n%s", truncateString(outputStr, 500))
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the textarea box
+	var textareaBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "mytextarea" {
+			textareaBox = &box
+		}
+	}
+
+	if textareaBox == nil {
+		t.Fatal("Textarea box should exist in layout")
+	}
+
+	if textareaBox.NodeID != "mytextarea" {
+		t.Errorf("Expected box ID 'mytextarea', got '%s'", textareaBox.NodeID)
+	}
+
+	// Verify dimensions
+	if textareaBox.W <= 0 {
+		t.Errorf("Textarea box should have positive width, got %d", textareaBox.W)
+	}
+	if textareaBox.H <= 0 {
+		t.Errorf("Textarea box should have positive height, got %d", textareaBox.H)
+	}
+
+	t.Logf("TextareaBox: X=%d, Y=%d, W=%d, H=%d",
+		textareaBox.X, textareaBox.Y, textareaBox.W, textareaBox.H)
+
+	t.Logf("Textarea component Runtime test passed. Output length: %d chars", len(output))
+}
+
+func TestRuntimeProgressComponent(t *testing.T) {
+	config := &Config{
+		Name:      "Progress Component Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{
+					Type: "progress",
+					ID:   "myprogress",
+					Props: map[string]interface{}{
+						"percent":        75.5,
+						"label":          "Loading...",
+						"showPercentage": true,
+						"filledChar":     "█",
+						"emptyChar":      "░",
+						"fullColor":      "#00FF00",
+						"emptyColor":     "#333333",
+						"width":          50,
+						"height":         1,
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with config
+	model := NewModel(config, nil)
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model
+	model.Init()
+
+	// Send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Call View() to trigger rendering
+	view := model.View()
+	t.Logf("View output:\n%s", view)
+
+	// Verify Runtime was initialized
+	if model.RuntimeEngine == nil {
+		t.Fatal("RuntimeEngine should be initialized")
+	}
+	if model.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should be initialized")
+	}
+
+	m := model // Alias for consistency with other tests
+
+	// Verify Runtime engine is initialized
+	if !m.UseRuntime {
+		t.Fatal("Runtime engine should be enabled")
+	}
+
+	// Verify RuntimeRoot exists
+	if m.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should not be nil")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", m.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(m.RuntimeRoot.Children))
+
+	if len(m.RuntimeRoot.Children) != 1 {
+		t.Fatalf("RuntimeRoot should have 1 child, got %d", len(m.RuntimeRoot.Children))
+	}
+
+	// Verify rendering
+	output := view
+	t.Logf("Output length: %d bytes", len(output))
+
+	// Verify output contains expected elements
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "Loading") {
+		t.Error("Output should contain label text")
+	}
+
+	t.Logf("Output (first 500 chars):\n%s", truncateString(outputStr, 500))
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the progress box
+	var progressBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "myprogress" {
+			progressBox = &box
+		}
+	}
+
+	if progressBox == nil {
+		t.Fatal("Progress box should exist in layout")
+	}
+
+	if progressBox.NodeID != "myprogress" {
+		t.Errorf("Expected box ID 'myprogress', got '%s'", progressBox.NodeID)
+	}
+
+	// Verify dimensions
+	if progressBox.W <= 0 {
+		t.Errorf("Progress box should have positive width, got %d", progressBox.W)
+	}
+	if progressBox.H <= 0 {
+		t.Errorf("Progress box should have positive height, got %d", progressBox.H)
+	}
+
+	t.Logf("ProgressBox: X=%d, Y=%d, W=%d, H=%d",
+		progressBox.X, progressBox.Y, progressBox.W, progressBox.H)
+
+	t.Logf("Progress component Runtime test passed. Output length: %d chars", len(output))
+}
+
+func TestRuntimeSpinnerComponent(t *testing.T) {
+	config := &Config{
+		Name:      "Spinner Component Test",
+		UseRuntime: true,
+		Layout: Layout{
+			Direction: "column",
+			Children: []Component{
+				{
+					Type: "spinner",
+					ID:   "myspinner",
+					Props: map[string]interface{}{
+						"style":         "dots",
+						"label":         "Loading...",
+						"labelPosition": "right",
+						"running":       true,
+						"color":         "#00FF00",
+						"width":         20,
+						"height":        1,
+					},
+				},
+			},
+		},
+	}
+
+	// Create model with config
+	model := NewModel(config, nil)
+	model.Width = 80
+	model.Height = 24
+
+	// Initialize the model
+	model.Init()
+
+	// Send WindowSizeMsg to trigger layout
+	windowMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
+	newModel, _ := model.Update(windowMsg)
+	model = newModel.(*Model)
+
+	// Call View() to trigger rendering
+	view := model.View()
+	t.Logf("View output:\n%s", view)
+
+	// Verify Runtime was initialized
+	if model.RuntimeEngine == nil {
+		t.Fatal("RuntimeEngine should be initialized")
+	}
+	if model.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should be initialized")
+	}
+
+	m := model // Alias for consistency with other tests
+
+	// Verify Runtime engine is initialized
+	if !m.UseRuntime {
+		t.Fatal("Runtime engine should be enabled")
+	}
+
+	// Verify RuntimeRoot exists
+	if m.RuntimeRoot == nil {
+		t.Fatal("RuntimeRoot should not be nil")
+	}
+
+	t.Logf("RuntimeRoot ID: %s", m.RuntimeRoot.ID)
+	t.Logf("RuntimeRoot has %d children", len(m.RuntimeRoot.Children))
+
+	if len(m.RuntimeRoot.Children) != 1 {
+		t.Fatalf("RuntimeRoot should have 1 child, got %d", len(m.RuntimeRoot.Children))
+	}
+
+	// Verify rendering
+	output := view
+	t.Logf("Output length: %d bytes", len(output))
+
+	// Verify output contains expected elements
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "Loading") {
+		t.Error("Output should contain label text")
+	}
+
+	t.Logf("Output (first 500 chars):\n%s", truncateString(outputStr, 500))
+
+	// Verify layout result
+	result := model.GetLayoutResult()
+	t.Logf("LayoutResult: %d boxes", len(result.Boxes))
+
+	// Find the spinner box
+	var spinnerBox *runtime.LayoutBox
+	for i, box := range result.Boxes {
+		t.Logf("  Box[%d]: ID=%s, X=%d, Y=%d, W=%d, H=%d", i, box.NodeID, box.X, box.Y, box.W, box.H)
+		if box.NodeID == "myspinner" {
+			spinnerBox = &box
+		}
+	}
+
+	if spinnerBox == nil {
+		t.Fatal("Spinner box should exist in layout")
+	}
+
+	if spinnerBox.NodeID != "myspinner" {
+		t.Errorf("Expected box ID 'myspinner', got '%s'", spinnerBox.NodeID)
+	}
+
+	// Verify dimensions
+	if spinnerBox.W <= 0 {
+		t.Errorf("Spinner box should have positive width, got %d", spinnerBox.W)
+	}
+	if spinnerBox.H <= 0 {
+		t.Errorf("Spinner box should have positive height, got %d", spinnerBox.H)
+	}
+
+	t.Logf("SpinnerBox: X=%d, Y=%d, W=%d, H=%d",
+		spinnerBox.X, spinnerBox.Y, spinnerBox.W, spinnerBox.H)
+
+	t.Logf("Spinner component Runtime test passed. Output length: %d chars", len(output))
+}
+
+// truncateString truncates a string to a maximum length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

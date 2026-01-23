@@ -114,6 +114,21 @@ func RegisterBuiltinComponents(r *Registry) {
 	r.Register("list", func() runtime.Component {
 		return components.NewList()
 	})
+	r.Register("table", func() runtime.Component {
+		return components.NewTable()
+	})
+	r.Register("form", func() runtime.Component {
+		return components.NewForm()
+	})
+	r.Register("textarea", func() runtime.Component {
+		return components.NewTextarea()
+	})
+	r.Register("progress", func() runtime.Component {
+		return components.NewProgress()
+	})
+	r.Register("spinner", func() runtime.Component {
+		return components.NewSpinner()
+	})
 }
 
 // init registers all built-in components in the default registry.

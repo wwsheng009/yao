@@ -143,7 +143,9 @@ func (m *Model) componentToLayoutNode(comp runtime.Component, id string, directi
 		nodeType = runtime.NodeTypeFlex
 		nodeStyle = runtime.NewStyle().WithDirection(direction)
 	case *components.InputComponent, *components.ButtonComponent, *components.TextComponent,
-	     *components.HeaderComponent, *components.FooterComponent, *components.ListComponent:
+	     *components.HeaderComponent, *components.FooterComponent, *components.ListComponent,
+	     *components.TableComponent, *components.FormComponent, *components.TextareaComponent,
+	     *components.ProgressComponent, *components.SpinnerComponent:
 		// 叶子组件
 		nodeType = runtime.NodeTypeCustom
 	default:
@@ -212,6 +214,16 @@ func getComponentTypeString(comp runtime.Component) string {
 		return "footer"
 	case *components.ListComponent:
 		return "list"
+	case *components.TableComponent:
+		return "table"
+	case *components.FormComponent:
+		return "form"
+	case *components.TextareaComponent:
+		return "textarea"
+	case *components.ProgressComponent:
+		return "progress"
+	case *components.SpinnerComponent:
+		return "spinner"
 	case *components.RowComponent:
 		return "row"
 	case *components.ColumnComponent:
@@ -345,6 +357,8 @@ func (m *Model) initNativeComponents(node *runtime.LayoutNode, factory *dsl.Fact
 		// 只添加交互式组件（使用现有的 isInteractiveComponent 函数）
 		if isInteractiveComponent(node.Component.Type) {
 			m.Components[node.ID] = node.Component
+			// Also add to ComponentInstanceRegistry for consistency
+			m.ComponentInstanceRegistry.UpdateComponent(node.ID, node.Component.Instance)
 		}
 	}
 
@@ -732,7 +746,259 @@ func (m *Model) updateNativeComponent(wrapper *NativeComponentWrapper, compID st
 		if title, ok := freshProps["title"].(string); ok {
 			comp.WithTitle(title)
 		}
+	case *components.TableComponent:
+		// Update table columns if they changed
+		if columnsData, ok := freshProps["columns"]; ok {
+			factory := dsl.NewFactory()
+			columns := factory.ParseTableColumns(columnsData)
+			comp.WithColumns(columns)
+		}
+		// Update table rows/data if they changed
+		if rowsData, ok := freshProps["rows"]; ok {
+			factory := dsl.NewFactory()
+			rows := factory.ParseTableRows(rowsData)
+			comp.WithRows(rows)
+		}
+		if dataData, ok := freshProps["data"]; ok {
+			if dataArray, ok := dataData.([][]interface{}); ok {
+				comp.WithData(dataArray)
+			} else if dataArray, ok := dataData.([]interface{}); ok {
+				converted := make([][]interface{}, 0, len(dataArray))
+				for _, rowIntf := range dataArray {
+					if rowSlice, ok := rowIntf.([]interface{}); ok {
+						converted = append(converted, rowSlice)
+					}
+				}
+				comp.WithData(converted)
+			}
+		}
+		// Update dimensions
+		if width, ok := freshProps["width"]; ok {
+			if w, ok := width.(int); ok {
+				comp.WithWidth(w)
+			} else if w, ok := width.(float64); ok {
+				comp.WithWidth(int(w))
+			}
+		}
+		if height, ok := freshProps["height"]; ok {
+			if h, ok := height.(int); ok {
+				comp.WithHeight(h)
+			} else if h, ok := height.(float64); ok {
+				comp.WithHeight(int(h))
+			}
+		}
+
+	case *components.FormComponent:
+	// Update form fields if they changed
+	if fieldsData, ok := freshProps["fields"]; ok {
+		factory := dsl.NewFactory()
+		fields := factory.ParseFormFields(fieldsData)
+		comp.WithFields(fields)
 	}
+
+	// Update title and description
+	if title, ok := freshProps["title"]; ok {
+		if titleStr, ok := title.(string); ok {
+			comp.WithTitle(titleStr)
+		}
+	}
+	if description, ok := freshProps["description"]; ok {
+		if descStr, ok := description.(string); ok {
+			comp.WithDescription(descStr)
+		}
+	}
+
+	// Update button labels
+	if submitLabel, ok := freshProps["submitLabel"]; ok {
+		if labelStr, ok := submitLabel.(string); ok {
+			comp.WithSubmitLabel(labelStr)
+		}
+	}
+	if cancelLabel, ok := freshProps["cancelLabel"]; ok {
+		if labelStr, ok := cancelLabel.(string); ok {
+			comp.WithCancelLabel(labelStr)
+		}
+	}
+
+	// Update initial values
+	if valuesData, ok := freshProps["values"]; ok {
+		if valuesMap, ok := valuesData.(map[string]interface{}); ok {
+			for key, value := range valuesMap {
+				if valueStr, ok := value.(string); ok {
+					comp.SetFieldValue(key, valueStr)
+				}
+			}
+		}
+	}
+
+	// Update dimensions
+	if width, ok := freshProps["width"]; ok {
+		if w, ok := width.(int); ok {
+			comp.WithWidth(w)
+		} else if w, ok := width.(float64); ok {
+			comp.WithWidth(int(w))
+		}
+	}
+	if height, ok := freshProps["height"]; ok {
+		if h, ok := height.(int); ok {
+			comp.WithHeight(h)
+		} else if h, ok := height.(float64); ok {
+			comp.WithHeight(int(h))
+		}
+	}
+
+case *components.TextareaComponent:
+	// Update textarea value if it changed
+	if value, ok := freshProps["value"].(string); ok {
+		comp.SetValue(value)
+	}
+
+	// Update placeholder
+	if placeholder, ok := freshProps["placeholder"].(string); ok {
+		comp.WithPlaceholder(placeholder)
+	}
+
+	// Update prompt
+	if prompt, ok := freshProps["prompt"].(string); ok {
+		comp.WithPrompt(prompt)
+	}
+
+	// Update charLimit
+	if charLimit, ok := freshProps["charLimit"].(int); ok {
+		comp.WithCharLimit(charLimit)
+	} else if charLimit, ok := freshProps["charLimit"].(float64); ok {
+		comp.WithCharLimit(int(charLimit))
+	}
+
+	// Update showLineNumbers
+	if showLineNumbers, ok := freshProps["showLineNumbers"].(bool); ok {
+		comp.WithShowLineNumbers(showLineNumbers)
+	}
+
+	// Update enterSubmits
+	if enterSubmits, ok := freshProps["enterSubmits"].(bool); ok {
+		comp.WithEnterSubmits(enterSubmits)
+	}
+
+	// Update dimensions
+	if width, ok := freshProps["width"].(int); ok {
+		comp.WithWidth(width)
+	} else if width, ok := freshProps["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := freshProps["height"].(int); ok {
+		comp.WithHeight(height)
+	} else if height, ok := freshProps["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+	if maxHeight, ok := freshProps["maxHeight"].(int); ok {
+		comp.WithMaxHeight(maxHeight)
+	} else if maxHeight, ok := freshProps["maxHeight"].(float64); ok {
+		comp.WithMaxHeight(int(maxHeight))
+	}
+
+case *components.ProgressComponent:
+	// Update percent
+	if percent, ok := freshProps["percent"].(float64); ok {
+		comp.SetPercent(percent)
+	} else if percent, ok := freshProps["percent"].(int); ok {
+		comp.SetPercent(float64(percent))
+	}
+
+	// Update label
+	if label, ok := freshProps["label"].(string); ok {
+		comp.WithLabel(label)
+	}
+
+	// Update showPercentage
+	if showPercentage, ok := freshProps["showPercentage"].(bool); ok {
+		comp.WithShowPercentage(showPercentage)
+	}
+
+	// Update filledChar
+	if filledChar, ok := freshProps["filledChar"].(string); ok {
+		comp.WithFilledChar(filledChar)
+	}
+
+	// Update emptyChar
+	if emptyChar, ok := freshProps["emptyChar"].(string); ok {
+		comp.WithEmptyChar(emptyChar)
+	}
+
+	// Update fullColor
+	if fullColor, ok := freshProps["fullColor"].(string); ok {
+		comp.WithFullColor(fullColor)
+	} else if color, ok := freshProps["color"].(string); ok {
+		comp.WithFullColor(color)
+	}
+
+	// Update emptyColor
+	if emptyColor, ok := freshProps["emptyColor"].(string); ok {
+		comp.WithEmptyColor(emptyColor)
+	}
+
+	// Update dimensions
+	if width, ok := freshProps["width"].(int); ok {
+		comp.WithWidth(width)
+	} else if width, ok := freshProps["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := freshProps["height"].(int); ok {
+		comp.WithHeight(height)
+	} else if height, ok := freshProps["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+
+case *components.SpinnerComponent:
+	// Update style
+	if style, ok := freshProps["style"].(string); ok {
+		comp.WithStyle(style)
+	}
+
+	// Update label
+	if label, ok := freshProps["label"].(string); ok {
+		comp.WithLabel(label)
+	}
+
+	// Update labelPosition
+	if labelPosition, ok := freshProps["labelPosition"].(string); ok {
+		comp.WithLabelPosition(labelPosition)
+	}
+
+	// Update running
+	if running, ok := freshProps["running"].(bool); ok {
+		comp.WithRunning(running)
+	}
+
+	// Update color
+	if color, ok := freshProps["color"].(string); ok {
+		comp.WithColor(color)
+	}
+
+	// Update background
+	if background, ok := freshProps["background"].(string); ok {
+		comp.WithBackground(background)
+	}
+
+	// Update speed
+	if speed, ok := freshProps["speed"].(int); ok {
+		comp.WithSpeed(speed)
+	} else if speed, ok := freshProps["speed"].(float64); ok {
+		comp.WithSpeed(int(speed))
+	}
+
+	// Update dimensions
+	if width, ok := freshProps["width"].(int); ok {
+		comp.WithWidth(width)
+	} else if width, ok := freshProps["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
+	if height, ok := freshProps["height"].(int); ok {
+		comp.WithHeight(height)
+	} else if height, ok := freshProps["height"].(float64); ok {
+		comp.WithHeight(int(height))
+	}
+}
 }
 
 // findComponentConfigInLayout searches for a component config in the layout tree
