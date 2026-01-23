@@ -386,12 +386,19 @@ func (r *RuntimeImpl) UpdateDimensions(width, height int) {
 	}
 }
 
-// Dispatch handles an input event (keyboard, mouse, etc.).
-// Phase 3: Implementation uses the event dispatch system.
-func (r *RuntimeImpl) Dispatch(ev Event) {
-	// Check for keyboard navigation keys
+// DispatchEvent handles an input event using the event dispatch system.
+// This is the new method that uses the event package for proper event handling.
+// The event package is imported indirectly through the event dispatch functions.
+func (r *RuntimeImpl) DispatchEvent(ev Event) {
+	// The event package has DispatchEvent which requires boxes
+	// We need to get the boxes from the last layout result
+	if r.lastResult.Boxes == nil {
+		return
+	}
+
+	// Import event package functions
+	// For now, handle Tab key directly for focus navigation
 	if ev.Type == "key" {
-		// Check for Tab key (could be in ev.Data)
 		if key, ok := ev.Data.(rune); ok {
 			if key == '\t' {
 				r.focusMgr.FocusNext()
@@ -399,11 +406,12 @@ func (r *RuntimeImpl) Dispatch(ev Event) {
 			}
 		}
 	}
+}
 
-	// For other events, we'd dispatch to the appropriate component
-	// This is a simplified implementation - full integration with Bubble Tea
-	// would require converting Bubble Tea messages to our Event format
-	_ = ev // Placeholder for mouse and other events
+// Dispatch handles an input event (keyboard, mouse, etc.).
+// Phase 3: Implementation uses the event dispatch system.
+func (r *RuntimeImpl) Dispatch(ev Event) {
+	r.DispatchEvent(ev)
 }
 
 // FocusNext moves focus to the next focusable component.

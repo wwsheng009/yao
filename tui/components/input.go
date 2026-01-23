@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/runtime"
 )
 
 // InputProps defines the properties for the Input component
@@ -497,4 +498,61 @@ func (w *InputComponentWrapper) SetCursorBlinkSpeed(speedMs int) {
 		w.model.Cursor.BlinkSpeed = time.Duration(speedMs) * time.Millisecond
 		w.cursorHelper.SetBlinkSpeed(time.Duration(speedMs) * time.Millisecond)
 	}
+}
+
+// Measure implements the runtime.Measurable interface for the Input component.
+// Returns the preferred size of the input component given the constraints.
+func (w *InputComponentWrapper) Measure(c runtime.BoxConstraints) runtime.Size {
+	// Input components typically have a height of 1 (single line)
+	height := 1
+
+	// Apply height constraints
+	if height < c.MinHeight {
+		height = c.MinHeight
+	}
+	if c.MaxHeight > 0 && height > c.MaxHeight {
+		height = c.MaxHeight
+	}
+
+	// Calculate width based on props
+	width := w.props.Width
+
+	// If width is not specified in props, calculate from content
+	if width <= 0 {
+		// Get the current value length
+		valueLen := lipgloss.Width(w.model.Value())
+
+		// Add prompt length
+		promptLen := lipgloss.Width(w.model.Prompt)
+
+		// Add placeholder length if value is empty
+		placeholderLen := 0
+		if w.model.Value() == "" {
+			placeholderLen = lipgloss.Width(w.model.Placeholder)
+		}
+
+		// Width is the maximum of value+prompt and placeholder+prompt
+		contentWidth := valueLen + promptLen
+		if placeholderLen+promptLen > contentWidth {
+			contentWidth = placeholderLen + promptLen
+		}
+
+		// Add some padding for visual comfort
+		width = contentWidth + 2 // +2 for margins
+
+		// Apply minimum width if specified
+		if width < 10 {
+			width = 10 // Minimum usable width for input
+		}
+	}
+
+	// Apply width constraints
+	if width < c.MinWidth {
+		width = c.MinWidth
+	}
+	if c.MaxWidth > 0 && width > c.MaxWidth {
+		width = c.MaxWidth
+	}
+
+	return runtime.Size{Width: width, Height: height}
 }

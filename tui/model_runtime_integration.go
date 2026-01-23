@@ -5,6 +5,8 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/yao/tui/runtime"
+	"github.com/yaoapp/yao/tui/runtime/dsl"
+	"github.com/yaoapp/yao/tui/ui/components"
 )
 
 // ===========================================================================
@@ -28,25 +30,325 @@ func (m *Model) initializeRuntime() {
 	// 创建 Runtime 引擎
 	m.RuntimeEngine = runtime.NewRuntime(m.Width, m.Height)
 
-	// 创建适配器
-	adapter := NewRuntimeAdapter(m)
+	// 创建 DSL 工厂用于创建原生 Runtime 组件
+	factory := dsl.NewFactory()
 
-	// 转换 DSL 树为 Runtime 树
+	// 转换 DSL 树为 Runtime 树（使用原生组件）
 	// Config.Layout.Children 包含顶层组件
 	if m.Config != nil && len(m.Config.Layout.Children) > 0 {
-		// 创建虚拟根节点包含所有顶层组件
-		rootComponent := Component{
-			ID:   "root",
-			Type: "column",
-		}
-
-		// 复制所有子组件
-		rootComponent.Children = m.Config.Layout.Children
-		rootComponent.Direction = m.Config.Layout.Direction
-
-		m.RuntimeRoot = adapter.ToRuntimeLayoutNode(&rootComponent)
+		m.RuntimeRoot = m.createRuntimeLayoutTree(factory, &m.Config.Layout)
 		log.Trace("Model.initializeRuntime: runtime root node created with ID=%s, type=%s",
 			m.RuntimeRoot.ID, m.RuntimeRoot.Type)
+	}
+
+	// 初始化组件到 Components 映射（用于交互式组件）
+	m.initNativeComponents(m.RuntimeRoot, factory)
+}
+
+// createRuntimeLayoutTree 使用 DSL 工厂创建 Runtime 布局树
+func (m *Model) createRuntimeLayoutTree(factory *dsl.Factory, layout *Layout) *runtime.LayoutNode {
+	if layout == nil {
+		return nil
+	}
+
+	// 确定方向
+	direction := runtime.DirectionColumn
+	if layout.Direction == "horizontal" || layout.Direction == "row" {
+		direction = runtime.DirectionRow
+	}
+
+	// 创建根节点（使用 Column 或 Row）
+	var rootNode runtime.Component
+	if direction == runtime.DirectionRow {
+		rootNode = components.NewRow()
+	} else {
+		rootNode = components.NewColumn()
+	}
+
+	// 处理子组件
+	var children []*runtime.LayoutNode
+	for _, child := range layout.Children {
+		childNode := m.createRuntimeComponentNode(factory, &child)
+		if childNode != nil {
+			children = append(children, childNode)
+		}
+	}
+
+	// 转换为 LayoutNode (root node has no DSL Component, so pass nil)
+	rootLayoutNode := m.componentToLayoutNode(rootNode, "root", direction, children, nil)
+
+	return rootLayoutNode
+}
+
+// createRuntimeComponentNode 为单个 DSL 组件创建 Runtime LayoutNode
+func (m *Model) createRuntimeComponentNode(factory *dsl.Factory, comp *Component) *runtime.LayoutNode {
+	if comp == nil {
+		return nil
+	}
+
+	// 绑定模板数据 - 将 {{key}} 替换为 Config.Data 中的实际值
+	boundProps := m.bindPropsToData(comp.Props)
+
+	// 创建原生 Runtime 组件
+	dslConfig := &dsl.ComponentConfig{
+		ID:    comp.ID,
+		Type:  comp.Type,
+		Props: boundProps,
+	}
+
+	nativeComponent, err := factory.Create(dslConfig)
+	if err != nil {
+		log.Warn("createRuntimeComponentNode: failed to create component %s: %v", comp.ID, err)
+		// 创建一个占位符文本组件
+		nativeComponent = components.NewTextComponent("[Error: " + comp.Type + "]")
+	}
+
+	// 递归处理子组件
+	var children []*runtime.LayoutNode
+	if comp.Children != nil {
+		for _, child := range comp.Children {
+			childNode := m.createRuntimeComponentNode(factory, &child)
+			if childNode != nil {
+				children = append(children, childNode)
+			}
+		}
+	}
+
+	// 确定方向
+	direction := runtime.DirectionColumn
+	if comp.Direction == "horizontal" || comp.Direction == "row" {
+		direction = runtime.DirectionRow
+	}
+
+	// 转换为 LayoutNode，传入 DSL Component 以应用 Width/Height
+	layoutNode := m.componentToLayoutNode(nativeComponent, comp.ID, direction, children, comp)
+
+	return layoutNode
+}
+
+// componentToLayoutNode 将原生 Runtime 组件转换为 LayoutNode
+func (m *Model) componentToLayoutNode(comp runtime.Component, id string, direction runtime.Direction, children []*runtime.LayoutNode, dslComp *Component) *runtime.LayoutNode {
+	// 根据组件类型创建对应的 LayoutNode
+	var nodeType runtime.NodeType
+	nodeStyle := runtime.NewStyle()
+
+	switch comp.(type) {
+	case *components.RowComponent:
+		nodeType = runtime.NodeTypeRow
+		nodeStyle = runtime.NewStyle().WithDirection(runtime.DirectionRow)
+	case *components.ColumnComponent:
+		nodeType = runtime.NodeTypeColumn
+		nodeStyle = runtime.NewStyle().WithDirection(direction) // Use passed direction
+	case *components.FlexComponent:
+		nodeType = runtime.NodeTypeFlex
+		nodeStyle = runtime.NewStyle().WithDirection(direction)
+	case *components.InputComponent, *components.ButtonComponent, *components.TextComponent,
+	     *components.HeaderComponent, *components.FooterComponent:
+		// 叶子组件
+		nodeType = runtime.NodeTypeCustom
+	default:
+		nodeType = runtime.NodeTypeCustom
+	}
+
+	// Apply Width/Height from DSL Component if specified
+	if dslComp != nil {
+		if dslComp.Width != nil {
+			if w, ok := dslComp.Width.(int); ok {
+				nodeStyle.Width = w
+			} else if w, ok := dslComp.Width.(float64); ok {
+				nodeStyle.Width = int(w)
+			}
+		}
+		if dslComp.Height != nil {
+			if h, ok := dslComp.Height.(int); ok {
+				nodeStyle.Height = h
+			} else if h, ok := dslComp.Height.(float64); ok {
+				nodeStyle.Height = int(h)
+			}
+		}
+	}
+
+	node := runtime.NewLayoutNode(id, nodeType, nodeStyle)
+	// Properly add children with parent references
+	for _, child := range children {
+		if child != nil {
+			node.AddChild(child)
+		}
+	}
+
+	// Set component's internal children field for container components
+	// This is needed for the component's Measure method to work correctly
+	switch c := comp.(type) {
+	case *components.RowComponent:
+		c.WithChildren(children...)
+	case *components.ColumnComponent:
+		c.WithChildren(children...)
+	case *components.FlexComponent:
+		c.WithChildren(children...)
+	}
+
+	// 包装为 ComponentInstance - 使用包装器确保实现了 core.ComponentInterface
+	wrapper := &NativeComponentWrapper{Component: comp}
+	node.Component = &core.ComponentInstance{
+		Instance: wrapper,
+		Type:     getComponentTypeString(comp),
+	}
+
+	return node
+}
+
+// getComponentTypeString 获取组件类型字符串
+func getComponentTypeString(comp runtime.Component) string {
+	switch comp.(type) {
+	case *components.InputComponent:
+		return "input"
+	case *components.ButtonComponent:
+		return "button"
+	case *components.TextComponent:
+		return "text"
+	case *components.HeaderComponent:
+		return "header"
+	case *components.FooterComponent:
+		return "footer"
+	case *components.RowComponent:
+		return "row"
+	case *components.ColumnComponent:
+		return "column"
+	case *components.FlexComponent:
+		return "flex"
+	default:
+		return "custom"
+	}
+}
+
+// bindPropsToData binds template expressions in props to Config.Data
+// This resolves {{key}} expressions to actual values
+func (m *Model) bindPropsToData(props map[string]interface{}) map[string]interface{} {
+	if props == nil {
+		return nil
+	}
+
+	// Use the existing bindData function from expression_resolver.go
+	bound := m.bindData(props)
+
+	// Convert back to map[string]interface{}
+	if result, ok := bound.(map[string]interface{}); ok {
+		return result
+	}
+	return props
+}
+
+// NativeComponentWrapper 包装原生 Runtime 组件使其实现 core.ComponentInterface
+// 同时也暴露 runtime.Measurable 接口
+type NativeComponentWrapper struct {
+	Component runtime.Component
+}
+
+// Init implements core.ComponentInterface
+func (w *NativeComponentWrapper) Init() tea.Cmd {
+	return nil
+}
+
+// UpdateMsg implements core.ComponentInterface
+func (w *NativeComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	return w, nil, core.Ignored
+}
+
+// View implements core.ComponentInterface
+func (w *NativeComponentWrapper) View() string {
+	if c, ok := w.Component.(interface{ View() string }); ok {
+		return c.View()
+	}
+	return ""
+}
+
+// Render implements core.ComponentInterface
+func (w *NativeComponentWrapper) Render(config core.RenderConfig) (string, error) {
+	if c, ok := w.Component.(interface{ Render(core.RenderConfig) (string, error) }); ok {
+		return c.Render(config)
+	}
+	return w.View(), nil
+}
+
+// UpdateRenderConfig implements core.ComponentInterface
+func (w *NativeComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	return nil
+}
+
+// Cleanup implements core.ComponentInterface
+func (w *NativeComponentWrapper) Cleanup() {
+	// Nothing to clean up
+}
+
+// GetID implements core.ComponentInterface
+func (w *NativeComponentWrapper) GetID() string {
+	if c, ok := w.Component.(interface{ GetID() string }); ok {
+		return c.GetID()
+	}
+	return ""
+}
+
+// SetFocus implements core.ComponentInterface
+func (w *NativeComponentWrapper) SetFocus(focused bool) {
+	if c, ok := w.Component.(interface{ SetFocus(bool) }); ok {
+		c.SetFocus(focused)
+	}
+}
+
+// GetFocus implements core.ComponentInterface
+func (w *NativeComponentWrapper) GetFocus() bool {
+	if c, ok := w.Component.(interface{ GetFocus() bool }); ok {
+		return c.GetFocus()
+	}
+	return false
+}
+
+// GetComponentType implements core.ComponentInterface
+func (w *NativeComponentWrapper) GetComponentType() string {
+	return getComponentTypeString(w.Component)
+}
+
+// GetStateChanges implements core.ComponentInterface
+func (w *NativeComponentWrapper) GetStateChanges() (map[string]interface{}, bool) {
+	return nil, false
+}
+
+// GetSubscribedMessageTypes implements core.ComponentInterface
+func (w *NativeComponentWrapper) GetSubscribedMessageTypes() []string {
+	return nil
+}
+
+// Measure implements runtime.Measurable interface
+// This delegates to the wrapped native component's Measure method
+func (w *NativeComponentWrapper) Measure(c runtime.BoxConstraints) runtime.Size {
+	if measurable, ok := w.Component.(interface{ Measure(runtime.BoxConstraints) runtime.Size }); ok {
+		return measurable.Measure(c)
+	}
+	return runtime.Size{Width: 0, Height: 0}
+}
+
+// initNativeComponents 初始化原生组件到 Components 映射
+// 这是用于事件处理和焦点管理
+func (m *Model) initNativeComponents(node *runtime.LayoutNode, factory *dsl.Factory) {
+	if node == nil {
+		return
+	}
+
+	// 如果有组件实例，添加到 Components 映射
+	if node.Component != nil && node.Component.Instance != nil {
+		if m.Components == nil {
+			m.Components = make(map[string]*core.ComponentInstance)
+		}
+
+		// 只添加交互式组件（使用现有的 isInteractiveComponent 函数）
+		if isInteractiveComponent(node.Component.Type) {
+			m.Components[node.ID] = node.Component
+		}
+	}
+
+	// 递归处理子节点
+	for _, child := range node.Children {
+		m.initNativeComponents(child, factory)
 	}
 }
 
@@ -308,6 +610,14 @@ func (m *Model) syncStateToRuntime() {
 		return
 	}
 
+	// For native Runtime components, traverse the RuntimeRoot tree
+	// and update components with fresh template bindings
+	if m.RuntimeRoot != nil {
+		m.syncRuntimeNode(m.RuntimeRoot)
+		return
+	}
+
+	// Legacy fallback: Use ComponentInstanceRegistry
 	// 1. 清除 Props 缓存
 	if m.propsCache != nil {
 		m.propsCache.Clear()
@@ -345,11 +655,86 @@ func (m *Model) syncStateToRuntime() {
 			log.Trace("syncStateToRuntime: Updated config for component %s", compID)
 		}
 	}
+}
 
-	// 4. 标记 Runtime 需要重新渲染
-	if m.RuntimeEngine != nil {
-		m.RuntimeEngine.MarkFullRender()
+// syncRuntimeNode recursively syncs state to Runtime nodes and their components
+func (m *Model) syncRuntimeNode(node *runtime.LayoutNode) {
+	if node == nil {
+		return
 	}
+
+	// Update this node's component if it's a native component
+	if node.Component != nil && node.Component.Instance != nil {
+		// Try to update native Runtime components with fresh template bindings
+		if wrapper, ok := node.Component.Instance.(*NativeComponentWrapper); ok {
+			m.updateNativeComponent(wrapper, node.ID)
+		}
+	}
+
+	// Recursively update children
+	for _, child := range node.Children {
+		m.syncRuntimeNode(child)
+	}
+}
+
+// updateNativeComponent updates a native Runtime component with fresh template bindings
+func (m *Model) updateNativeComponent(wrapper *NativeComponentWrapper, compID string) {
+	// Find the component config from the original DSL
+	compConfig := m.findComponentConfig(compID)
+	if compConfig == nil {
+		// Try to find from Config layout
+		compConfig = m.findComponentConfigInLayout(m.Config.Layout.Children, compID)
+		if compConfig == nil {
+			return
+		}
+	}
+
+	// Re-bind props to current state
+	freshProps := m.bindPropsToData(compConfig.Props)
+
+	// Update the native component based on its type
+	switch comp := wrapper.Component.(type) {
+	case *components.TextComponent:
+		if content, ok := freshProps["content"].(string); ok {
+			comp.WithContent(content)
+		} else if text, ok := freshProps["text"].(string); ok {
+			comp.WithContent(text)
+		}
+	case *components.HeaderComponent:
+		if title, ok := freshProps["title"].(string); ok {
+			comp.WithContent(title)
+		} else if content, ok := freshProps["content"].(string); ok {
+			comp.WithContent(content)
+		}
+	case *components.FooterComponent:
+		if text, ok := freshProps["text"].(string); ok {
+			comp.WithContent(text)
+		} else if content, ok := freshProps["content"].(string); ok {
+			comp.WithContent(content)
+		}
+	case *components.InputComponent:
+		if value, ok := freshProps["value"].(string); ok {
+			comp.WithValue(value)
+		}
+		if placeholder, ok := freshProps["placeholder"].(string); ok {
+			comp.WithPlaceholder(placeholder)
+		}
+	}
+}
+
+// findComponentConfigInLayout searches for a component config in the layout tree
+func (m *Model) findComponentConfigInLayout(children []Component, compID string) *Component {
+	for i := range children {
+		if children[i].ID == compID {
+			return &children[i]
+		}
+		if children[i].Children != nil {
+			if found := m.findComponentConfigInLayout(children[i].Children, compID); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
 }
 
 // ========== 运行时切换 ==========
