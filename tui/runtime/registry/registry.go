@@ -129,6 +129,31 @@ func RegisterBuiltinComponents(r *Registry) {
 	r.Register("spinner", func() runtime.Component {
 		return components.NewSpinner()
 	})
+
+	// Overlay components
+	r.Register("modal", func() runtime.Component {
+		return components.NewModal()
+	})
+
+	// Navigation components
+	r.Register("tabs", func() runtime.Component {
+		return components.NewTabs()
+	})
+
+	// Data components
+	r.Register("tree", func() runtime.Component {
+		return components.NewTree()
+	})
+
+	// Layout components
+	r.Register("splitpane", func() runtime.Component {
+		return components.NewSplitPane(components.SplitHorizontal)
+	})
+
+	// Overlay components
+	r.Register("contextmenu", func() runtime.Component {
+		return components.NewContextMenu()
+	})
 }
 
 // init registers all built-in components in the default registry.
