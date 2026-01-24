@@ -261,6 +261,10 @@ func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 		return
 	}
 
+	// Notify component of its allocated size before rendering
+	// This allows components like List to adjust their internal model dimensions
+	box.Node.Component.Instance.SetSize(box.W, box.H)
+
 	// Get component view text
 	text := box.Node.Component.Instance.View()
 	if text == "" {

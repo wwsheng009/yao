@@ -384,12 +384,29 @@ func layoutFlexRowEnhanced(node *LayoutNode, startX, startY, availableWidth, ava
 		child.X = childX
 		child.Y = childY
 
+		// Determine constraints for child
+		// For flexible children (FlexGrow > 0), allow them to expand to available space
+		// For fixed children, constrain to their measured size
+		childMinW := child.MeasuredWidth
+		childMaxW := child.MeasuredWidth
+		childMinH := child.MeasuredHeight
+		childMaxH := child.MeasuredHeight
+
+		if child.Style.FlexGrow > 0 {
+			// For row layout, main axis is width - allow flexible child to expand to available width
+			childMaxW = availableWidth
+		}
+		// AlignItems controls cross-axis (height in row layout)
+		if child.Style.FlexGrow > 0 || node.Style.AlignItems == AlignStretch {
+			childMaxH = availableHeight
+		}
+
 		// Recursively layout child
 		layoutFunc(child, BoxConstraints{
-			MinWidth:  child.MeasuredWidth,
-			MaxWidth:  child.MeasuredWidth,
-			MinHeight: child.MeasuredHeight,
-			MaxHeight: child.MeasuredHeight,
+			MinWidth:  childMinW,
+			MaxWidth:  childMaxW,
+			MinHeight: childMinH,
+			MaxHeight: childMaxH,
 		})
 
 		prevChild = child
@@ -519,12 +536,29 @@ func layoutFlexColumnEnhanced(node *LayoutNode, startX, startY, availableWidth, 
 		child.X = childX
 		child.Y = childY
 
+		// Determine constraints for child
+		// For flexible children (FlexGrow > 0), allow them to expand to available space
+		// For fixed children, constrain to their measured size
+		childMinW := child.MeasuredWidth
+		childMaxW := child.MeasuredWidth
+		childMinH := child.MeasuredHeight
+		childMaxH := child.MeasuredHeight
+
+		// AlignItems controls cross-axis (width in column layout)
+		if child.Style.FlexGrow > 0 || node.Style.AlignItems == AlignStretch {
+			childMaxW = availableWidth
+		}
+		if child.Style.FlexGrow > 0 {
+			// For column layout, main axis is height - allow flexible child to expand to available height
+			childMaxH = availableHeight
+		}
+
 		// Recursively layout child
 		layoutFunc(child, BoxConstraints{
-			MinWidth:  child.MeasuredWidth,
-			MaxWidth:  child.MeasuredWidth,
-			MinHeight: child.MeasuredHeight,
-			MaxHeight: child.MeasuredHeight,
+			MinWidth:  childMinW,
+			MaxWidth:  childMaxW,
+			MinHeight: childMinH,
+			MaxHeight: childMaxH,
 		})
 
 		prevChild = child

@@ -63,6 +63,10 @@ func (m *mockComponent) GetFocus() bool {
 	return false
 }
 
+func (m *mockComponent) SetSize(width, height int) {
+	// Mock component doesn't need to track size
+}
+
 func (m *mockComponent) GetComponentType() string {
 	return "mock"
 }

@@ -41,6 +41,11 @@ type ComponentInterface interface {
 	SetFocus(focus bool) // 设置/取消焦点
 	GetFocus() bool      // 获取焦点状态
 
+	// SetSize 通知组件其分配的尺寸（由 Runtime 在渲染前调用）
+	// 这允许组件根据分配的空间调整其内部状态
+	// width 和 height 是 Runtime 布局阶段计算出的实际分配尺寸
+	SetSize(width, height int)
+
 	// 类型识别方法
 	GetComponentType() string
 

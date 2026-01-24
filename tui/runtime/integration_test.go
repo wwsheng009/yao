@@ -36,6 +36,12 @@ func (m *MockTextComponent) GetFocus() bool {
 	return false
 }
 
+func (m *MockTextComponent) SetSize(width, height int) {
+	// Mock component stores size for testing
+	m.width = width
+	m.height = height
+}
+
 func (m *MockTextComponent) GetComponentType() string {
 	return "mock-text"
 }

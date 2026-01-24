@@ -399,6 +399,18 @@ func (w *InputComponentWrapper) View() string {
 	return w.model.View()
 }
 
+// SetSize sets the allocated size for the input component.
+// This is called by the Runtime before rendering.
+func (w *InputComponentWrapper) SetSize(width, height int) {
+	// Update the textinput model to use the allocated width
+	if width > 0 && width != w.model.Width() {
+		w.model.Width = width
+	}
+	// Height is typically 1 for input, but we can store it if needed
+	w.props.Width = width
+	w.props.Height = height
+}
+
 // SetValue sets the value of the input component
 func (w *InputComponentWrapper) SetValue(value string) {
 	w.model.SetValue(value)
