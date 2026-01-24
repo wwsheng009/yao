@@ -50,7 +50,7 @@ func loadDemoConfig(t *testing.T, filename string) *Config {
 // setupModel 初始化模型并触发布局计算
 func setupModel(t *testing.T, filename string, width, height int) *Model {
 	cfg := loadDemoConfig(t, filename)
-	cfg.UseRuntime = true // Enable Runtime engine
+	// UseRuntime defaults to true, no need to set explicitly
 	model := NewModel(cfg, nil)
 
 	// Initialize the model (this creates RuntimeRoot)

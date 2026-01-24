@@ -10,6 +10,11 @@ import (
 	"github.com/yaoapp/yao/tui/ui/components"
 )
 
+// boolPtr returns a pointer to a bool value
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // TestRuntimeE2E verifies Runtime integration with real TUI configuration
 func TestRuntimeE2E(t *testing.T) {
 	// Create a realistic TUI configuration
@@ -535,7 +540,7 @@ func TestRuntimeConfigOption(t *testing.T) {
 	// Test 1: UseRuntime=false in Config should result in Legacy engine
 	configLegacy := &Config{
 		Name:      "Legacy Test",
-		UseRuntime: false,
+		UseRuntime: boolPtr(false),
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -556,7 +561,7 @@ func TestRuntimeConfigOption(t *testing.T) {
 	// Test 2: UseRuntime=true in Config should result in Runtime engine
 	configRuntime := &Config{
 		Name:      "Runtime Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -579,7 +584,7 @@ func TestRuntimeConfigOption(t *testing.T) {
 		t.Error("RuntimeEngine should be initialized when UseRuntime is true")
 	}
 
-	// Test 3: Default (UseRuntime not set) should result in Legacy engine
+	// Test 3: Default (UseRuntime not set) should result in Runtime engine (new default)
 	configDefault := &Config{
 		Name: "Default Test",
 		Layout: Layout{
@@ -591,8 +596,8 @@ func TestRuntimeConfigOption(t *testing.T) {
 	}
 
 	modelDefault := NewModel(configDefault, nil)
-	if modelDefault.UseRuntime {
-		t.Error("UseRuntime should default to false for backward compatibility")
+	if !modelDefault.UseRuntime {
+		t.Error("UseRuntime should default to true (new Runtime engine is default)")
 	}
 
 	t.Logf("Runtime config option test passed")
@@ -602,7 +607,7 @@ func TestRuntimeConfigOption(t *testing.T) {
 func TestRuntimeInputComponent(t *testing.T) {
 	config := &Config{
 		Name:      "Input Runtime Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -962,7 +967,7 @@ func TestRuntimeTableComponent(t *testing.T) {
 func TestRuntimeFormComponent(t *testing.T) {
 	config := &Config{
 		Name:      "Form Component Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -1217,7 +1222,7 @@ func TestRuntimeFormComponent(t *testing.T) {
 func TestRuntimeTextareaComponent(t *testing.T) {
 	config := &Config{
 		Name:      "Textarea Component Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -1373,7 +1378,7 @@ func TestRuntimeTextareaComponent(t *testing.T) {
 func TestRuntimeProgressComponent(t *testing.T) {
 	config := &Config{
 		Name:      "Progress Component Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
@@ -1490,7 +1495,7 @@ func TestRuntimeProgressComponent(t *testing.T) {
 func TestRuntimeSpinnerComponent(t *testing.T) {
 	config := &Config{
 		Name:      "Spinner Component Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{

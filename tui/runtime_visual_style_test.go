@@ -13,7 +13,7 @@ import (
 func TestRuntimeVisualStyle(t *testing.T) {
 	config := &Config{
 		Name:      "Visual Style Test",
-		UseRuntime: true,
+		// UseRuntime defaults to true
 		Layout: Layout{
 			Direction: "column",
 			Children: []Component{
