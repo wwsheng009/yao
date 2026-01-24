@@ -120,6 +120,8 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		model.StateMu.Lock()
 		model.State[stateMsg.Key] = stateMsg.Value
 		model.StateMu.Unlock()
+		// CRITICAL: Mark for re-render when state changes
+		model.forceRender = true
 		return model, nil
 	}
 
@@ -135,6 +137,8 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 			model.State[key] = value
 		}
 		model.StateMu.Unlock()
+		// CRITICAL: Mark for re-render when state changes
+		model.forceRender = true
 		return model, nil
 	}
 

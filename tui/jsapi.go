@@ -686,8 +686,6 @@ func tuiSubmitFormMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate
 	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 		// Collect all input values and update state
 		model.StateMu.Lock()
-		defer model.StateMu.Unlock()
-
 		for id, comp := range model.Components {
 			if comp.Type == "input" {
 				if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
@@ -695,6 +693,10 @@ func tuiSubmitFormMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate
 				}
 			}
 		}
+		model.StateMu.Unlock()
+
+		// CRITICAL: Mark for re-render when state changes
+		model.forceRender = true
 
 		return v8go.Undefined(iso)
 	})

@@ -157,6 +157,9 @@ func ProcessFormSubmitAction(model *Model, action *core.Action) (interface{}, er
 	}
 	model.StateMu.Unlock()
 
+	// CRITICAL: Mark for re-render when state changes
+	model.forceRender = true
+
 	// Publish FORM_SUBMIT_SUCCESS event for component communication
 	if model.Program != nil {
 		model.Program.Send(core.ActionMsg{
@@ -183,6 +186,9 @@ func ProcessSubmitAction(model *Model, action *core.Action) (interface{}, error)
 		}
 	}
 	model.StateMu.Unlock()
+
+	// CRITICAL: Mark for re-render when state changes
+	model.forceRender = true
 
 	// Here we could add additional processing specific to general submissions
 	// For now, return a general submission result

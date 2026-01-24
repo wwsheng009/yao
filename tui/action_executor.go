@@ -135,6 +135,8 @@ func (m *Model) getStateValue(key string) (interface{}, bool) {
 // This is used internally by the JavaScript API.
 func (m *Model) setStateValue(key string, value interface{}) {
 	m.StateMu.Lock()
-	defer m.StateMu.Unlock()
 	m.State[key] = value
+	m.StateMu.Unlock()
+	// CRITICAL: Mark for re-render when state changes
+	m.forceRender = true
 }

@@ -172,16 +172,19 @@ func (m *Model) handleFocusChange(change event.FocusChangeType) {
 		focused := focusMgr.FocusNext()
 		if focused != nil {
 			log.Trace("Focus moved to next: %s", focused.ID)
+			m.forceRender = true // 焦点变化需要重新渲染
 		}
 	case event.FocusChangePrev:
 		focused := focusMgr.FocusPrev()
 		if focused != nil {
 			log.Trace("Focus moved to previous: %s", focused.ID)
+			m.forceRender = true // 焦点变化需要重新渲染
 		}
 	case event.FocusChangeSpecific:
 		// Focus would be set to a specific component
 		// This requires additional context about which component to focus
 		log.Trace("Focus change to specific component requested")
+		m.forceRender = true // 焦点变化需要重新渲染
 	}
 }
 
@@ -199,5 +202,6 @@ func (m *Model) handleFocusTarget(targetID string) {
 	// Try to focus the specific component
 	if focusMgr.Focus(targetID) {
 		log.Trace("Focus set to component: %s", targetID)
+		m.forceRender = true // 焦点变化需要重新渲染
 	}
 }
