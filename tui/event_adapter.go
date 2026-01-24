@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"time"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/runtime"
@@ -133,6 +134,21 @@ func (m *Model) DispatchEventToRuntime(msg tea.Msg) event.EventResult {
 	// Convert to Runtime event
 	ev := ConvertBubbleTeaMsg(msg)
 
+	// ========== 新增：处理文本选择 ==========
+	// 在事件分发到组件之前，先让选择管理器处理鼠标事件
+	if ev.Type == event.EventTypeMouse && ev.Mouse != nil && m.RuntimeEngine != nil {
+		handled := m.handleSelectionMouseEvent(ev.Mouse)
+		if handled {
+			m.forceRender = true // 选择变化需要重新渲染
+			// 返回已处理的结果，但仍然需要处理焦点等
+			return event.EventResult{
+				Handled: true,
+				Updated: true,
+			}
+		}
+	}
+	// ============================================
+
 	// Get the layout boxes from Runtime engine
 	// The boxes are the output of the layout phase and contain position information
 	var boxes []runtime.LayoutBox
@@ -205,3 +221,89 @@ func (m *Model) handleFocusTarget(targetID string) {
 		m.forceRender = true // 焦点变化需要重新渲染
 	}
 }
+
+// handleSelectionMouseEvent handles mouse events for text selection.
+// Returns true if the event was handled by the selection system.
+// Supports single-click drag, double-click (word), triple-click (line).
+func (m *Model) handleSelectionMouseEvent(ev *event.MouseEvent) bool {
+	if m.RuntimeEngine == nil {
+		return false
+	}
+
+	selection := m.RuntimeEngine.GetSelection()
+	if selection == nil || !selection.IsEnabled() {
+		return false
+	}
+
+	switch ev.Type {
+	case event.MousePress:
+		if ev.Click == event.MouseLeft {
+			// 检测双击/三击
+			currentTime := time.Now().UnixNano()
+			clickTimeThreshold := int64(500 * 1000000) // 500ms
+
+			// 检查是否是双击/三击
+			isDoubleClick := (currentTime-m.lastClickTime) < clickTimeThreshold &&
+				ev.X == m.lastClickX && ev.Y == m.lastClickY
+
+			if isDoubleClick {
+				m.clickCount++
+			} else {
+				m.clickCount = 1
+			}
+			m.lastClickTime = currentTime
+			m.lastClickX = ev.X
+			m.lastClickY = ev.Y
+
+			// 开始选择
+			m.mouseButtonDown = 1
+			m.mouseDragStartX = ev.X
+			m.mouseDragStartY = ev.Y
+			m.lastMouseX = ev.X
+			m.lastMouseY = ev.Y
+
+			// 根据点击次数选择不同的模式
+			switch m.clickCount {
+			case 1:
+				// 单击 - 字符选择
+				selection.Start(ev.X, ev.Y)
+				log.Trace("Selection started (char) at (%d, %d)", ev.X, ev.Y)
+			case 2:
+				// 双击 - 单词选择
+				selection.SelectWord(ev.X, ev.Y)
+				log.Trace("Selection started (word) at (%d, %d)", ev.X, ev.Y)
+			case 3:
+				// 三击 - 行选择
+				selection.SelectLine(ev.Y)
+				log.Trace("Selection started (line) at y=%d", ev.Y)
+				m.clickCount = 0 // 重置
+			}
+			return true
+		}
+
+	case event.MouseMove:
+		// 鼠标移动 - 如果左键按下，更新选择
+		if m.mouseButtonDown == 1 {
+			// 只有位置改变时才更新
+			if ev.X != m.lastMouseX || ev.Y != m.lastMouseY {
+				// 如果已经移动到不同位置，拖动模式会覆盖点击模式
+				selection.Update(ev.X, ev.Y)
+				m.lastMouseX = ev.X
+				m.lastMouseY = ev.Y
+				log.Trace("Selection updated to (%d, %d)", ev.X, ev.Y)
+				return true
+			}
+		}
+
+	case event.MouseRelease:
+		if ev.Click == event.MouseLeft {
+			// 左键释放 - 结束拖动
+			m.mouseButtonDown = 0
+			log.Trace("Selection drag ended at (%d, %d)", ev.X, ev.Y)
+			return true
+		}
+	}
+
+	return false
+}
+

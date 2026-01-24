@@ -303,6 +303,28 @@ type Model struct {
 	// messageReceived indicates that a message was processed since last render
 	// This ensures the UI refreshes after any user interaction
 	messageReceived bool
+
+	// ========== Text Selection Support ==========
+	// mouseButtonDown tracks which mouse button is currently down (for drag selection)
+	mouseButtonDown int
+
+	// lastMouseX, lastMouseY track the last mouse position for drag detection
+	lastMouseX int
+	lastMouseY int
+
+	// mouseDragStart tracks where a drag selection started
+	mouseDragStartX int
+	mouseDragStartY int
+
+	// clickCount tracks consecutive clicks for double/triple click detection
+	clickCount int
+
+	// lastClickTime tracks the time of the last click for double-click detection
+	lastClickTime int64
+
+	// lastClickX, lastClickY track the position of the last click
+	lastClickX int
+	lastClickY int
 }
 
 // Validate validates the Config structure.

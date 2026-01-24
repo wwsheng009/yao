@@ -122,10 +122,19 @@ func (m *Model) Init() tea.Cmd {
 // The key insight is that Runtime event system cannot return tea.Cmd (module boundary),
 // so we must route messages that require command propagation through the Bubble Tea path.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle Ctrl+C immediately - it's a system-level quit that bypasses all routing
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyCtrlC {
-		return m, tea.Quit
+	// ========== 新增：处理文本选择键盘快捷键 ==========
+	// 检查选择相关的键盘快捷键（在有选择时，Ctrl+C 复制而不是退出）
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if m.handleSelectionKeyMsg(keyMsg) {
+			m.forceRender = true // 选择变化需要重新渲染
+			return m, nil
+		}
+		// 没有选择时，Ctrl+C 才是退出
+		if keyMsg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
 	}
+	// ============================================
 
 	// Mark that a user interaction message was received
 	// This ensures the UI refreshes after any user action (key press, etc.)
@@ -211,6 +220,86 @@ func (m *Model) handleSystemMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.dispatchMessageToAllComponents(msg)
 	}
 	return m, nil
+}
+
+// handleSelectionKeyMsg handles keyboard shortcuts for text selection.
+// Returns true if the key was handled by the selection system.
+// Supports: Ctrl+C (copy), Ctrl+A (select all), Escape (clear), Ctrl+X (cut).
+func (m *Model) handleSelectionKeyMsg(msg tea.KeyMsg) bool {
+	if m.RuntimeEngine == nil {
+		return false
+	}
+
+	selection := m.RuntimeEngine.GetSelection()
+	if selection == nil || !selection.IsEnabled() {
+		return false
+	}
+
+	// Check if selection is active
+	isActive := selection.IsActive()
+	log.Trace("handleSelectionKeyMsg: key=%s, selection active=%v", msg.String(), isActive)
+
+	// 检查是否有 Ctrl 修饰键
+	hasCtrl := msg.Type == tea.KeyCtrlC ||
+		msg.Type == tea.KeyCtrlV ||
+		msg.Type == tea.KeyCtrlA ||
+		msg.Type == tea.KeyCtrlX ||
+		msg.String() == "ctrl+c" ||
+		msg.String() == "ctrl+a" ||
+		msg.String() == "ctrl+x"
+
+	// Ctrl+C - 复制选中文本
+	if hasCtrl && (msg.Type == tea.KeyCtrlC || msg.String() == "ctrl+c") {
+		if isActive {
+			// 有选择时复制
+			text, err := m.RuntimeEngine.CopySelection()
+			log.Trace("CopySelection result: text_len=%d, err=%v", len(text), err)
+			if err == nil && text != "" {
+				log.Trace("Copied selection: %d chars", len(text))
+			} else {
+				log.Trace("CopySelection failed: err=%v", err)
+			}
+			return true
+		}
+		log.Trace("Ctrl+C pressed but no active selection, will quit")
+		return false // 没有选择时不处理，让调用者决定是否退出
+	}
+
+	// Ctrl+A - 全选
+	if hasCtrl && (msg.Type == tea.KeyCtrlA || msg.String() == "ctrl+a") {
+		selection.SelectAll()
+		log.Trace("Selected all text")
+		return true
+	}
+
+	// Ctrl+X - 剪切（复制并清除选择）
+	if hasCtrl && (msg.Type == tea.KeyCtrlX || msg.String() == "ctrl+x") {
+		if isActive {
+			text, err := m.RuntimeEngine.CopySelection()
+			if err == nil && text != "" {
+				selection.Clear()
+				log.Trace("Cut selection: %d chars", len(text))
+			}
+			return true
+		}
+	}
+
+	// Escape - 清除选择
+	if msg.Type == tea.KeyEscape {
+		if isActive {
+			selection.Clear()
+			log.Trace("Selection cleared")
+			return true
+		}
+	}
+
+	// Shift+方向键 - 扩展选择（未来实现）
+	// if msg.Type == tea.KeyShiftLeft || msg.Type == tea.KeyShiftRight ... {
+	//     selection.ExtendSelection(...)
+	//     return true
+	// }
+
+	return false
 }
 
 // View renders the current state of the Model to a string.
