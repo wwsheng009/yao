@@ -330,17 +330,14 @@ func (b *CellBuffer) String() string {
 					}
 				}
 
-				// If any part is selected, wrap with reverse video
 				if hasSelection {
-					lineBuilder.WriteString("\x1b[7m") // Reverse video for selection
-				}
-
-				// Output the styled text directly (it already contains ANSI codes)
-				lineBuilder.WriteString(cell.StyledText)
-
-				// Reset reverse after styled text
-				if hasSelection {
-					lineBuilder.WriteString("\x1b[27m") // Reset reverse
+					// For selected styled text, process to ensure reverse works correctly
+					// The issue is that lipgloss \x1b[0m resets our reverse video
+					processed := applySelectionToStyledText(cell.StyledText)
+					lineBuilder.WriteString(processed)
+				} else {
+					// Output the styled text directly (it already contains ANSI codes)
+					lineBuilder.WriteString(cell.StyledText)
 				}
 
 				// Skip continuation cells
@@ -396,6 +393,45 @@ func countVisibleChars(s string) int {
 		}
 	}
 	return count
+}
+
+// applySelectionToStyledText processes styled text to ensure selection highlighting works correctly.
+// The problem is that lipgloss uses \x1b[0m which resets all attributes including our reverse video.
+// This function processes the styled text to ensure reverse video is maintained.
+func applySelectionToStyledText(styledText string) string {
+	runes := []rune(styledText)
+	var result strings.Builder
+	i := 0
+
+	for i < len(runes) {
+		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+			// Copy the ANSI escape sequence
+			start := i
+			i += 2
+			for i < len(runes) && runes[i] != 'm' {
+				i++
+			}
+			if i < len(runes) {
+				i++ // skip 'm'
+			}
+
+			// Check if this is a reset sequence
+			seq := string(runes[start:i])
+			if seq == "\x1b[0m" {
+				// Replace with reset+reverse to maintain highlighting
+				result.WriteString("\x1b[0m\x1b[7m") // Reset then reverse again
+			} else {
+				result.WriteString(seq)
+			}
+		} else {
+			result.WriteRune(runes[i])
+			i++
+		}
+	}
+
+	// Ensure we end with reverse still on (in case there was no reset at the end)
+	// and add final reset at the end
+	return result.String() + "\x1b[27m\x1b[0m"
 }
 
 // styleToANSI converts a CellStyle to ANSI escape codes
