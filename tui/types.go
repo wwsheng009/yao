@@ -291,6 +291,18 @@ type Model struct {
 	// runtimeFocusList holds focusable component IDs sorted by geometric position
 	// This is used when UseRuntime is true for geometry-based focus navigation
 	runtimeFocusList []string
+
+	// ========== Render Cache ==========
+	// lastRenderedOutput caches the last rendered output string to avoid unnecessary re-renders
+	// This prevents flickering when cursor.BlinkMsg triggers View() but nothing changed
+	lastRenderedOutput string
+
+	// forceRender forces a full re-render on next View() call
+	forceRender bool
+
+	// messageReceived indicates that a message was processed since last render
+	// This ensures the UI refreshes after any user interaction
+	messageReceived bool
 }
 
 // Validate validates the Config structure.

@@ -606,6 +606,8 @@ func (m *Model) initNativeComponents(node *runtime.LayoutNode, factory *dsl.Fact
 
 // renderWithRuntime 使用 Runtime 渲染布局
 // 这个方法替代 renderLayout() 当 UseRuntime 为 true 时
+//
+// 注意：缓存机制已在 View() 层实现，此方法只负责实际渲染
 func (m *Model) renderWithRuntime() string {
 	if m.RuntimeEngine == nil || m.RuntimeRoot == nil {
 		log.Error("Model.renderWithRuntime: runtime not initialized")
@@ -635,6 +637,15 @@ func (m *Model) renderWithRuntime() string {
 
 	// 转换为字符串输出
 	return frame.String()
+}
+
+// InvalidateRender 标记需要重新渲染
+// 应该在状态变化时调用此方法
+func (m *Model) InvalidateRender() {
+	m.forceRender = true
+	if m.RuntimeEngine != nil {
+		m.RuntimeEngine.MarkDirtyGlobal()
+	}
 }
 
 // updateFocusListFromRuntime 从 LayoutResult 更新可聚焦组件列表
@@ -828,13 +839,18 @@ func (m *Model) keyMatches(msg tea.KeyMsg, key string) bool {
 // runtimeFocusNext 移动焦点到下一个可聚焦组件
 // 基于几何位置（从左到右，从上到下）
 func (m *Model) runtimeFocusNext() tea.Cmd {
-	if len(m.runtimeFocusList) == 0 {
-		return nil
+	// 如果 runtimeFocusList 为空（初始化时或首次渲染前），使用 getFocusableComponentIDs() 作为后备
+	focusList := m.runtimeFocusList
+	if len(focusList) == 0 {
+		focusList = m.getFocusableComponentIDs()
+		if len(focusList) == 0 {
+			return nil
+		}
 	}
 
 	// 找到当前焦点位置
 	currentIndex := -1
-	for i, id := range m.runtimeFocusList {
+	for i, id := range focusList {
 		if id == m.CurrentFocus {
 			currentIndex = i
 			break
@@ -848,16 +864,16 @@ func (m *Model) runtimeFocusNext() tea.Cmd {
 		tabCycles = true
 	}
 
-	if currentIndex >= 0 && currentIndex < len(m.runtimeFocusList)-1 {
-		nextFocus = m.runtimeFocusList[currentIndex+1]
-	} else if currentIndex == len(m.runtimeFocusList)-1 {
+	if currentIndex >= 0 && currentIndex < len(focusList)-1 {
+		nextFocus = focusList[currentIndex+1]
+	} else if currentIndex == len(focusList)-1 {
 		if tabCycles {
-			nextFocus = m.runtimeFocusList[0]
+			nextFocus = focusList[0]
 		} else {
 			return nil
 		}
 	} else {
-		nextFocus = m.runtimeFocusList[0]
+		nextFocus = focusList[0]
 	}
 
 	return m.setFocus(nextFocus)
@@ -865,13 +881,18 @@ func (m *Model) runtimeFocusNext() tea.Cmd {
 
 // runtimeFocusPrev 移动焦点到上一个可聚焦组件
 func (m *Model) runtimeFocusPrev() tea.Cmd {
-	if len(m.runtimeFocusList) == 0 {
-		return nil
+	// 如果 runtimeFocusList 为空（初始化时或首次渲染前），使用 getFocusableComponentIDs() 作为后备
+	focusList := m.runtimeFocusList
+	if len(focusList) == 0 {
+		focusList = m.getFocusableComponentIDs()
+		if len(focusList) == 0 {
+			return nil
+		}
 	}
 
 	// 找到当前焦点位置
 	currentIndex := -1
-	for i, id := range m.runtimeFocusList {
+	for i, id := range focusList {
 		if id == m.CurrentFocus {
 			currentIndex = i
 			break
@@ -886,15 +907,15 @@ func (m *Model) runtimeFocusPrev() tea.Cmd {
 
 	var prevFocus string
 	if currentIndex > 0 {
-		prevFocus = m.runtimeFocusList[currentIndex-1]
+		prevFocus = focusList[currentIndex-1]
 	} else if currentIndex == 0 {
 		if tabCycles {
-			prevFocus = m.runtimeFocusList[len(m.runtimeFocusList)-1]
+			prevFocus = focusList[len(focusList)-1]
 		} else {
 			return nil
 		}
 	} else {
-		prevFocus = m.runtimeFocusList[len(m.runtimeFocusList)-1]
+		prevFocus = focusList[len(focusList)-1]
 	}
 
 	return m.setFocus(prevFocus)

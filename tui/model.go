@@ -5,7 +5,6 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/yao/tui/runtime"
-	"github.com/yaoapp/yao/tui/runtime/event"
 )
 
 // NewModel creates a new Bubble Tea Model from a TUI configuration.
@@ -113,101 +112,184 @@ func (m *Model) Init() tea.Cmd {
 
 // Update handles incoming messages and updates the Model accordingly.
 // This is the core of the Bubble Tea message loop.
-// Implements a Windows-style message dispatching mechanism:
-// 1. Capture phase: System-level interception
-// 2. Dispatch phase: Route to focused component
-// 3. Bubble phase: Global handlers
+//
+// ARCHITECTURE: Dual-path message handling
+// ========================================
+// This method implements a dual-path architecture to properly handle both:
+// 1. Geometry events (mouse hit testing, focus navigation) → Runtime event system
+// 2. Component messages (key input, cursor blink) → Bubble Tea path with Cmd propagation
+//
+// The key insight is that Runtime event system cannot return tea.Cmd (module boundary),
+// so we must route messages that require command propagation through the Bubble Tea path.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Capture phase: System-level message interception
-	// Priority 1: Critical system messages
+	// Handle Ctrl+C immediately - it's a system-level quit that bypasses all routing
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.Type == tea.KeyCtrlC {
+		return m, tea.Quit
+	}
+
+	// Mark that a user interaction message was received
+	// This ensures the UI refreshes after any user action (key press, etc.)
+	// We exclude high-frequency messages like cursor.BlinkMsg
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		m.messageReceived = true
+	}
+
+	// Route message based on event classification
+	switch ClassifyMessage(msg) {
+	case GeometryEvent:
+		return m.handleGeometryEvent(msg)
+	case ComponentEvent:
+		return m.handleComponentMessage(msg)
+	case SystemEvent:
+		return m.handleSystemMessage(msg)
+	default:
+		// Fallback to broadcast for unknown message types
+		return m.dispatchMessageToAllComponents(msg)
+	}
+}
+
+// handleGeometryEvent handles geometry events through Runtime event system.
+// These events don't need to return tea.Cmd:
+// - Mouse events: hit testing, focus on click
+func (m *Model) handleGeometryEvent(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		// If Runtime engine is enabled, use event dispatch system
 		if m.UseRuntime && m.RuntimeEngine != nil {
 			result := m.DispatchEventToRuntime(msg)
-			if result.Handled {
-				// Event was handled by a component
-				return m, nil
+			// 鼠标事件可能导致焦点变化（点击聚焦组件）
+			if result.FocusTarget != "" {
+				m.forceRender = true
 			}
 		}
-		// Otherwise, ignore mouse events for now
 		return m, nil
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
-			// Always intercept Ctrl+C regardless of focus
-			return m, tea.Quit
+	}
+
+	return m, nil
+}
+
+// handleComponentMessage handles component messages through Bubble Tea path.
+// CRITICAL: This path MUST preserve tea.Cmd for proper Bubble Tea integration.
+// All messages from TEA components (cursor.BlinkMsg, KeyMsg input, etc.) go here.
+func (m *Model) handleComponentMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	msgType := getMsgTypeName(msg)
+	log.Trace("TUI Component Message: %s", msgType)
+
+	// Check for targeted message handlers first
+	if msgType == "TargetedMsg" {
+		if handler, exists := m.MessageHandlers[msgType]; exists {
+			return handler(m, msg)
 		}
-		// If Runtime engine is enabled, use event dispatch system for other keys
-		if m.UseRuntime && m.RuntimeEngine != nil {
-			result := m.DispatchEventToRuntime(msg)
-			if result.Handled {
-				// Event was handled by a component
-				return m, nil
-			}
-			// Check for focus change requests (Tab, Shift+Tab)
-			if result.FocusChange != event.FocusChangeNone {
-				m.handleFocusChange(result.FocusChange)
-				return m, nil
-			}
-		}
-		// For other keys, continue to dispatch phase
+	}
+
+	// Check for global message handlers
+	if handler, exists := m.MessageHandlers[msgType]; exists {
+		return handler(m, msg)
+	}
+
+	// Broadcast to all subscribed components
+	// This collects tea.Cmd from all components and returns them to the main loop
+	return m.dispatchMessageToAllComponents(msg)
+}
+
+// handleSystemMessage handles system messages that affect the entire UI.
+func (m *Model) handleSystemMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Window size changes are handled globally
-		// but also need to be propagated to all components
-		// Store dimensions and let the handler process it
 		m.Width = msg.Width
 		m.Height = msg.Height
 		m.Ready = true
 		if m.LayoutEngine != nil {
 			m.LayoutEngine.UpdateWindowSize(msg.Width, msg.Height)
 		}
-		// Update Runtime engine dimensions if enabled
 		if m.UseRuntime {
 			m.updateRuntimeWindowSize(msg.Width, msg.Height)
 		}
+		// 窗口大小变化必须重新渲染
+		m.forceRender = true
+		// Also notify components of window size changes
+		return m.dispatchMessageToAllComponents(msg)
 	}
-
-	// Dispatch phase: Route message to focused component
-	// Priority 2: Targeted component handling
-	msgType := getMsgTypeName(msg)
-	log.Trace("TUI Update: Received message of type %s", msgType)
-
-	// Check if we have a targeted message first
-	if msgType == "TargetedMsg" {
-		// This is already handled by the TargetedMsg handler
-		if handler, exists := m.MessageHandlers[msgType]; exists {
-			log.Trace("TUI Update: Using handler for message type %s", msgType)
-			return handler(m, msg)
-		}
-	}
-
-	// Bubble phase: Global message handlers
-	// Priority 3: Global handlers
-	if handler, exists := m.MessageHandlers[msgType]; exists {
-		log.Trace("TUI Update: Using handler for message type %s", msgType)
-		return handler(m, msg)
-	}
-
-	log.Trace("TUI Update: No handler found for message type %s, broadcasting to all components", msgType)
-	// Fallback: Broadcast unhandled messages to all components
-	// This ensures messages like cursor.BlinkMsg reach components that need them
-	return m.dispatchMessageToAllComponents(msg)
+	return m, nil
 }
 
 // View renders the current state of the Model to a string.
 // This is called after every Update.
+//
+// RENDER CACHE: 为了防止闪烁，此方法实现通用的渲染缓存机制。
+// 只有当状态真正变化时才重新渲染，否则返回缓存的输出。
+// 这解决了 cursor.BlinkMsg 等高频消息导致的闪烁问题。
 func (m *Model) View() string {
 	if !m.Ready {
 		return "Initializing..."
 	}
 
-	// Use Runtime engine if enabled
-	if m.UseRuntime {
-		return m.renderWithRuntime()
+	// 检查是否需要重新渲染
+	if !m.needsRender() {
+		// 返回缓存的渲染结果
+		return m.lastRenderedOutput
 	}
 
-	// Render the layout using legacy engine
-	return m.renderLayout()
+	// 执行实际渲染
+	var output string
+	if m.UseRuntime {
+		output = m.renderWithRuntime()
+	} else {
+		output = m.renderLayout()
+	}
+
+	// 更新缓存并重置 forceRender 标志
+	m.lastRenderedOutput = output
+	m.forceRender = false
+	m.messageReceived = false
+
+	// 清除 Runtime 引擎的 dirty 标志
+	if m.UseRuntime && m.RuntimeEngine != nil {
+		m.RuntimeEngine.ClearDirty()
+	}
+
+	return output
+}
+
+// needsRender 检查是否需要重新渲染
+// 返回 true 表示需要重新渲染，false 表示可以返回缓存
+func (m *Model) needsRender() bool {
+	// 如果是首次渲染或被强制渲染
+	if m.lastRenderedOutput == "" || m.forceRender {
+		return true
+	}
+
+	// 检查 Runtime 引擎是否被标记为 dirty
+	if m.UseRuntime && m.RuntimeEngine != nil && m.RuntimeEngine.IsDirty() {
+		return true
+	}
+
+	// 检查是否有消息被处理 - 这确保任何用户交互都会触发刷新
+	if m.messageReceived {
+		return true
+	}
+
+	// 检查是否有组件状态变化
+	if m.hasComponentChanges() {
+		return true
+	}
+
+	return false
+}
+
+// hasComponentChanges 检查是否有组件状态变化
+func (m *Model) hasComponentChanges() bool {
+	// 检查当前聚焦的组件是否需要更新（用于光标闪烁等）
+	if m.CurrentFocus != "" {
+		if comp, exists := m.Components[m.CurrentFocus]; exists {
+			if instance, ok := comp.Instance.(interface{ NeedsRender() bool }); ok {
+				if instance.NeedsRender() {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // GetState safely retrieves a state value.
@@ -297,6 +379,10 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 			m.propsCache.Clear()
 			log.Trace("State changes detected, cleared props cache")
 		}
+
+		// CRITICAL: Mark for re-render when state changes
+		// This ensures the UI updates to reflect the new state
+		m.forceRender = true
 	}
 
 	// NOTE: Removed focus state check after message processing
@@ -338,6 +424,10 @@ func (m *Model) dispatchToRuntimeComponent(node *runtime.LayoutNode, msg tea.Msg
 			m.propsCache.Clear()
 			log.Trace("State changes detected, cleared props cache")
 		}
+
+		// CRITICAL: Mark for re-render when state changes
+		// This ensures the UI updates to reflect the new state
+		m.forceRender = true
 	}
 
 	return m, cmd, response == core.Handled
