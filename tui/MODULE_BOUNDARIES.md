@@ -1,8 +1,8 @@
 # Yao TUI 模块边界定义
 
-**版本**: v1
+**版本**: v1.1
 **状态**: 强制执行
-**最后更新**: 2026年1月22日
+**最后更新**: 2026年1月24日
 
 本文档定义 Yao TUI 系统各层之间的模块边界。这些是**强制执行的规则**，违反边界将被视为架构缺陷。
 
@@ -41,6 +41,140 @@
 │  - 几何计算                                              │
 │  - 虚拟画布                                              │
 └─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 命令传播架构 (Command Propagation)
+
+### 问题背景
+
+Yao TUI 使用 **Bubble Tea** 作为消息循环框架，其核心机制是：
+
+```go
+type Model interface {
+    Update(msg Msg) (Model, Cmd)  // Cmd 必须返回并执行
+}
+```
+
+同时，Yao TUI 引入了 **Runtime 事件系统**用于几何事件处理：
+
+```go
+type EventResult struct {
+    Handled      bool
+    Updated      bool
+    FocusChange  FocusChangeType
+    // ❌ 没有 Cmd 字段（模块边界约束）
+}
+```
+
+**核心矛盾**：Runtime 事件系统不能返回 `tea.Cmd`（模块边界约束），但 Bubble Tea 组件需要返回命令到主循环。
+
+### 解决方案：双路径架构
+
+```
+                    tea.Msg
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+        ↓                             ↓
+   几何事件路径                    组件消息路径
+   (GeometryEvent)               (ComponentEvent)
+        │                             │
+        │                             │
+        ↓                             ↓
+  Runtime 事件系统              dispatchMessageTo*
+  (无 Cmd 需要)                 ToAllComponents
+        │                             │
+        │                             ↓
+        │                     收集 tea.Cmd
+        │                             │
+        └──────────────┬──────────────┘
+                       ↓
+              tea.Batch(cmds...)  ← 返回主循环
+```
+
+### 事件分类
+
+| 事件类型 | 处理路径 | 保留 Cmd | 用途 |
+|---------|---------|----------|------|
+| `GeometryEvent` | Runtime 事件系统 | ❌ | 鼠标命中测试、Tab 焦点导航 |
+| `ComponentEvent` | Bubble Tea 消息路径 | ✅ | 键盘输入、光标闪烁、组件状态 |
+| `SystemEvent` | 系统处理 | ✅ | 窗口大小变化 |
+
+### 实现细节
+
+```go
+// event_classifier.go
+
+type EventClass int
+
+const (
+    GeometryEvent  EventClass = iota  // Runtime 事件系统
+    ComponentEvent                     // Bubble Tea 路径
+    SystemEvent                        // 系统处理
+)
+
+func ClassifyMessage(msg tea.Msg) EventClass {
+    switch msg.(type) {
+    case tea.MouseMsg:
+        return GeometryEvent  // 命中测试
+    case tea.KeyMsg:
+        return ComponentEvent  // Tab 除外
+    case tea.WindowSizeMsg:
+        return SystemEvent
+    default:
+        return ComponentEvent  // cursor.BlinkMsg 等
+    }
+}
+```
+
+### 关键规则
+
+1. **几何事件** 走 Runtime 事件系统
+   - 鼠标点击（命中测试 + 聚焦）
+   - Tab/Shift+Tab（焦点导航）
+   - 不需要返回 `tea.Cmd`
+
+2. **组件消息** 必须走 Bubble Tea 路径
+   - 键盘输入（字符、Enter、Backspace 等）
+   - `cursor.BlinkMsg`（光标闪烁）
+   - 所有自定义消息
+   - **必须** 返回 `tea.Cmd` 到主循环
+
+3. **系统消息** 特殊处理
+   - 窗口大小变化
+   - 需要同时更新 Runtime 和通知组件
+
+### 组件开发规范
+
+```go
+// ✅ 正确：组件必须返回 Cmd
+
+func (c *MyComponent) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+    // 如果包装了 TEA 组件
+    newModel, cmd := c.teaModel.Update(msg)
+    c.teaModel = &newModel
+
+    // 一定要返回 cmd！
+    return c, cmd, core.Handled
+}
+
+// 订阅需要的消息类型
+func (c *MyComponent) GetSubscribedMessageTypes() []string {
+    return []string{"tea.KeyMsg", "cursor.BlinkMsg"}
+}
+```
+
+### 违规检测
+
+```bash
+# 检查组件是否正确返回 Cmd
+grep -r "return.*nil.*core.Handled" tui/ui/components/
+# 如果组件包装了 TEA 组件但返回 nil Cmd，这是违规
+
+# 检查是否所有组件都实现了消息订阅
+grep -r "GetSubscribedMessageTypes" tui/ui/components/
 ```
 
 ---
@@ -526,6 +660,8 @@ import "github.com/yaoapp/yao/tui/ui/components"
 - **实施计划**: `tui/docs/design/布局重构/方案落地/详细TODO list.md`
 - **Runtime 贡献指南**: `tui/runtime/CONTRIBUTING.md`
 - **Runtime API**: `tui/runtime/README.md`
+- **命令传播架构**: `tui/ARCHITECTURE_CMD_PROPAGATION.md`
+- **事件分类器**: `tui/event_classifier.go`
 
 ---
 
@@ -539,6 +675,15 @@ import "github.com/yaoapp/yao/tui/ui/components"
 
 ---
 
-*最后更新: 2026年1月22日*
-*版本: v1.0*
+## 变更日志
+
+| 版本 | 日期 | 变更内容 |
+|-----|------|---------|
+| v1.0 | 2026-01-22 | 初始版本 |
+| v1.1 | 2026-01-24 | 添加命令传播架构说明 |
+
+---
+
+*最后更新: 2026年1月24日*
+*版本: v1.1*
 *状态: 强制执行*
