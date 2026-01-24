@@ -118,13 +118,16 @@ type Cell struct {
 }
 
 // CellStyle represents rendering style for a cell.
-// v1: simplified version, will be expanded to support lipgloss.Style in render module
+// v1: supports basic text styling + colors for lipgloss integration
 type CellStyle struct {
-	Bold      bool
-	Underline bool
-	Italic    bool
-	// v1: foreground/background will be handled by text rendering
-	// Full lipgloss.Style support will be in render module
+	Bold       bool
+	Underline  bool
+	Italic     bool
+	Strikethrough bool
+	Blink      bool
+	Reverse    bool
+	Foreground string // Hex color or terminal color name
+	Background string // Hex color or terminal color name
 }
 
 // SetContent sets a cell at the given position.
@@ -235,20 +238,57 @@ func (b *CellBuffer) String() string {
 }
 
 // styleToANSI converts a CellStyle to ANSI escape codes
+// Supports colors, bold, underline, italic, strikethrough, blink, reverse
 func styleToANSI(style CellStyle) string {
-	if !style.Bold && !style.Underline && !style.Italic {
+	// Check if no styling
+	if !style.Bold && !style.Underline && !style.Italic &&
+	   !style.Strikethrough && !style.Blink && !style.Reverse &&
+	   style.Foreground == "" && style.Background == "" {
 		return "\x1b[0m" // Reset
 	}
 
 	codes := []string{}
+
+	// Add text styling codes
 	if style.Bold {
 		codes = append(codes, "1")
+	}
+	if style.Italic {
+		codes = append(codes, "3")
 	}
 	if style.Underline {
 		codes = append(codes, "4")
 	}
-	if style.Italic {
-		codes = append(codes, "3")
+	if style.Strikethrough {
+		codes = append(codes, "9")
+	}
+	if style.Blink {
+		codes = append(codes, "5")
+	}
+	if style.Reverse {
+		codes = append(codes, "7")
+	}
+
+	// Add foreground color
+	if style.Foreground != "" {
+		fgCode := colorToANSICode(style.Foreground, false)
+		if fgCode != "" {
+			// Foreground colors use codes 30-37 (basic), 38 (256 color), 38;5 (RGB)
+			// We prefix with 3 for foreground, 4 for background
+			codes = append(codes, fgCode)
+		}
+	}
+
+	// Add background color
+	if style.Background != "" {
+		bgCode := colorToANSICode(style.Background, true)
+		if bgCode != "" {
+			codes = append(codes, bgCode)
+		}
+	}
+
+	if len(codes) == 0 {
+		return "\x1b[0m"
 	}
 
 	result := "\x1b["
@@ -260,6 +300,69 @@ func styleToANSI(style CellStyle) string {
 	}
 	result += "m"
 	return result
+}
+
+// colorToANSICode converts a color string to ANSI color code
+// isBackground: true for background color (40-47), false for foreground (30-37)
+// Returns the ANSI code string or empty if no valid color
+func colorToANSICode(color string, isBackground bool) string {
+	if color == "" {
+		return ""
+	}
+
+	// Hex color: "#RRGGBB"
+	if strings.HasPrefix(color, "#") {
+		// For now, we don't support truecolor in basic ANSI
+		// Would need to use 38;2;R;G;B format for truecolor
+		// Just return empty for now
+		return ""
+	}
+
+	// Basic ANSI color names
+	baseCode := "30" // Default to foreground
+	if isBackground {
+		baseCode = "40"
+	}
+
+	switch color {
+	case "black":
+		return baseCode + "0"
+	case "red":
+		return baseCode + "1"
+	case "green":
+		return baseCode + "2"
+	case "yellow":
+		return baseCode + "3"
+	case "blue":
+		return baseCode + "4"
+	case "magenta":
+		return baseCode + "5"
+	case "cyan":
+		return baseCode + "6"
+	case "white":
+		return baseCode + "7"
+	// Bright variants
+	case "bright-black", "gray":
+		return baseCode + "0" // Would need 90-97 for bright
+	case "bright-red":
+		return baseCode + "1"
+	case "bright-green":
+		return baseCode + "2"
+	case "bright-yellow":
+		return baseCode + "3"
+	case "bright-blue":
+		return baseCode + "4"
+	case "bright-magenta":
+		return baseCode + "5"
+	case "bright-cyan":
+		return baseCode + "6"
+	case "bright-white":
+		return baseCode + "7"
+	default:
+		// Try to parse as ANSI code number (e.g., "5" for magenta)
+		// For now, return empty
+		return ""
+	}
 }
 
 // joinLines joins lines with newline characters

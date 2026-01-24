@@ -79,3 +79,36 @@ func (c Constraints) HasInfiniteWidth() bool {
 func (c Constraints) HasInfiniteHeight() bool {
 	return c.MaxHeight < 0
 }
+
+// PositionType defines the positioning scheme
+type PositionType string
+
+const (
+	PositionRelative PositionType = "relative"
+	PositionAbsolute PositionType = "absolute"
+)
+
+// Position defines absolute positioning properties
+type Position struct {
+	Type   PositionType
+	Top    *int // nil means auto
+	Left   *int
+	Right  *int
+	Bottom *int
+}
+
+// NewPosition creates a new Position with relative positioning (default)
+func NewPosition() Position {
+	return Position{
+		Type: PositionRelative,
+	}
+}
+
+// SetAbsolute sets absolute positioning with offsets
+func (p *Position) SetAbsolute(top, left, right, bottom *int) {
+	p.Type = PositionAbsolute
+	p.Top = top
+	p.Left = left
+	p.Right = right
+	p.Bottom = bottom
+}

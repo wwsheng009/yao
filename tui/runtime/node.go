@@ -18,6 +18,9 @@ type LayoutNode struct {
 	Style Style
 	Props map[string]interface{}
 
+	// Position defines absolute/relative positioning
+	Position Position
+
 	// Component is optional. Leaf nodes (actual UI components) should have this.
 	// Container nodes (flex, row, column) typically don't.
 	Component *core.ComponentInstance
@@ -31,6 +34,10 @@ type LayoutNode struct {
 
 	// X, Y is the final position within the parent container
 	X, Y int
+
+	// AbsoluteX, AbsoluteY is the computed absolute position (for absolutely positioned elements)
+	// For relative elements, these are the same as X, Y
+	AbsoluteX, AbsoluteY int
 
 	// MeasuredWidth, MeasuredHeight is the size calculated in the Measure phase
 	// This represents the content size (before padding/margin if implemented)

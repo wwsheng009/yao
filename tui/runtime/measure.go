@@ -17,13 +17,84 @@ package runtime
 
 import (
 	"fmt"
+	"sync"
 )
+
+// measureCache implements a simple cache for measurement results.
+// Cache key is: nodeID + constraints hash.
+type measureCache struct {
+	mu    sync.RWMutex
+	cache map[string]Size
+}
+
+// global cache instance
+var globalMeasureCache = &measureCache{
+	cache: make(map[string]Size),
+}
+
+// cacheKey generates a cache key for a node and constraints.
+func (c *measureCache) cacheKey(nodeID string, constraints BoxConstraints) string {
+	// Simple cache key: nodeID + minW/maxW/minH/maxH
+	return fmt.Sprintf("%s:%d,%d,%d,%d", nodeID,
+		constraints.MinWidth, constraints.MaxWidth,
+		constraints.MinHeight, constraints.MaxHeight)
+}
+
+// Get retrieves a cached measurement.
+func (c *measureCache) Get(nodeID string, constraints BoxConstraints) (Size, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := c.cacheKey(nodeID, constraints)
+	size, exists := c.cache[key]
+	return size, exists
+}
+
+// Set stores a measurement in the cache.
+func (c *measureCache) Set(nodeID string, constraints BoxConstraints, size Size) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := c.cacheKey(nodeID, constraints)
+	c.cache[key] = size
+}
+
+// Invalidate clears the cache (e.g., after window resize).
+func (c *measureCache) Invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cache = make(map[string]Size)
+}
+
+// InvalidateNode removes all cache entries for a specific node.
+func (c *measureCache) InvalidateNode(nodeID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Remove all cache entries starting with nodeID
+	for key := range c.cache {
+		if len(key) > len(nodeID) && key[:len(nodeID)] == nodeID {
+			delete(c.cache, key)
+		}
+	}
+}
 
 // measure performs the measure phase on a node.
 // It recursively measures all children and computes the node's size.
 func measure(node *LayoutNode, c BoxConstraints) Size {
 	if node == nil {
 		return Size{Width: 0, Height: 0}
+	}
+
+	// Check cache first (for non-dirty nodes)
+	if !node.dirty && node.ID != "" {
+		if cached, ok := globalMeasureCache.Get(node.ID, c); ok {
+			// Use cached measurement
+			node.MeasuredWidth = cached.Width
+			node.MeasuredHeight = cached.Height
+			return cached
+		}
 	}
 
 	// Calculate inner constraints (subtract padding and border)
@@ -74,11 +145,23 @@ func measure(node *LayoutNode, c BoxConstraints) Size {
 		node.MeasuredWidth = size.Width
 		node.MeasuredHeight = size.Height
 
+		// Cache the result for non-dirty nodes with ID
+		if !node.dirty && node.ID != "" {
+			globalMeasureCache.Set(node.ID, c, size)
+		}
+
 		return size
 	}
 
 	// Container node: measure children first, then compute container size
-	return measureContainer(node, innerC, c)
+	size := measureContainer(node, innerC, c)
+
+	// Cache the result for non-dirty nodes with ID
+	if !node.dirty && node.ID != "" {
+		globalMeasureCache.Set(node.ID, c, size)
+	}
+
+	return size
 }
 
 // measureContainer measures a container node by measuring all children.
@@ -210,15 +293,38 @@ func measureFlexContainer(node *LayoutNode, innerC, outerC BoxConstraints) Size 
 	// Phase 3: Calculate container size
 	var containerMainSize, containerCrossSize int
 
-	// Main axis: sum of children sizes + gaps
-	for _, child := range node.Children {
-		if isRow {
-			containerMainSize += child.MeasuredWidth
-		} else {
-			containerMainSize += child.MeasuredHeight
+	// CRITICAL: For flex layouts with alignment (center, end, space-between, etc.),
+	// the container must measure to MAX available size, not just fit content.
+	// This allows the layout phase to distribute children within available space.
+	useMaxForMainAxis := false
+	if node.Style.Justify != JustifyStart {
+		// Center, end, space-between, space-around need available space
+		useMaxForMainAxis = true
+	} else if mainAxisMax > 0 {
+		// Even with justify=start, if there are flex-grow children, use max size
+		// to allow children to expand
+		for _, child := range node.Children {
+			if child.Style.FlexGrow > 0 {
+				useMaxForMainAxis = true
+				break
+			}
 		}
 	}
-	containerMainSize += totalGap
+
+	if useMaxForMainAxis && mainAxisMax > 0 {
+		// Use available space for alignment
+		containerMainSize = mainAxisMax
+	} else {
+		// Main axis: sum of children sizes + gaps
+		for _, child := range node.Children {
+			if isRow {
+				containerMainSize += child.MeasuredWidth
+			} else {
+				containerMainSize += child.MeasuredHeight
+			}
+		}
+		containerMainSize += totalGap
+	}
 
 	// Cross axis: max of children sizes
 	for _, child := range node.Children {
@@ -308,3 +414,18 @@ func MeasureAll(root *LayoutNode, c BoxConstraints) {
 	}
 	measure(root, c)
 }
+
+// InvalidateMeasureCache clears the entire measurement cache.
+// This should be called when the window is resized or when
+// major layout changes occur.
+func InvalidateMeasureCache() {
+	globalMeasureCache.Invalidate()
+}
+
+// InvalidateMeasureCacheForNode clears cached measurements for a specific node.
+// This should be called when a node's content changes but the overall
+// layout structure remains the same.
+func InvalidateMeasureCacheForNode(nodeID string) {
+	globalMeasureCache.InvalidateNode(nodeID)
+}
+

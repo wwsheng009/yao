@@ -1,14 +1,13 @@
 package runtime
 
 import (
-	"github.com/yaoapp/yao/tui/runtime/render"
+	"time"
+
+	"github.com/yaoapp/yao/tui/runtime/animation"
 )
 
-// NOTE: Component rendering with lipgloss styling is now handled by the render module
-// to maintain module boundary rules (runtime MUST NOT import lipgloss directly).
-//
-// The render module provides RenderNode() and RenderNodeWithStyle() functions
-// for component rendering.
+// NOTE: Diff rendering is handled by diff.go in the runtime package.
+// Lipgloss integration is handled by tui/runtime/render module.
 
 // RuntimeImpl is the default implementation of the Runtime interface.
 //
@@ -20,6 +19,7 @@ import (
 //   - Performs Render phase to generate frames
 //   - Manages event dispatch and focus navigation (Phase 3)
 //   - Supports diff rendering for performance optimization (Phase 4)
+//   - Supports animations for smooth transitions (Phase 5)
 type RuntimeImpl struct {
 	width       int
 	height      int
@@ -29,6 +29,8 @@ type RuntimeImpl struct {
 	forceFullRender bool     // Force full render on next frame
 	focusMgr    *FocusManager
 	lastRoot    *LayoutNode  // Cached for focus updates
+	animMgr     *animation.Manager // Animation manager
+	animationsRunning bool     // Track if animations are active
 }
 
 // NewRuntime creates a new RuntimeImpl with the given dimensions.
@@ -43,6 +45,8 @@ func NewRuntime(width, height int) *RuntimeImpl {
 		width:    width,
 		height:   height,
 		focusMgr: NewFocusManager(),
+		animMgr:  animation.NewManager(),
+		animationsRunning: false,
 	}
 }
 
@@ -257,12 +261,18 @@ func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 		return
 	}
 
-	// Wrap the buffer with an adapter to avoid circular dependency
-	adapter := render.NewCellBufferAdapter(buf)
-
-	// Render text to buffer using the render module
-	// This handles multi-line text, wrapping, and styling
-	render.RenderNode(adapter, text, box.X, box.Y, box.ZIndex, box.W)
+	// Render text to buffer
+	// TODO: Handle multi-line text and wrapping
+	// TODO: Extract color/style from node for proper rendering
+	cellStyle := CellStyle{} // Empty style for now
+	runes := []rune(text)
+	for i, char := range runes {
+		x := box.X + i
+		y := box.Y
+		if x < buf.width && y < buf.height && char != '\n' {
+			buf.SetContent(x, y, box.ZIndex, char, cellStyle, box.Node.ID)
+		}
+	}
 }
 
 // intersectsDirtyRegion checks if a layout box intersects any dirty region.
@@ -291,32 +301,11 @@ func (r *RuntimeImpl) computeDiff(newFrame *Frame) {
 		return
 	}
 
-	// Convert frames to render.Frame format for diff computation
-	oldRenderFrame := render.Frame{
-		Buffer: &cellBufferAdapter{r.lastFrame.Buffer},
-		Width:  r.lastFrame.Width,
-		Height: r.lastFrame.Height,
-	}
-	newRenderFrame := render.Frame{
-		Buffer: &cellBufferAdapter{newFrame.Buffer},
-		Width:  newFrame.Width,
-		Height: newFrame.Height,
-	}
+	// Compute diff using runtime.ComputeDiff
+	diffResult := ComputeDiff(*r.lastFrame, *newFrame)
 
-	// Compute diff
-	diffResult := render.ComputeDiff(oldRenderFrame, newRenderFrame)
-
-	// Convert render.Rect to runtime.Rect and store
 	if diffResult.HasChanges {
-		r.dirtyRegions = make([]Rect, len(diffResult.DirtyRegions))
-		for i, region := range diffResult.DirtyRegions {
-			r.dirtyRegions[i] = Rect{
-				X:      region.X,
-				Y:      region.Y,
-				Width:  region.Width,
-				Height: region.Height,
-			}
-		}
+		r.dirtyRegions = diffResult.DirtyRegions
 	} else {
 		r.dirtyRegions = nil
 	}
@@ -340,40 +329,6 @@ func (r *RuntimeImpl) MarkFullRender() {
 // GetDirtyRegions returns the current dirty regions.
 func (r *RuntimeImpl) GetDirtyRegions() []Rect {
 	return r.dirtyRegions
-}
-
-// cellBufferAdapter adapts runtime.CellBuffer to render.FrameBuffer interface.
-type cellBufferAdapter struct {
-	buffer *CellBuffer
-}
-
-func (a *cellBufferAdapter) GetContent(x, y int) render.Cell {
-	if a.buffer == nil {
-		return render.Cell{}
-	}
-	cell := a.buffer.GetContent(x, y)
-	return render.Cell{
-		Char: cell.Char,
-		Style: render.CellStyle{
-			Bold:      cell.Style.Bold,
-			Underline: cell.Style.Underline,
-			Italic:    cell.Style.Italic,
-		},
-	}
-}
-
-func (a *cellBufferAdapter) Width() int {
-	if a.buffer == nil {
-		return 0
-	}
-	return a.buffer.Width()
-}
-
-func (a *cellBufferAdapter) Height() int {
-	if a.buffer == nil {
-		return 0
-	}
-	return a.buffer.Height()
 }
 
 // UpdateDimensions updates the runtime dimensions.
@@ -441,6 +396,12 @@ func (r *RuntimeImpl) GetHeight() int {
 	return r.height
 }
 
+// GetBoxes returns the cached layout boxes from the last layout pass.
+// This is used for event dispatch (hit testing).
+func (r *RuntimeImpl) GetBoxes() []LayoutBox {
+	return r.lastResult.Boxes
+}
+
 // splitLines splits a string into lines.
 func splitLines(text string) []string {
 	if text == "" {
@@ -464,4 +425,157 @@ func splitLines(text string) []string {
 	}
 
 	return lines
+}
+
+// ============================================================================
+// Animation Support Methods
+// ============================================================================
+
+// StartAnimations starts the animation manager with the specified FPS.
+func (r *RuntimeImpl) StartAnimations(fps int) {
+	if !r.animationsRunning {
+		r.animMgr.Start(fps)
+		r.animationsRunning = true
+	}
+}
+
+// StopAnimations stops the animation manager.
+func (r *RuntimeImpl) StopAnimations() {
+	if r.animationsRunning {
+		r.animMgr.Stop()
+		r.animationsRunning = false
+	}
+}
+
+// AddAnimation adds an animation to the runtime.
+func (r *RuntimeImpl) AddAnimation(anim *animation.Animation) {
+	r.animMgr.Add(anim)
+}
+
+// RemoveAnimation removes an animation from the runtime.
+func (r *RuntimeImpl) RemoveAnimation(id string) {
+	r.animMgr.Remove(id)
+}
+
+// StartAnimation starts an animation by ID.
+func (r *RuntimeImpl) StartAnimation(id string) bool {
+	return r.animMgr.StartAnimation(id)
+}
+
+// PauseAnimation pauses an animation by ID.
+func (r *RuntimeImpl) PauseAnimation(id string) bool {
+	return r.animMgr.PauseAnimation(id)
+}
+
+// StopAnimation stops and resets an animation by ID.
+func (r *RuntimeImpl) StopAnimation(id string) bool {
+	return r.animMgr.StopAnimation(id)
+}
+
+// CancelAnimation cancels an animation by ID.
+func (r *RuntimeImpl) CancelAnimation(id string) bool {
+	return r.animMgr.CancelAnimation(id)
+}
+
+// ClearAnimations removes all animations.
+func (r *RuntimeImpl) ClearAnimations() {
+	r.animMgr.Clear()
+}
+
+// GetAnimationCount returns the number of animations.
+func (r *RuntimeImpl) GetAnimationCount() int {
+	return r.animMgr.Count()
+}
+
+// GetRunningAnimationCount returns the number of running animations.
+func (r *RuntimeImpl) GetRunningAnimationCount() int {
+	return r.animMgr.GetRunningCount()
+}
+
+// HasRunningAnimations returns true if there are running animations.
+func (r *RuntimeImpl) HasRunningAnimations() bool {
+	return r.animMgr.HasRunning()
+}
+
+// UpdateAnimations updates all running animations.
+// This should be called on each frame/tick.
+func (r *RuntimeImpl) UpdateAnimations() {
+	r.animMgr.Update()
+}
+
+// GetAnimationManager returns the runtime's animation manager.
+// This allows external code to directly manipulate animations.
+func (r *RuntimeImpl) GetAnimationManager() *animation.Manager {
+	return r.animMgr
+}
+
+// AnimateIn creates and starts an entry animation for a component.
+func (r *RuntimeImpl) AnimateIn(componentID string, animType animation.AnimationType, duration int) {
+	var anim *animation.Animation
+
+	switch animType {
+	case animation.AnimationFade:
+		anim = animation.FadeIn(componentID+"_fade_in", durationFromInt(duration))
+	case animation.AnimationSlide:
+		anim = animation.CreateSlideUp(componentID+"_slide_in", 10, durationFromInt(duration))
+	case animation.AnimationScale:
+		anim = animation.ScaleUp(componentID+"_scale_in", 0.0, 1.0, durationFromInt(duration))
+	default:
+		// Default to fade
+		anim = animation.FadeIn(componentID+"_default_in", durationFromInt(duration))
+	}
+
+	// Add complete callback to mark dirty
+	anim.WithOnComplete(func() {
+		r.MarkFullRender()
+	})
+
+	r.AddAnimation(anim)
+	r.StartAnimation(anim.ID)
+}
+
+// AnimateOut creates and starts an exit animation for a component.
+func (r *RuntimeImpl) AnimateOut(componentID string, animType animation.AnimationType, duration int) {
+	var anim *animation.Animation
+
+	switch animType {
+	case animation.AnimationFade:
+		anim = animation.FadeOut(componentID+"_fade_out", durationFromInt(duration))
+	case animation.AnimationSlide:
+		anim = animation.CreateSlideDown(componentID+"_slide_out", 10, durationFromInt(duration))
+	case animation.AnimationScale:
+		anim = animation.ScaleDown(componentID+"_scale_out", 1.0, 0.0, durationFromInt(duration))
+	default:
+		// Default to fade
+		anim = animation.FadeOut(componentID+"_default_out", durationFromInt(duration))
+	}
+
+	// Add complete callback to mark dirty
+	anim.WithOnComplete(func() {
+		r.MarkFullRender()
+	})
+
+	r.AddAnimation(anim)
+	r.StartAnimation(anim.ID)
+}
+
+// AnimateTransition creates a transition between two states.
+func (r *RuntimeImpl) AnimateTransition(fromID, toID string, duration int) {
+	// Simple fade transition
+	animOut := animation.FadeOut(fromID+"_transition_out", durationFromInt(duration/2))
+	animIn := animation.FadeIn(toID+"_transition_in", durationFromInt(duration/2))
+
+	// Chain animations: start animIn after animOut completes
+	animOut.WithOnComplete(func() {
+		r.StartAnimation(animIn.ID)
+	})
+
+	r.AddAnimation(animOut)
+	r.AddAnimation(animIn)
+	r.StartAnimation(animOut.ID)
+}
+
+// durationFromInt converts milliseconds to time.Duration.
+func durationFromInt(ms int) time.Duration {
+	return time.Duration(ms) * time.Millisecond
 }

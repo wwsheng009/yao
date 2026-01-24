@@ -25,6 +25,18 @@ func measureFlexContainerEnhanced(node *LayoutNode, innerC, outerC BoxConstraint
 		return Size{Width: 0, Height: 0}
 	}
 
+	// Filter out absolutely positioned children from flex layout
+	flexChildren := make([]*LayoutNode, 0, len(node.Children))
+	for _, child := range node.Children {
+		if !child.IsPositionAbsolute() {
+			flexChildren = append(flexChildren, child)
+		}
+	}
+
+	if len(flexChildren) == 0 {
+		return Size{Width: 0, Height: 0}
+	}
+
 	// Determine main and cross axis dimensions
 	var mainAxisMax, crossAxisMax int
 	var isRow bool
@@ -50,12 +62,12 @@ func measureFlexContainerEnhanced(node *LayoutNode, innerC, outerC BoxConstraint
 		isFlexible bool
 	}
 
-	childrenInfo := make([]childFlexInfo, len(node.Children))
+	childrenInfo := make([]childFlexInfo, len(flexChildren))
 	var totalFixedSize int
 	var growSum float64
 	var shrinkSum float64
 
-	for i, child := range node.Children {
+	for i, child := range flexChildren {
 		info := childFlexInfo{
 			node: child,
 		}
@@ -235,11 +247,21 @@ func layoutFlexChildrenEnhanced(node *LayoutNode, layoutFunc func(*LayoutNode, B
 	} else {
 		layoutFlexColumnEnhanced(node, innerX, innerY, availableWidth, availableHeight, layoutFunc)
 	}
+
+	// Apply absolute positioning to all children (after flex layout)
+	ApplyAbsoluteLayout(node)
 }
 
 // layoutFlexRowEnhanced layouts children in a row direction with full justify support.
 func layoutFlexRowEnhanced(node *LayoutNode, startX, startY, availableWidth, availableHeight int, layoutFunc func(*LayoutNode, BoxConstraints)) {
-	children := node.Children
+	// Filter out absolutely positioned children from flex layout
+	children := make([]*LayoutNode, 0, len(node.Children))
+	for _, child := range node.Children {
+		if !child.IsPositionAbsolute() {
+			children = append(children, child)
+		}
+	}
+
 	if len(children) == 0 {
 		return
 	}
@@ -376,7 +398,14 @@ func layoutFlexRowEnhanced(node *LayoutNode, startX, startY, availableWidth, ava
 
 // layoutFlexColumnEnhanced layouts children in a column direction with full justify support.
 func layoutFlexColumnEnhanced(node *LayoutNode, startX, startY, availableWidth, availableHeight int, layoutFunc func(*LayoutNode, BoxConstraints)) {
-	children := node.Children
+	// Filter out absolutely positioned children from flex layout
+	children := make([]*LayoutNode, 0, len(node.Children))
+	for _, child := range node.Children {
+		if !child.IsPositionAbsolute() {
+			children = append(children, child)
+		}
+	}
+
 	if len(children) == 0 {
 		return
 	}
