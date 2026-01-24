@@ -5,8 +5,8 @@
          "--only-same-user=false"
       ]
    },
-   "go.testEnvVars": {
-      "YAO_TEST_APPLICATION": "E:/projects/yao/demos/cui-demo",
-      "YAO_ROOT": "E:/projects/yao/demos/cui-demo"
-   },
+   // "go.testEnvVars": {
+   //    "YAO_TEST_APPLICATION": "E:/projects/yao/wwsheng009/yao/tui/demo",
+   //    "YAO_ROOT": "E:/projects/yao/wwsheng009/yao/tui/demo"
+   // },
 }

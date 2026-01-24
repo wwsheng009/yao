@@ -288,9 +288,9 @@
       "program": "main.go",
       "args": [
         "tui",
-        "cursor-helper",
+        "list",
       ],
-      "cwd": "E:/projects/yao/yao-projects/yao-docs/docs/YaoApps/tui_app",
+      "cwd": "E:/projects/yao/yao-projects/yao-docs/docs/YaoApps/tui_app1",
     },
     {
       "name": "decode jwt",
