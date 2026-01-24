@@ -392,3 +392,117 @@ func MeasureLipglossTextHeight(text string, style lipgloss.Style) int {
 	lines := splitLines(rendered)
 	return len(lines)
 }
+
+// =============================================================================
+// Cached versions of the above functions (use global cache for performance)
+// =============================================================================
+
+// LipglossToCellStyleCached converts lipgloss.Style to runtime.CellStyle with caching
+// This is the recommended way to convert styles for better performance
+func LipglossToCellStyleCached(style lipgloss.Style) runtime.CellStyle {
+	cache := GetGlobalCache()
+
+	// Try to get from cache
+	if cellStyle, ok := cache.GetStyle(style); ok {
+		return cellStyle
+	}
+
+	// Not in cache, compute and store
+	cellStyle := LipglossToCellStyle(style)
+	cache.SetStyle(style, cellStyle)
+
+	return cellStyle
+}
+
+// MeasureLipglossTextCached measures text width with caching
+// This is the recommended way to measure text for better performance
+func MeasureLipglossTextCached(text string, style lipgloss.Style) int {
+	cache := GetGlobalCache()
+
+	// Try to get from cache
+	if width, _, ok := cache.GetMeasurement(text, style); ok {
+		return width
+	}
+
+	// Not in cache, compute and store
+	width := MeasureLipglossText(text, style)
+	height := MeasureLipglossTextHeight(text, style)
+	cache.SetMeasurement(text, style, width, height)
+
+	return width
+}
+
+// MeasureLipglossTextHeightCached measures text height with caching
+// This is the recommended way to measure text height for better performance
+func MeasureLipglossTextHeightCached(text string, style lipgloss.Style) int {
+	cache := GetGlobalCache()
+
+	// Try to get from cache
+	if _, height, ok := cache.GetMeasurement(text, style); ok {
+		return height
+	}
+
+	// Not in cache, compute and store
+	width := MeasureLipglossText(text, style)
+	height := MeasureLipglossTextHeight(text, style)
+	cache.SetMeasurement(text, style, width, height)
+
+	return height
+}
+
+// parseANSILineCached parses ANSI codes with caching
+func parseANSILineCached(line string) []StyledSegment {
+	cache := GetGlobalCache()
+
+	// Try to get from cache
+	if segments, ok := cache.GetANSISegments(line); ok {
+		return segments
+	}
+
+	// Not in cache, compute and store
+	segments := parseANSILine(line)
+	cache.SetANSISegments(line, segments)
+
+	return segments
+}
+
+// RenderLipglossToBufferCached renders lipgloss-styled text to CellBuffer with caching
+// This is the recommended way to render for better performance
+func RenderLipglossToBufferCached(buf *runtime.CellBuffer, text string, style lipgloss.Style, x, y, zIndex int) {
+	if buf == nil || text == "" {
+		return
+	}
+
+	// Check if we have cached rendered output
+	cache := GetGlobalCache()
+	rendered, hasCached := cache.GetRenderedText(text, style)
+
+	if !hasCached {
+		rendered = style.Render(text)
+		cache.SetRenderedText(text, style, rendered)
+	}
+
+	// Parse ANSI codes and render each character with proper styling
+	lines := splitLines(rendered)
+	for lineIdx, line := range lines {
+		// Use cached ANSI parsing
+		segments := parseANSILineCached(line)
+
+		currentX := x
+		for _, segment := range segments {
+			// Write each character in the segment
+			runes := []rune(segment.Text)
+			for i, r := range runes {
+				if currentX+i < buf.Width() && y+lineIdx < buf.Height() {
+					cellStyle := segment.Style
+					if cellStyle.Foreground == "" {
+						// Use lipgloss style as fallback
+						cellStyle = LipglossToCellStyleCached(style)
+					}
+					buf.SetContent(currentX+i, y+lineIdx, zIndex, r, cellStyle, "")
+				}
+			}
+			currentX += len(runes)
+		}
+	}
+}
