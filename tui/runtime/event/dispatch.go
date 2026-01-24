@@ -327,9 +327,9 @@ type EventTarget interface {
 type EventPriority int
 
 const (
-	PriorityDefault EventPriority = iota
+	PriorityLow EventPriority = iota
+	PriorityDefault
 	PriorityHigh
-	PriorityLow
 )
 
 // EventHandlerFunc is a function that can handle events
@@ -394,11 +394,12 @@ func (ed *EventDelegator) AddHandler(eventType EventType, handler EventHandlerFu
 	ed.sortHandlers(eventType)
 }
 
-// sortHandlers sorts handlers for an event type by priority
+// sortHandlers sorts handlers for an event type by priority (high to low)
 func (ed *EventDelegator) sortHandlers(eventType EventType) {
 	handlers := ed.handlers[eventType]
 
 	// Simple insertion sort (small arrays expected)
+	// Sort in descending order (high priority first)
 	for i := 1; i < len(handlers); i++ {
 		for j := i; j > 0 && handlers[j-1].Priority < handlers[j].Priority; j-- {
 			handlers[j-1], handlers[j] = handlers[j], handlers[j-1]
