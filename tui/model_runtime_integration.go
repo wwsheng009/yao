@@ -542,6 +542,23 @@ func (w *NativeComponentWrapper) GetFocus() bool {
 	return false
 }
 
+// SetSize implements core.ComponentInterface
+func (w *NativeComponentWrapper) SetSize(width, height int) {
+	// Forward SetSize to wrapped component if it implements it
+	if c, ok := w.Component.(interface{ SetSize(int, int) }); ok {
+		c.SetSize(width, height)
+	}
+	// Store size for components that query it via Measurable interface
+	if c, ok := w.Component.(runtime.Measurable); ok {
+		// The Measurable interface doesn't have a way to store size,
+		// but the component will use its Measure method during layout
+		// We could store it here if needed in the future
+		_ = c // avoid unused warning
+	}
+	_ = width
+	_ = height
+}
+
 // IsFocusable implements runtime.FocusableComponent interface
 // This allows the runtime focus manager to recognize focusable components
 func (w *NativeComponentWrapper) IsFocusable() bool {
