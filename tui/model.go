@@ -4,6 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/runtime"
 	"github.com/yaoapp/yao/tui/runtime/event"
 )
 
@@ -257,9 +258,19 @@ func (m *Model) syncInputComponentState(id string, wrapper interface{}) {
 
 // dispatchMessageToComponent dispatches a message to a specific component
 // Returns (updatedModel, cmd, handled) where handled indicates if the component processed the message
+// Supports both legacy mode (m.Components) and runtime mode (m.RuntimeRoot.Children)
 func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	// First, try legacy mode (m.Components)
 	comp, exists := m.Components[componentID]
 	if !exists {
+		// If not found in Components and runtime is enabled, try runtime nodes
+		if m.UseRuntime && m.RuntimeRoot != nil {
+			node := m.findRuntimeNodeByID(m.RuntimeRoot, componentID)
+			if node != nil && node.Component != nil {
+				// Found in runtime tree - use runtime component
+				return m.dispatchToRuntimeComponent(node, msg)
+			}
+		}
 		return m, nil, false
 	}
 
@@ -293,6 +304,41 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 	// If a component wants to lose focus (e.g., on ESC), it should do so
 	// internally and not rely on the Model to clear CurrentFocus.
 	// The Model should only track routing information, not manage component state.
+
+	return m, cmd, response == core.Handled
+}
+
+// dispatchToRuntimeComponent dispatches a message to a runtime component
+// Returns (updatedModel, cmd, handled) where handled indicates if the component processed the message
+func (m *Model) dispatchToRuntimeComponent(node *runtime.LayoutNode, msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	if node == nil || node.Component == nil || node.Component.Instance == nil {
+		return m, nil, false
+	}
+
+	updatedComp, cmd, response := node.Component.Instance.UpdateMsg(msg)
+	node.Component.Instance = updatedComp
+
+	// Unified state synchronization using GetStateChanges()
+	stateChanges, hasChanges := updatedComp.GetStateChanges()
+	if hasChanges {
+		var actualChanges bool
+		m.StateMu.Lock()
+		for key, value := range stateChanges {
+			// Only record actual changes
+			oldValue, exists := m.State[key]
+			if !exists || !valuesEqual(oldValue, value) {
+				m.State[key] = value
+				actualChanges = true
+			}
+		}
+		m.StateMu.Unlock()
+
+		// Only invalidate props cache if there were actual changes
+		if actualChanges && m.propsCache != nil {
+			m.propsCache.Clear()
+			log.Trace("State changes detected, cleared props cache")
+		}
+	}
 
 	return m, cmd, response == core.Handled
 }

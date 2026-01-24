@@ -18,6 +18,10 @@ func GetDefaultMessageHandlersFromCore() map[string]core.MessageHandler {
 		if !ok {
 			return m.(tea.Model), nil
 		}
+		// Use runtime-specific key handler when in runtime mode
+		if model.UseRuntime {
+			return model.handleKeyPressWithRuntime(msg.(tea.KeyMsg))
+		}
 		return model.handleKeyPress(msg.(tea.KeyMsg))
 	}
 

@@ -369,6 +369,63 @@ func (w *NativeComponentWrapper) Init() tea.Cmd {
 
 // UpdateMsg implements core.ComponentInterface
 func (w *NativeComponentWrapper) UpdateMsg(msg tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response) {
+	// Handle focus messages first
+	if focusMsg, ok := msg.(core.FocusMsg); ok {
+		switch focusMsg.Type {
+		case core.FocusGranted:
+			// Set focus on the wrapped component
+			if c, ok := w.Component.(interface{ SetFocus(bool) }); ok {
+				c.SetFocus(true)
+			}
+			return w, nil, core.Handled
+		case core.FocusLost:
+			// Remove focus from the wrapped component
+			if c, ok := w.Component.(interface{ SetFocus(bool) }); ok {
+				c.SetFocus(false)
+			}
+			return w, nil, core.Handled
+		}
+	}
+
+	// Forward all other messages to the wrapped component
+	// Check if wrapped component implements UpdateMsg
+	type updateMsgInterface interface {
+		UpdateMsg(tea.Msg) (core.ComponentInterface, tea.Cmd, core.Response)
+	}
+	if comp, ok := w.Component.(updateMsgInterface); ok {
+		updatedComp, cmd, response := comp.UpdateMsg(msg)
+		// Update the wrapper's component reference (wrapped components return themselves)
+		// We only update if the same type is returned (component returns itself)
+		if updatedComp != nil {
+			// Try to update the internal component reference
+			// Most components return themselves, so we try to cast back to runtime.Component
+			// If it fails, we just keep the old reference
+			// This handles the case where TableComponent returns itself (t, cmd, response)
+			if updatedComp != w.Component {
+				// The wrapped component returned something different
+				// Check if it's still the same concrete type
+				switch w.Component.(type) {
+				case *components.TableComponent:
+					if tc, ok := updatedComp.(*components.TableComponent); ok {
+						w.Component = tc
+					}
+				case *components.InputComponent:
+					if ic, ok := updatedComp.(*components.InputComponent); ok {
+						w.Component = ic
+					}
+				case *components.ButtonComponent:
+					if bc, ok := updatedComp.(*components.ButtonComponent); ok {
+						w.Component = bc
+					}
+				// Add more component types as needed...
+				}
+			}
+		}
+		// IMPORTANT: Always return the wrapper, not the unwrapped component
+		// This ensures the wrapper chain is maintained in the runtime tree
+		return w, cmd, response
+	}
+
 	return w, nil, core.Ignored
 }
 
@@ -485,6 +542,15 @@ func (w *NativeComponentWrapper) GetFocus() bool {
 	return false
 }
 
+// IsFocusable implements runtime.FocusableComponent interface
+// This allows the runtime focus manager to recognize focusable components
+func (w *NativeComponentWrapper) IsFocusable() bool {
+	if c, ok := w.Component.(interface{ IsFocusable() bool }); ok {
+		return c.IsFocusable()
+	}
+	return false
+}
+
 // GetComponentType implements core.ComponentInterface
 func (w *NativeComponentWrapper) GetComponentType() string {
 	return getComponentTypeString(w.Component)
@@ -584,9 +650,17 @@ func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
 	var focusables []focusableItem
 
 	for _, box := range result.Boxes {
-		if box.Node != nil && box.Node.Component != nil {
-			// 检查是否是可聚焦组件
-			if m.isComponentFocusable(box.Node.ID) {
+		if box.Node == nil || box.Node.Component == nil || box.Node.Component.Instance == nil {
+			continue
+		}
+
+		// Check if the component instance has IsFocusable method
+		// We use type assertion to an interface with IsFocusable() bool
+		type isFocusable interface {
+			IsFocusable() bool
+		}
+		if focusable, ok := box.Node.Component.Instance.(isFocusable); ok {
+			if focusable.IsFocusable() {
 				focusables = append(focusables, focusableItem{
 					id: box.Node.ID,
 					x:  box.X,
@@ -647,13 +721,45 @@ func (m *Model) updateComponentConfigsForRender(result runtime.LayoutResult) {
 
 // isComponentFocusable 检查组件是否可聚焦
 func (m *Model) isComponentFocusable(compID string) bool {
-	// 检查组件实例
+	// First check legacy Components map
 	if comp, exists := m.Components[compID]; exists {
 		// 检查组件类型
 		registry := GetGlobalRegistry()
 		return registry.IsFocusable(ComponentType(comp.Type))
 	}
+
+	// Check RuntimeRoot for runtime components
+	if m.RuntimeRoot != nil {
+		if node := m.findRuntimeNodeByID(m.RuntimeRoot, compID); node != nil {
+			if node.Component != nil && node.Component.Instance != nil {
+				// Check if the instance implements FocusableComponent
+				type isFocusable interface {
+					IsFocusable() bool
+				}
+				if focusable, ok := node.Component.Instance.(isFocusable); ok {
+					return focusable.IsFocusable()
+				}
+			}
+		}
+	}
+
 	return false
+}
+
+// findRuntimeNodeByID recursively searches for a node by ID
+func (m *Model) findRuntimeNodeByID(root *runtime.LayoutNode, id string) *runtime.LayoutNode {
+	if root == nil {
+		return nil
+	}
+	if root.ID == id {
+		return root
+	}
+	for _, child := range root.Children {
+		if found := m.findRuntimeNodeByID(child, id); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 // ========== Runtime 事件处理 ==========
