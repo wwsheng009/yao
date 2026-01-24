@@ -279,21 +279,18 @@ func buildTableStyles(props TableProps) (headerStyle, cellStyle, selectedStyle l
 
 // applyTableStyles applies styles to a table model
 func applyTableStyles(t *table.Model, props TableProps) {
-	headerStyle, cellStyle, selectedStyle := buildTableStyles(props)
+	headerStyle, _, selectedStyle := buildTableStyles(props)
 
-	if props.ShowBorder {
-		t.SetStyles(table.Styles{
-			Header: headerStyle,
-			// Cell:     cellStyle,
-			Selected: selectedStyle,
-		})
-	} else {
-		s := table.DefaultStyles()
-		s.Header = headerStyle
-		s.Cell = cellStyle
-		s.Selected = selectedStyle
-		t.SetStyles(s)
-	}
+	// 使用默认样式作为基础，这样可以保持正确的边框渲染
+	// 注意：由于 bubbles/table 的实现限制，如果设置了 Cell 样式，
+	// 选中行的样式只会应用到第一列。为了保证整行高亮正常工作，
+	// 我们不设置 Cell 样式，而是使用默认的单元格样式。
+	s := table.DefaultStyles()
+	s.Header = headerStyle
+	// 不设置 s.Cell，让表格使用默认样式，这样 Selected 样式才能应用到整行
+	// s.Cell = cellStyle // 注释掉此行以确保整行高亮正常工作
+	s.Selected = selectedStyle
+	t.SetStyles(s)
 }
 
 // applyTableDimensions applies width and height to a table model
