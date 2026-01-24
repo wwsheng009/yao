@@ -411,12 +411,12 @@ func (f *Factory) applyHeaderProps(comp *components.HeaderComponent, props map[s
 		comp.WithAlign(align)
 	}
 
-	// Colors
+	// Colors - convert color names to ANSI codes
 	if color, ok := props["color"].(string); ok {
-		comp.WithColor(color)
+		comp.WithColor(ColorNameToANSI(color))
 	}
 	if background, ok := props["background"].(string); ok {
-		comp.WithBackground(background)
+		comp.WithBackground(ColorNameToANSI(background))
 	}
 
 	// Text decorations
@@ -453,12 +453,12 @@ func (f *Factory) applyFooterProps(comp *components.FooterComponent, props map[s
 		comp.WithAlign(align)
 	}
 
-	// Colors
+	// Colors - convert color names to ANSI codes
 	if color, ok := props["color"].(string); ok {
-		comp.WithColor(color)
+		comp.WithColor(ColorNameToANSI(color))
 	}
 	if background, ok := props["background"].(string); ok {
-		comp.WithBackground(background)
+		comp.WithBackground(ColorNameToANSI(background))
 	}
 
 	// Text decorations
@@ -527,12 +527,12 @@ func (f *Factory) applyListProps(comp *components.ListComponent, props map[strin
 		comp.WithFilteringEnabled(filteringEnabled)
 	}
 
-	// Colors
+	// Colors - convert color names to ANSI codes
 	if color, ok := props["color"].(string); ok {
-		comp.WithColor(color)
+		comp.WithColor(ColorNameToANSI(color))
 	}
 	if background, ok := props["background"].(string); ok {
-		comp.WithBackground(background)
+		comp.WithBackground(ColorNameToANSI(background))
 	}
 
 	// Padding
@@ -712,6 +712,41 @@ func (f *Factory) applyTableProps(comp *components.TableComponent, props map[str
 	}
 	if showBorder, ok := props["showBorder"].(bool); ok {
 		comp.WithShowBorder(showBorder)
+	}
+
+	// Header styles - convert color names to ANSI codes
+	if headerColor, ok := props["headerColor"].(string); ok {
+		comp.WithHeaderColor(ColorNameToANSI(headerColor))
+	}
+	if headerBackground, ok := props["headerBackground"].(string); ok {
+		comp.WithHeaderBackground(ColorNameToANSI(headerBackground))
+	}
+	if headerBold, ok := props["headerBold"].(bool); ok {
+		comp.WithHeaderBold(headerBold)
+	}
+
+	// Cell styles - convert color names to ANSI codes
+	if cellColor, ok := props["cellColor"].(string); ok {
+		comp.WithCellColor(ColorNameToANSI(cellColor))
+	}
+	if cellBackground, ok := props["cellBackground"].(string); ok {
+		comp.WithCellBackground(ColorNameToANSI(cellBackground))
+	}
+
+	// Selected row styles - convert color names to ANSI codes
+	if selectedColor, ok := props["selectedColor"].(string); ok {
+		comp.WithSelectedColor(ColorNameToANSI(selectedColor))
+	}
+	if selectedBackground, ok := props["selectedBackground"].(string); ok {
+		comp.WithSelectedBackground(ColorNameToANSI(selectedBackground))
+	}
+	if selectedBold, ok := props["selectedBold"].(bool); ok {
+		comp.WithSelectedBold(selectedBold)
+	}
+
+	// Border style - convert color name to ANSI code
+	if borderColor, ok := props["borderColor"].(string); ok {
+		comp.WithBorderColor(ColorNameToANSI(borderColor))
 	}
 
 	// Store bind data for later processing (after columns are set)
@@ -1081,12 +1116,12 @@ func (f *Factory) applySpinnerProps(comp *components.SpinnerComponent, props map
 		comp.WithRunning(running)
 	}
 
-	// Colors
+	// Colors - convert color names to ANSI codes
 	if color, ok := props["color"].(string); ok {
-		comp.WithColor(color)
+		comp.WithColor(ColorNameToANSI(color))
 	}
 	if background, ok := props["background"].(string); ok {
-		comp.WithBackground(background)
+		comp.WithBackground(ColorNameToANSI(background))
 	}
 
 	// Speed
