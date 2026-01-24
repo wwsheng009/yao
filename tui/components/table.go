@@ -71,6 +71,13 @@ type TableModel struct {
 	id                  string          // Unique identifier for this instance
 	previousSelectedRow int             // Track previous selection for change detection
 	ID                  string          // For component interface
+
+	// Style properties for fluent API
+	headerStyle   lipgloss.Style
+	selectedStyle lipgloss.Style
+	cellStyle     lipgloss.Style
+	borderStyle   lipgloss.Style
+	styles        table.Styles
 }
 
 // RenderTable renders a table component
@@ -287,6 +294,22 @@ func applyTableStyles(t *table.Model, props TableProps) {
 	// 我们不设置 Cell 样式，而是使用默认的单元格样式。
 	s := table.DefaultStyles()
 	s.Header = headerStyle
+
+	// Apply border style if provided
+	// bubbles/table uses Header's BorderStyle() and BorderForeground() to control table borders
+	emptyStyle := lipgloss.NewStyle()
+	if props.BorderStyle.GetStyle().String() != emptyStyle.String() {
+		borderStyle := props.BorderStyle.GetStyle()
+		if fg := borderStyle.GetForeground(); fg != lipgloss.Color("") {
+			s.Header = s.Header.BorderForeground(fg)
+		}
+		if bg := borderStyle.GetBackground(); bg != lipgloss.Color("") {
+			s.Header = s.Header.BorderBackground(bg)
+		}
+		// Apply normal border style
+		s.Header = s.Header.BorderStyle(lipgloss.NormalBorder())
+	}
+
 	// 不设置 s.Cell，让表格使用默认样式，这样 Selected 样式才能应用到整行
 	// s.Cell = cellStyle // 注释掉此行以确保整行高亮正常工作
 	s.Selected = selectedStyle
@@ -414,10 +437,15 @@ func NewTableModel(props TableProps, id string) TableModel {
 	t := createNativeTableModel(props)
 
 	return TableModel{
-		Model: t,
-		props: props,
-		data:  props.Data,
-		id:    id,
+		Model:         t,
+		props:         props,
+		data:          props.Data,
+		id:            id,
+		headerStyle:   props.HeaderStyle.GetStyle(),
+		selectedStyle: props.SelectedStyle.GetStyle(),
+		cellStyle:     props.CellStyle.GetStyle(),
+		borderStyle:   props.BorderStyle.GetStyle(),
+		styles:        table.DefaultStyles(),
 	}
 }
 
@@ -996,4 +1024,199 @@ func (m *TableModel) GetSelected() (interface{}, bool) {
 // Focused returns whether the table is focused
 func (m *TableModel) Focused() bool {
 	return m.Model.Focused()
+}
+
+// ============================================================================
+// Fluent API - Chainable Configuration Methods
+// These methods allow configuring the table similar to bubbles/table API:
+//
+// Example:
+//
+//	table := NewTableModel(props, "my-table").
+//	    WithColumns(columns).
+//	    WithRows(rows).
+//	    WithFocused(true).
+//	    WithHeight(7).
+//	    SetStyles(styles)
+// ============================================================================
+
+// WithColumns sets the table columns (chainable)
+func (m *TableModel) WithColumns(columns []Column) *TableModel {
+	m.props.Columns = columns
+	tColumns := buildTableColumns(columns)
+	m.Model.SetColumns(tColumns)
+	return m
+}
+
+// WithRows sets the table rows from data (chainable)
+func (m *TableModel) WithRows(data [][]interface{}) *TableModel {
+	m.props.Data = data
+	m.data = data
+	rows := buildTableRows(data, m.props.Columns)
+	m.Model.SetRows(rows)
+	return m
+}
+
+// WithFocused sets the focused state (chainable)
+func (m *TableModel) WithFocused(focused bool) *TableModel {
+	m.props.Focused = focused
+	if focused {
+		m.Model.Focus()
+	} else {
+		m.Model.Blur()
+	}
+	return m
+}
+
+// WithHeight sets the table height (chainable)
+func (m *TableModel) WithHeight(height int) *TableModel {
+	m.props.Height = height
+	m.Model.SetHeight(height)
+	return m
+}
+
+// WithWidth sets the table width (chainable)
+func (m *TableModel) WithWidth(width int) *TableModel {
+	m.props.Width = width
+	m.Model.SetWidth(width)
+	return m
+}
+
+// SetStyles sets the table styles (similar to bubbles/table)
+// This replaces the entire styles object
+func (m *TableModel) SetStyles(styles table.Styles) *TableModel {
+	m.Model.SetStyles(styles)
+	m.styles = styles
+	return m
+}
+
+// GetStyles returns the current table styles
+func (m *TableModel) GetStyles() table.Styles {
+	return m.styles
+}
+
+// DefaultStyles returns the default table styles
+func (m *TableModel) DefaultStyles() table.Styles {
+	return table.DefaultStyles()
+}
+
+// Style configuration methods for fine-grained control
+
+// WithHeaderStyle sets the header style (chainable)
+func (m *TableModel) WithHeaderStyle(style lipgloss.Style) *TableModel {
+	m.headerStyle = style
+	s := m.styles
+	s.Header = style
+	m.Model.SetStyles(s)
+	m.styles.Header = style
+	return m
+}
+
+// WithSelectedStyle sets the selected row style (chainable)
+func (m *TableModel) WithSelectedStyle(style lipgloss.Style) *TableModel {
+	m.selectedStyle = style
+	s := m.styles
+	s.Selected = style
+	m.Model.SetStyles(s)
+	m.styles.Selected = style
+	return m
+}
+
+// WithCellStyle sets the cell style (chainable)
+func (m *TableModel) WithCellStyle(style lipgloss.Style) *TableModel {
+	m.cellStyle = style
+	s := m.styles
+	s.Cell = style
+	m.Model.SetStyles(s)
+	m.styles.Cell = style
+	return m
+}
+
+// Border style methods (applied to Header.BorderStyle)
+
+// WithBorderStyle sets the border style type (chainable)
+func (m *TableModel) WithBorderStyle(border lipgloss.Border) *TableModel {
+	s := m.styles
+	s.Header = s.Header.BorderStyle(border)
+	m.Model.SetStyles(s)
+	m.styles.Header = m.styles.Header.BorderStyle(border)
+	return m
+}
+
+// WithBorderForeground sets the border foreground color (chainable)
+func (m *TableModel) WithBorderForeground(color lipgloss.Color) *TableModel {
+	s := m.styles
+	s.Header = s.Header.BorderForeground(color)
+	m.Model.SetStyles(s)
+	m.styles.Header = m.styles.Header.BorderForeground(color)
+	return m
+}
+
+// WithBorderBackground sets the border background color (chainable)
+func (m *TableModel) WithBorderBackground(color lipgloss.Color) *TableModel {
+	s := m.styles
+	s.Header = s.Header.BorderBackground(color)
+	m.Model.SetStyles(s)
+	m.styles.Header = m.styles.Header.BorderBackground(color)
+	return m
+}
+
+// WithBorderBottom enables/disables bottom border on header (chainable)
+func (m *TableModel) WithBorderBottom(show bool) *TableModel {
+	s := m.styles
+	s.Header = s.Header.BorderBottom(show)
+	m.Model.SetStyles(s)
+	m.styles.Header = m.styles.Header.BorderBottom(show)
+	return m
+}
+
+// Convenience method combining border styles (similar to example in request)
+
+// WithStandardBorder applies a standard border style with color
+func (m *TableModel) WithStandardBorder(color string) *TableModel {
+	s := m.styles
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color(color)).
+		BorderBottom(true)
+	m.Model.SetStyles(s)
+	m.styles.Header = m.styles.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color(color)).
+		BorderBottom(true)
+	return m
+}
+
+// Helper method to build styles from current configuration
+func (m *TableModel) applyStyles() {
+	// Start with defaults
+	s := table.DefaultStyles()
+
+	// Apply header style
+	if m.headerStyle.String() != lipgloss.NewStyle().String() {
+		s.Header = m.headerStyle
+	}
+
+	// Apply selected style
+	if m.selectedStyle.String() != lipgloss.NewStyle().String() {
+		s.Selected = m.selectedStyle
+	}
+
+	// Apply cell style
+	if m.cellStyle.String() != lipgloss.NewStyle().String() {
+		s.Cell = m.cellStyle
+	}
+
+	// Apply border style if set
+	if m.borderStyle.String() != lipgloss.NewStyle().String() {
+		if fg := m.borderStyle.GetForeground(); fg != lipgloss.Color("") {
+			s.Header = s.Header.BorderForeground(fg)
+		}
+		if bg := m.borderStyle.GetBackground(); bg != lipgloss.Color("") {
+			s.Header = s.Header.BorderBackground(bg)
+		}
+	}
+
+	m.Model.SetStyles(s)
+	m.styles = s
 }
