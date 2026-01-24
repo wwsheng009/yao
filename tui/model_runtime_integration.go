@@ -89,11 +89,35 @@ func (m *Model) createRuntimeComponentNode(factory *dsl.Factory, comp *Component
 	// 绑定模板数据 - 将 {{key}} 替换为 Config.Data 中的实际值
 	boundProps := m.bindPropsToData(comp.Props)
 
+	// Process bind attribute - add __bind_data to props for components with bind
+	// This ensures list/table components get their data during creation
+	if comp.Bind != "" {
+		m.StateMu.RLock()
+		if bindValue, ok := m.State[comp.Bind]; ok {
+			if boundProps == nil {
+				boundProps = make(map[string]interface{})
+			}
+			boundProps["__bind_data"] = bindValue
+			log.Trace("createRuntimeComponentNode: component %s has bind '%s', added __bind_data with %d items",
+				comp.ID, comp.Bind, len(bindValue.([]interface{})))
+		} else {
+			log.Warn("createRuntimeComponentNode: component %s has bind '%s' but key not found in State",
+				comp.ID, comp.Bind)
+		}
+		m.StateMu.RUnlock()
+	}
+
 	// 创建原生 Runtime 组件
 	dslConfig := &dsl.ComponentConfig{
 		ID:    comp.ID,
 		Type:  comp.Type,
 		Props: boundProps,
+	}
+
+	// Debug log for bind processing
+	if comp.Bind != "" {
+		log.Trace("Creating component %s (type: %s) with bind '%s'. Props has __bind_data: %v",
+			comp.ID, comp.Type, comp.Bind, boundProps != nil && boundProps["__bind_data"] != nil)
 	}
 
 	nativeComponent, err := factory.Create(dslConfig)
@@ -365,7 +389,71 @@ func (w *NativeComponentWrapper) Render(config core.RenderConfig) (string, error
 }
 
 // UpdateRenderConfig implements core.ComponentInterface
+// This forwards the config to native Runtime components, handling data binding
 func (w *NativeComponentWrapper) UpdateRenderConfig(config core.RenderConfig) error {
+	if config.Data == nil {
+		return nil
+	}
+
+	// Type-assert Data to map[string]interface{}
+	dataMap, ok := config.Data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Handle data binding for list/table components
+	// Check for __bind_data which contains the bound state data
+	if bindData, ok := dataMap["__bind_data"]; ok {
+		switch comp := w.Component.(type) {
+		case *components.ListComponent:
+			// List component: bind data should be the items array
+			if items, ok := bindData.([]interface{}); ok {
+				factory := dsl.NewFactory()
+				parsedItems := factory.ParseListItems(items)
+				comp.WithItems(parsedItems)
+			}
+		case *components.TableComponent:
+			// Table component: bind data can be rows array or data array
+			if rows, ok := bindData.([][]interface{}); ok {
+				comp.WithData(rows)
+			} else if data, ok := bindData.([]interface{}); ok {
+				// Convert []interface{} to [][]interface{}
+				// This handles both row arrays and object arrays
+				converted := make([][]interface{}, 0, len(data))
+				cols := comp.GetColumns()
+
+				for _, rowIntf := range data {
+					// Check if it's already a row ([]interface{})
+					if rowSlice, ok := rowIntf.([]interface{}); ok {
+						converted = append(converted, rowSlice)
+					} else if objMap, ok := rowIntf.(map[string]interface{}); ok {
+						// Convert object map to row using column keys
+						row := make([]interface{}, len(cols))
+						for i, col := range cols {
+							if val, exists := objMap[col.Key]; exists {
+								row[i] = val
+							} else {
+								row[i] = ""
+							}
+						}
+						converted = append(converted, row)
+					}
+				}
+				comp.WithData(converted)
+			}
+		}
+	}
+
+	// Handle other props
+	if title, ok := dataMap["title"].(string); ok {
+		if comp, ok := w.Component.(*components.ListComponent); ok {
+			comp.WithTitle(title)
+		}
+		if comp, ok := w.Component.(*components.FormComponent); ok {
+			comp.WithTitle(title)
+		}
+	}
+
 	return nil
 }
 
@@ -469,6 +557,10 @@ func (m *Model) renderWithRuntime() string {
 	// Phase 1 & 2: Measure + Layout
 	result := m.RuntimeEngine.Layout(m.RuntimeRoot, constraints)
 
+	// IMPORTANT: Update component configs with bound data before rendering
+	// This resolves the 'bind' property and populates '__bind_data' for list/table components
+	m.updateComponentConfigsForRender(result)
+
 	// Phase 3: Render
 	frame := m.RuntimeEngine.Render(result)
 
@@ -518,6 +610,38 @@ func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
 	m.runtimeFocusList = make([]string, len(focusables))
 	for i, item := range focusables {
 		m.runtimeFocusList[i] = item.id
+	}
+}
+
+// updateComponentConfigsForRender 更新组件配置以绑定数据
+// 这解决了 Runtime 模式下 list/table 组件数据绑定问题
+func (m *Model) updateComponentConfigsForRender(result runtime.LayoutResult) {
+	for _, box := range result.Boxes {
+		if box.Node == nil || box.Node.Component == nil || box.Node.Component.Instance == nil {
+			continue
+		}
+
+		compID := box.Node.ID
+		compInstance := box.Node.Component.Instance
+
+		// 找到原始组件配置
+		compConfig := m.findComponentConfig(compID)
+		if compConfig == nil {
+			continue
+		}
+
+		// 解析属性（处理 bind 属性）
+		props := m.resolveProps(compConfig)
+
+		// 创建渲染配置并更新组件
+		config := core.RenderConfig{
+			Data:   props,
+			Width:  box.W,
+			Height: box.H,
+		}
+
+		// 更新组件配置（这会解析 __bind_data）
+		compInstance.UpdateRenderConfig(config)
 	}
 }
 

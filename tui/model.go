@@ -33,8 +33,13 @@ func NewModel(cfg *Config, program *tea.Program) *Model {
 	// Initialize the Bridge after EventBus is created
 	model.Bridge = NewBridge(model.EventBus)
 
-	// Read UseRuntime from config (opt-in to Runtime engine)
-	model.UseRuntime = cfg.UseRuntime
+	// Read UseRuntime from config (default to true for new Runtime engine)
+	// nil = use default (true), false = legacy mode, true = new runtime
+	if cfg.UseRuntime == nil {
+		model.UseRuntime = true // Default to new Runtime
+	} else {
+		model.UseRuntime = *cfg.UseRuntime
+	}
 
 	// Initialize the Layout Engine
 	// Note: LayoutEngine and LayoutRoot will be initialized in InitializeComponents()
