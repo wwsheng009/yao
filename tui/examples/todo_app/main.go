@@ -248,7 +248,8 @@ func NewTodoModel() *TodoModel {
 	list := components.NewList().
 		WithID("todo-list").
 		WithTitle("My Todos").
-		WithSize(60, 20)
+		WithWidth(60).
+		WithHeight(20)
 
 	header := components.NewHeader("📝 Todo App").
 		WithAlign("center").

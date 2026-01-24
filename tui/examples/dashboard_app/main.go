@@ -11,19 +11,19 @@ import (
 // DashboardModel demonstrates a TUI dashboard with multiple components
 type DashboardModel struct {
 	// Components
-	progress1  *components.ProgressComponent
-	progress2  *components.ProgressComponent
-	progress3  *components.ProgressComponent
-	table       *components.TableComponent
-	list        *components.ListComponent
-	statusBar   *components.FooterComponent
-	header      *components.HeaderComponent
+	progress1 *components.ProgressComponent
+	progress2 *components.ProgressComponent
+	progress3 *components.ProgressComponent
+	table     *components.TableComponent
+	list      *components.ListComponent
+	statusBar *components.FooterComponent
+	header    *components.HeaderComponent
 
 	// State
-	focused     int
-	err         error
-	width       int
-	height      int
+	focused int
+	err     error
+	width   int
+	height  int
 }
 
 // NewDashboardModel creates a new dashboard model
@@ -48,39 +48,40 @@ func NewDashboardModel() *DashboardModel {
 		WithLabel("Disk").
 		WithPercent(45).
 		WithShowPercentage(true).
-			WithWidth(40)
+		WithWidth(40)
 
 	// Create table with data
 	table := components.NewTable().
 		WithID("data-table").
-		WithColumns([]*components.TableColumn{
-			{ID: "name", Title: "Name", Width: 30},
-			{ID: "status", Title: "Status", Width: 15},
-			{ID: "cpu", Title: "CPU", Width: 10},
-			{ID: "memory", Title: "Memory", Width: 10},
+		WithColumns([]components.RuntimeColumn{
+			{Key: "name", Title: "Name", Width: 30},
+			{Key: "status", Title: "Status", Width: 15},
+			{Key: "cpu", Title: "CPU", Width: 10},
+			{Key: "memory", Title: "Memory", Width: 10},
 		}).
-		WithData([]map[string]interface{}{
-			{"name": "Server 1", "status": "Running", "cpu": "45%", "memory": "60%"},
-			{"name": "Server 2", "status": "Stopped", "cpu": "0%", "memory": "0%"},
-			{"name": "Server 3", "status": "Running", "cpu": "72%", "memory": "81%"},
-			{"name": "Database", "status": "Running", "cpu": "30%", "memory": "45%"},
+		WithData([][]interface{}{
+			{"Server 1", "Running", "45%", "60%"},
+			{"Server 2", "Stopped", "0%", "0%"},
+			{"Server 3", "Running", "72%", "81%"},
+			{"Database", "Running", "30%", "45%"},
 		}).
-		WithSize(80, 10).
+		WithWidth(80).
+		WithHeight(10).
 		WithShowBorder(true)
 
 	// Create list with log entries
 	list := components.NewList().
 		WithID("log-list").
 		WithTitle("System Logs").
-		WithItems([]*components.ListItem{
-			{ID: "log1", Label: "[INFO] Server started on port 8080"},
-			{ID: "log2", Label: "[WARN] High memory usage detected"},
-			{ID: "log3", Label: "[INFO] Backup completed successfully"},
-			{ID: "log4", Label: "[ERROR] Failed to connect to database"},
-			{ID: "log5", Label: "[INFO] User authentication successful"},
+		WithItems([]components.RuntimeListItem{
+			components.NewRuntimeListItem("[INFO] Server started on port 8080", ""),
+			components.NewRuntimeListItem("[WARN] High memory usage detected", ""),
+			components.NewRuntimeListItem("[INFO] Backup completed successfully", ""),
+			components.NewRuntimeListItem("[ERROR] Failed to connect to database", ""),
+			components.NewRuntimeListItem("[INFO] User authentication successful", ""),
 		}).
-		WithSize(80, 8).
-		WithShowBorder(true)
+		WithWidth(80).
+		WithHeight(8)
 
 	// Create header
 	header := components.NewHeader("📊 System Dashboard").
@@ -96,13 +97,13 @@ func NewDashboardModel() *DashboardModel {
 		progress1: progress1,
 		progress2: progress2,
 		progress3: progress3,
-		table:      table,
-		list:       list,
-		statusBar:  statusBar,
-		header:     header,
-		focused:    0,
-		width:      80,
-		height:     24,
+		table:     table,
+		list:      list,
+		statusBar: statusBar,
+		header:    header,
+		focused:   0,
+		width:     80,
+		height:    24,
 	}
 
 	return model
@@ -148,54 +149,25 @@ func (m *DashboardModel) handleKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	// Arrow keys for navigation
-	case tea.KeyUp, 'k':
-		if m.focused == 5 { // List
-			m.list.HandleKey(&components.KeyEvent{Key: 'k'})
-		}
-		return m, nil
-
-	case tea.KeyDown, 'j':
-		if m.focused == 5 { // List
-			m.list.HandleKey(&components.KeyEvent{Key: 'j'})
-		}
-		return m, nil
-
-	// Enter to select
-	case tea.KeyEnter:
-		if m.focused == 5 { // List
-			selectedIdx := m.list.GetSelectedIdx()
-			if selectedIdx >= 0 {
-				items := m.list.GetItems()
-				if selectedIdx < len(items) {
-					// Handle selection
-					fmt.Printf("Selected: %s\n", items[selectedIdx].Label)
-				}
-			}
-		}
-		return m, nil
-
 	// Simulate progress updates
 	case '1':
-		m.progress1.WithPercent((m.progress1.GetPercent() + 10) % 101)
+		newPercent := int(m.progress1.GetPercent()+10) % 101
+		m.progress1.WithPercent(float64(newPercent))
 	case '2':
-		m.progress2.WithPercent((m.progress2.GetPercent() + 10) % 101)
+		newPercent := int(m.progress2.GetPercent()+10) % 101
+		m.progress2.WithPercent(float64(newPercent))
 	case '3':
-		m.progress3.WithPercent((m.progress3.GetPercent() + 10) % 101
+		newPercent := int(m.progress3.GetPercent()+10) % 101
+		m.progress3.WithPercent(float64(newPercent))
 
-	default:
-		// Forward key to focused component
-		switch m.focused {
-		case 0: // Progress 1
-			// Progress components don't handle keyboard
-		case 1: // Progress 2
-		case 2: // Progress 3
-		case 3: // Table
-			// Table component handles arrow keys
-		case 4: // List
-			m.list.HandleKey(&components.KeyEvent{Key: int(keyMsg.Type)})
-		case 5: // Status bar
-			// Static component
+	// Enter to select from list
+	case tea.KeyEnter:
+		if m.focused == 5 { // List
+			selectedItem := m.list.GetSelectedItem()
+			if selectedItem != nil {
+				// Handle selection
+				fmt.Printf("Selected: %s\n", selectedItem.Title())
+			}
 		}
 		return m, nil
 	}
@@ -206,10 +178,6 @@ func (m *DashboardModel) handleKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the dashboard
 func (m DashboardModel) View() string {
 	var builder strings.Builder
-
-	// Calculate component sizes
-	width := m.width
-	height := m.height
 
 	// Header (3 lines)
 	builder.WriteString(m.header.View())
