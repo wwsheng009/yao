@@ -708,6 +708,12 @@ func (f *Factory) applyTableProps(comp *components.TableComponent, props map[str
 		comp.WithShowBorder(showBorder)
 	}
 
+	// Store bind data for later processing (after columns are set)
+	var bindData interface{}
+	if bd, ok := props["__bind_data"]; ok {
+		bindData = bd
+	}
+
 	// Columns
 	if columnsData, ok := props["columns"]; ok {
 		columns := f.ParseTableColumns(columnsData)
@@ -734,9 +740,17 @@ func (f *Factory) applyTableProps(comp *components.TableComponent, props map[str
 		}
 	}
 
-	// Bind data support
-	if bindData, ok := props["__bind_data"]; ok {
-		if dataArray, ok := bindData.([][]interface{}); ok {
+	// Bind data support - handle both 2D arrays and object arrays
+	// This is processed AFTER columns are set, so we can use column keys for object arrays
+	if bindData != nil {
+		if objArray, ok := bindData.([]interface{}); ok {
+			// Handle []map[string]interface{} format (object array)
+			// Convert to [][]interface{} using column keys
+			converted := f.ConvertObjectArrayToTableData(objArray, comp)
+			if len(converted) > 0 {
+				comp.WithData(converted)
+			}
+		} else if dataArray, ok := bindData.([][]interface{}); ok {
 			comp.WithData(dataArray)
 		}
 	}
@@ -1345,7 +1359,7 @@ func (f *Factory) applySplitPaneProps(comp *components.SplitPaneComponent, props
 
 // getStringOrDefault gets a string value from map or returns default.
 func getStringOrDefault(m map[string]interface{}, key string, defaultVal string) string {
-	if val, ok := m[key"].(string); ok {
+	if val, ok := m[key].(string); ok {
 		return val
 	}
 	return defaultVal
@@ -1519,5 +1533,32 @@ func (f *Factory) parseContextMenuItems(itemsData []interface{}) []*components.C
 	}
 
 	return items
+}
+
+// ConvertObjectArrayToTableData converts an array of objects to a 2D data array
+// using the column keys to map object fields to array positions
+func (f *Factory) ConvertObjectArrayToTableData(objArray []interface{}, table *components.TableComponent) [][]interface{} {
+	// Get columns from the table component
+	columns := table.GetColumns()
+	if len(columns) == 0 {
+		// No columns set yet, can't convert
+		return nil
+	}
+
+	result := make([][]interface{}, 0, len(objArray))
+	for _, objIntf := range objArray {
+		if objMap, ok := objIntf.(map[string]interface{}); ok {
+			row := make([]interface{}, len(columns))
+			for i, col := range columns {
+				if val, ok := objMap[col.Key]; ok {
+					row[i] = val
+				} else {
+					row[i] = ""
+				}
+			}
+			result = append(result, row)
+		}
+	}
+	return result
 }
 
