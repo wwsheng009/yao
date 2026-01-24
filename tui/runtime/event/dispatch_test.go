@@ -11,13 +11,13 @@ import (
 
 // MockComponent is a test component that implements event handlers
 type MockComponent struct {
-	ID            string
-	MouseHandled  bool
-	KeyHandled    bool
-	Focusable     bool
-	Focused       bool
-	EventCounts   map[string]int
-	StopProp      bool
+	ID           string
+	MouseHandled bool
+	KeyHandled   bool
+	Focusable    bool
+	Focused      bool
+	EventCounts  map[string]int
+	StopProp     bool
 }
 
 func (m *MockComponent) View() string {
@@ -66,6 +66,10 @@ func (m *MockComponent) GetStateChanges() (map[string]interface{}, bool) {
 
 func (m *MockComponent) GetSubscribedMessageTypes() []string {
 	return nil
+}
+
+func (m *MockComponent) SetSize(width, height int) {
+	// Mock implementation - does nothing
 }
 
 func (m *MockComponent) HandleMouse(ev *MouseEvent, localX, localY int) bool {
@@ -335,38 +339,38 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 		rootComp := &MockComponent{ID: "root"}
 
 		target := &runtime.LayoutNode{
-			ID:      "target",
-			X:       10,
-			Y:       10,
-			AbsoluteX: 10,
-			AbsoluteY: 10,
+			ID:             "target",
+			X:              10,
+			Y:              10,
+			AbsoluteX:      10,
+			AbsoluteY:      10,
 			MeasuredWidth:  20,
 			MeasuredHeight: 20,
-			Component: &core.ComponentInstance{Instance: targetComp},
+			Component:      &core.ComponentInstance{Instance: targetComp},
 		}
 
 		parent := &runtime.LayoutNode{
-			ID:      "parent",
-			X:       5,
-			Y:       5,
-			AbsoluteX: 5,
-			AbsoluteY: 5,
+			ID:             "parent",
+			X:              5,
+			Y:              5,
+			AbsoluteX:      5,
+			AbsoluteY:      5,
 			MeasuredWidth:  30,
 			MeasuredHeight: 30,
-			Children: []*runtime.LayoutNode{target},
-			Component: &core.ComponentInstance{Instance: parentComp},
+			Children:       []*runtime.LayoutNode{target},
+			Component:      &core.ComponentInstance{Instance: parentComp},
 		}
 
 		root := &runtime.LayoutNode{
-			ID:      "root",
-			X:       0,
-			Y:       0,
-			AbsoluteX: 0,
-			AbsoluteY: 0,
+			ID:             "root",
+			X:              0,
+			Y:              0,
+			AbsoluteX:      0,
+			AbsoluteY:      0,
 			MeasuredWidth:  40,
 			MeasuredHeight: 40,
-			Children: []*runtime.LayoutNode{parent},
-			Component: &core.ComponentInstance{Instance: rootComp},
+			Children:       []*runtime.LayoutNode{parent},
+			Component:      &core.ComponentInstance{Instance: rootComp},
 		}
 
 		target.Parent = parent
@@ -381,9 +385,9 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 
 		// Create mouse event at target position
 		mouseEv := &MouseEvent{
-			X:    15, // Within target (10-30)
-			Y:    15, // Within target (10-30)
-			Type: MousePress,
+			X:     15, // Within target (10-30)
+			Y:     15, // Within target (10-30)
+			Type:  MousePress,
 			Click: MouseLeft,
 		}
 
@@ -405,26 +409,26 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 		parentComp := &MockComponent{ID: "parent"}
 
 		target := &runtime.LayoutNode{
-			ID:      "target",
-			X:       10,
-			Y:       10,
-			AbsoluteX: 10,
-			AbsoluteY: 10,
+			ID:             "target",
+			X:              10,
+			Y:              10,
+			AbsoluteX:      10,
+			AbsoluteY:      10,
 			MeasuredWidth:  20,
 			MeasuredHeight: 20,
-			Component: &core.ComponentInstance{Instance: targetComp},
+			Component:      &core.ComponentInstance{Instance: targetComp},
 		}
 
 		parent := &runtime.LayoutNode{
-			ID:      "parent",
-			X:       5,
-			Y:       5,
-			AbsoluteX: 5,
-			AbsoluteY: 5,
+			ID:             "parent",
+			X:              5,
+			Y:              5,
+			AbsoluteX:      5,
+			AbsoluteY:      5,
 			MeasuredWidth:  30,
 			MeasuredHeight: 30,
-			Children: []*runtime.LayoutNode{target},
-			Component: &core.ComponentInstance{Instance: parentComp},
+			Children:       []*runtime.LayoutNode{target},
+			Component:      &core.ComponentInstance{Instance: parentComp},
 		}
 
 		target.Parent = parent
@@ -436,9 +440,9 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 		}
 
 		mouseEv := &MouseEvent{
-			X:    15,
-			Y:    15,
-			Type: MousePress,
+			X:     15,
+			Y:     15,
+			Type:  MousePress,
 			Click: MouseLeft,
 		}
 
