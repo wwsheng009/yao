@@ -103,6 +103,9 @@ type Component struct {
 	// Props contains component-specific properties
 	Props map[string]interface{} `json:"props,omitempty"`
 
+	// Style contains component-level style properties (position, etc.)
+	Style map[string]interface{} `json:"style,omitempty"`
+
 	// Actions maps event names to actions for this component
 	Actions map[string]core.Action `json:"actions,omitempty"`
 

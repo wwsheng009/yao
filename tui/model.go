@@ -4,6 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/runtime/event"
 )
 
 // NewModel creates a new Bubble Tea Model from a TUI configuration.
@@ -115,11 +116,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Priority 1: Critical system messages
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
+		// If Runtime engine is enabled, use event dispatch system
+		if m.UseRuntime && m.RuntimeEngine != nil {
+			result := m.DispatchEventToRuntime(msg)
+			if result.Handled {
+				// Event was handled by a component
+				return m, nil
+			}
+		}
+		// Otherwise, ignore mouse events for now
 		return m, nil
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
 			// Always intercept Ctrl+C regardless of focus
 			return m, tea.Quit
+		}
+		// If Runtime engine is enabled, use event dispatch system for other keys
+		if m.UseRuntime && m.RuntimeEngine != nil {
+			result := m.DispatchEventToRuntime(msg)
+			if result.Handled {
+				// Event was handled by a component
+				return m, nil
+			}
+			// Check for focus change requests (Tab, Shift+Tab)
+			if result.FocusChange != event.FocusChangeNone {
+				m.handleFocusChange(result.FocusChange)
+				return m, nil
+			}
 		}
 		// For other keys, continue to dispatch phase
 	case tea.WindowSizeMsg:

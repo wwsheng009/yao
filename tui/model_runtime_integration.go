@@ -135,10 +135,28 @@ func (m *Model) componentToLayoutNode(comp runtime.Component, id string, directi
 	switch comp.(type) {
 	case *components.RowComponent:
 		nodeType = runtime.NodeTypeRow
-		nodeStyle = runtime.NewStyle().WithDirection(runtime.DirectionRow)
+		// Extract properties from RowComponent
+		if rowComp, ok := comp.(*components.RowComponent); ok {
+			nodeStyle = runtime.NewStyle().
+				WithDirection(runtime.DirectionRow).
+				WithJustify(rowComp.GetJustify()).
+				WithAlignItems(rowComp.GetAlign()).
+				WithGap(rowComp.GetGap())
+		} else {
+			nodeStyle = runtime.NewStyle().WithDirection(runtime.DirectionRow)
+		}
 	case *components.ColumnComponent:
 		nodeType = runtime.NodeTypeColumn
-		nodeStyle = runtime.NewStyle().WithDirection(direction) // Use passed direction
+		// Extract properties from ColumnComponent
+		if colComp, ok := comp.(*components.ColumnComponent); ok {
+			nodeStyle = runtime.NewStyle().
+				WithDirection(runtime.DirectionColumn).
+				WithJustify(colComp.GetJustify()).
+				WithAlignItems(colComp.GetAlign()).
+				WithGap(colComp.GetGap())
+		} else {
+			nodeStyle = runtime.NewStyle().WithDirection(direction)
+		}
 	case *components.FlexComponent:
 		nodeType = runtime.NodeTypeFlex
 		nodeStyle = runtime.NewStyle().WithDirection(direction)
@@ -159,6 +177,9 @@ func (m *Model) componentToLayoutNode(comp runtime.Component, id string, directi
 				nodeStyle.Width = w
 			} else if w, ok := dslComp.Width.(float64); ok {
 				nodeStyle.Width = int(w)
+			} else if wStr, ok := dslComp.Width.(string); ok && wStr == "flex" {
+				// "flex" means flex-grow: 1
+				nodeStyle.FlexGrow = 1
 			}
 		}
 		if dslComp.Height != nil {
@@ -166,11 +187,70 @@ func (m *Model) componentToLayoutNode(comp runtime.Component, id string, directi
 				nodeStyle.Height = h
 			} else if h, ok := dslComp.Height.(float64); ok {
 				nodeStyle.Height = int(h)
+			} else if hStr, ok := dslComp.Height.(string); ok && hStr == "flex" {
+				// "flex" means flex-grow: 1
+				nodeStyle.FlexGrow = 1
+			}
+		}
+
+		// Parse justify property from Props
+		if dslComp.Props != nil {
+			if justifyVal, ok := dslComp.Props["justify"]; ok {
+				if justifyStr, ok := justifyVal.(string); ok {
+					nodeStyle.Justify = mapJustifyString(justifyStr)
+				}
+			}
+			if alignVal, ok := dslComp.Props["alignItems"]; ok {
+				if alignStr, ok := alignVal.(string); ok {
+					nodeStyle.AlignItems = mapAlignString(alignStr)
+				}
 			}
 		}
 	}
 
 	node := runtime.NewLayoutNode(id, nodeType, nodeStyle)
+
+	// Apply Position from DSL Component if specified
+	if dslComp != nil && dslComp.Style != nil {
+		// Check for position type
+		if posStr, ok := dslComp.Style["position"].(string); ok {
+			switch posStr {
+			case "absolute":
+				node.Position.Type = runtime.PositionAbsolute
+			case "relative":
+				node.Position.Type = runtime.PositionRelative
+			}
+		}
+
+		// Parse offsets for absolute positioning
+		if node.Position.Type == runtime.PositionAbsolute {
+			if top, ok := dslComp.Style["top"].(int); ok {
+				node.Position.Top = &top
+			} else if topF, ok := dslComp.Style["top"].(float64); ok {
+				top := int(topF)
+				node.Position.Top = &top
+			}
+			if left, ok := dslComp.Style["left"].(int); ok {
+				node.Position.Left = &left
+			} else if leftF, ok := dslComp.Style["left"].(float64); ok {
+				left := int(leftF)
+				node.Position.Left = &left
+			}
+			if right, ok := dslComp.Style["right"].(int); ok {
+				node.Position.Right = &right
+			} else if rightF, ok := dslComp.Style["right"].(float64); ok {
+				right := int(rightF)
+				node.Position.Right = &right
+			}
+			if bottom, ok := dslComp.Style["bottom"].(int); ok {
+				node.Position.Bottom = &bottom
+			} else if bottomF, ok := dslComp.Style["bottom"].(float64); ok {
+				bottom := int(bottomF)
+				node.Position.Bottom = &bottom
+			}
+		}
+	}
+
 	// Properly add children with parent references
 	for _, child := range children {
 		if child != nil {
@@ -1105,4 +1185,40 @@ func (m *Model) ResolvePropsForRuntime(compID string) map[string]interface{} {
 	}
 
 	return m.resolveProps(compConfig)
+}
+
+// mapJustifyString maps justify string to runtime.Justify
+func mapJustifyString(justify string) runtime.Justify {
+	switch justify {
+	case "start", "left", "top":
+		return runtime.JustifyStart
+	case "center", "middle":
+		return runtime.JustifyCenter
+	case "end", "right", "bottom":
+		return runtime.JustifyEnd
+	case "space-between":
+		return runtime.JustifySpaceBetween
+	case "space-around":
+		return runtime.JustifySpaceAround
+	case "space-evenly":
+		return runtime.JustifySpaceEvenly
+	default:
+		return runtime.JustifyStart
+	}
+}
+
+// mapAlignString maps align string to runtime.Align
+func mapAlignString(align string) runtime.Align {
+	switch align {
+	case "start", "left", "top":
+		return runtime.AlignStart
+	case "center", "middle":
+		return runtime.AlignCenter
+	case "end", "right", "bottom":
+		return runtime.AlignEnd
+	case "stretch":
+		return runtime.AlignStretch
+	default:
+		return runtime.AlignStart
+	}
 }

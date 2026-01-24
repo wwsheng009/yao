@@ -31,6 +31,9 @@ func (a *RuntimeAdapter) ToRuntimeLayoutNode(comp *Component) *runtime.LayoutNod
 		a.mapStyle(comp),
 	)
 
+	// 设置 Position（绝对定位）
+	node.Position = a.mapPosition(comp)
+
 	// 设置 Props（用于调试，Runtime 不直接使用）
 	node.Props = comp.Props
 
@@ -388,4 +391,90 @@ func mapOverflow(overflow string) runtime.Overflow {
 	default:
 		return runtime.OverflowVisible
 	}
+}
+
+// mapPosition 将位置属性映射到 Runtime Position
+func (a *RuntimeAdapter) mapPosition(comp *Component) runtime.Position {
+	position := runtime.NewPosition() // Default: relative
+
+	// Check for position type in component-level Style field
+	if comp.Style != nil {
+		if posStr, ok := propString(comp.Style, "position"); ok {
+			switch posStr {
+			case "absolute":
+				position.Type = runtime.PositionAbsolute
+			case "relative":
+				position.Type = runtime.PositionRelative
+			}
+		}
+
+		// Parse offsets from component-level Style field
+		if position.Type == runtime.PositionAbsolute {
+			if top, ok := propInt(comp.Style, "top"); ok {
+				position.Top = &top
+			}
+			if left, ok := propInt(comp.Style, "left"); ok {
+				position.Left = &left
+			}
+			if right, ok := propInt(comp.Style, "right"); ok {
+				position.Right = &right
+			}
+			if bottom, ok := propInt(comp.Style, "bottom"); ok {
+				position.Bottom = &bottom
+			}
+		}
+	}
+
+	// Also check for position in props (for backwards compatibility)
+	if comp.Props != nil {
+		if posStr, ok := propString(comp.Props, "position"); ok {
+			switch posStr {
+			case "absolute":
+				position.Type = runtime.PositionAbsolute
+			case "relative":
+				position.Type = runtime.PositionRelative
+			}
+		}
+
+		// Check for position type in style field (nested in props)
+		if style, ok := comp.Props["style"].(map[string]interface{}); ok {
+			if posStr, ok := style["position"].(string); ok && posStr == "absolute" {
+				position.Type = runtime.PositionAbsolute
+			}
+
+			// Parse offsets from style field
+			if position.Type == runtime.PositionAbsolute {
+				if top, ok := propInt(style, "top"); ok {
+					position.Top = &top
+				}
+				if left, ok := propInt(style, "left"); ok {
+					position.Left = &left
+				}
+				if right, ok := propInt(style, "right"); ok {
+					position.Right = &right
+				}
+				if bottom, ok := propInt(style, "bottom"); ok {
+					position.Bottom = &bottom
+				}
+			}
+		}
+
+		// Parse offsets from props (direct children)
+		if position.Type == runtime.PositionAbsolute {
+			if top, ok := propInt(comp.Props, "top"); ok {
+				position.Top = &top
+			}
+			if left, ok := propInt(comp.Props, "left"); ok {
+				position.Left = &left
+			}
+			if right, ok := propInt(comp.Props, "right"); ok {
+				position.Right = &right
+			}
+			if bottom, ok := propInt(comp.Props, "bottom"); ok {
+				position.Bottom = &bottom
+			}
+		}
+	}
+
+	return position
 }

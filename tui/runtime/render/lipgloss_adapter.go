@@ -4,260 +4,131 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/runtime"
 )
 
-// CellStyleExtended extends CellStyle with lipgloss support
-type CellStyleExtended struct {
-	Foreground lipgloss.TerminalColor
-	Background lipgloss.TerminalColor
-	Bold       bool
-	Italic     bool
-	Underline  bool
-}
+// LipglossToCellStyle converts lipgloss.Style to runtime.CellStyle
+// This extracts color, bold, underline, italic properties from lipgloss style
+func LipglossToCellStyle(style lipgloss.Style) runtime.CellStyle {
+	cellStyle := runtime.CellStyle{}
 
-// BufferWriter defines the interface for writing to a cell buffer
-// This avoids circular dependency with runtime package
-type BufferWriter interface {
-	Width() int
-	SetContent(x, y, z int, char rune, style CellStyle, nodeID string)
-}
-
-// RuntimeCellBuffer is a minimal interface for the runtime CellBuffer
-// This allows us to wrap it without importing the runtime package
-type RuntimeCellBuffer interface {
-	Width() int
-	SetContentRuntime(x, y, z int, char rune, bold, underline, italic bool, nodeID string)
-}
-
-// CellBufferAdapter wraps RuntimeCellBuffer to implement BufferWriter
-type CellBufferAdapter struct {
-	buf RuntimeCellBuffer
-}
-
-// NewCellBufferAdapter creates a new adapter for a RuntimeCellBuffer
-func NewCellBufferAdapter(buf RuntimeCellBuffer) BufferWriter {
-	return &CellBufferAdapter{buf: buf}
-}
-
-func (a *CellBufferAdapter) Width() int {
-	return a.buf.Width()
-}
-
-func (a *CellBufferAdapter) SetContent(x, y, z int, char rune, style CellStyle, nodeID string) {
-	a.buf.SetContentRuntime(x, y, z, char, style.Bold, style.Underline, style.Italic, nodeID)
-}
-
-// LipglossToCell converts lipgloss.Style to CellStyleExtended
-func LipglossToCell(style lipgloss.Style) CellStyleExtended {
-	return CellStyleExtended{
-		Foreground: style.GetForeground(),
-		Background: style.GetBackground(),
-		Bold:       style.GetBold(),
-		Italic:     style.GetItalic(),
-		Underline:  style.GetUnderline(),
+	// Extract foreground color
+	fg := style.GetForeground()
+	if fg != "" && string(fg) != "NoColor" {
+		cellStyle.Foreground = colorToHex(fg)
 	}
+
+	// Extract background color
+	bg := style.GetBackground()
+	if bg != "" && string(bg) != "NoColor" {
+		cellStyle.Background = colorToHex(bg)
+	}
+
+	// Extract text styling
+	cellStyle.Bold = style.GetBold()
+	cellStyle.Italic = style.GetItalic()
+	cellStyle.Underline = style.GetUnderline()
+	cellStyle.Strikethrough = style.GetStrikethrough()
+	cellStyle.Blink = style.GetBlink()
+	cellStyle.Reverse = style.GetReverse()
+
+	return cellStyle
 }
 
-// RenderLipglossToBuffer renders a lipgloss-styled string to CellBuffer
-// This parses the lipgloss output and writes styled cells to the buffer
-func RenderLipglossToBuffer(buf BufferWriter, text string, style lipgloss.Style, x, y, zIndex int) {
+// colorToHex converts lipgloss.Color to hex string
+// This handles both terminal color names and hex colors
+func colorToHex(color lipgloss.Color) string {
+	if color == "" {
+		return ""
+	}
+
+	colorStr := string(color)
+
+	// Check for NoColor
+	if colorStr == "NoColor" {
+		return ""
+	}
+
+	// If it's already a hex color, return it
+	if strings.HasPrefix(colorStr, "#") {
+		return colorStr
+	}
+
+	// ANSI color codes (e.g., "5", "21", etc.)
+	// For now, just return the string representation
+	// TODO: Map ANSI color codes to hex values
+	return colorStr
+}
+
+// RenderLipglossToBuffer renders lipgloss-styled text to CellBuffer
+// This parses the lipgloss rendered output and writes styled cells to the buffer
+func RenderLipglossToBuffer(buf *runtime.CellBuffer, text string, style lipgloss.Style, x, y, zIndex int) {
 	if buf == nil || text == "" {
 		return
 	}
 
-	// Render text with lipgloss to get the final styled string
-	styledText := style.Render(text)
+	// Render the text with lipgloss
+	rendered := style.Render(text)
 
-	// Parse the styled text and write to buffer
-	lines := strings.Split(styledText, "\n")
-	currentY := y
+	// Parse the rendered output to extract ANSI codes
+	// For now, we'll do a simple implementation that strips ANSI and stores the plain text
+	plainText := stripANSI(rendered)
 
-	for _, line := range lines {
-		// Extract ANSI sequences and content
-		runes, styles := parseStyledLine(line)
+	// Get cell style from lipgloss style
+	cellStyle := LipglossToCellStyle(style)
 
-		currentX := x
-		for i, r := range runes {
-			if currentX >= x+buf.Width() {
-				break // Exceeds buffer width
-			}
-
-			cellStyle := CellStyle{}
-			if i < len(styles) {
-				cellStyle = convertStyleExtended(styles[i])
-			}
-
-			buf.SetContent(currentX, currentY, zIndex, r, cellStyle, "")
-			currentX++
-		}
-		currentY++
-	}
-}
-
-// parseStyledLine parses a line with ANSI escape codes
-// Returns the runes and their corresponding styles
-func parseStyledLine(line string) ([]rune, []CellStyleExtended) {
-	runes := []rune{}
-	styles := []CellStyleExtended{}
-
-	// Simple implementation: strip ANSI codes for now
-	// A full implementation would parse ANSI SGR sequences
-	currentStyle := CellStyleExtended{}
-
-	i := 0
-	for i < len(line) {
-		if line[i] == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
-			// ANSI escape sequence - parse SGR codes
-			j := i + 2
-			for j < len(line) && line[j] != 'm' {
-				j++
-			}
-			if j < len(line) {
-				// Parse the SGR sequence (simplified)
-				sgr := line[i+2 : j]
-				currentStyle = parseSGR(sgr, currentStyle)
-				i = j + 1
-			} else {
-				break
-			}
-		} else {
-			r := rune(line[i])
-			runes = append(runes, r)
-			styles = append(styles, currentStyle)
-			i++
+	// Write each character to the buffer
+	runes := []rune(plainText)
+	for i, r := range runes {
+		if x+i < buf.Width && y < buf.Height {
+			buf.SetCell(x+i, y, r, cellStyle, zIndex)
 		}
 	}
-
-	return runes, styles
-}
-
-// parseSGR parses ANSI SGR (Select Graphic Rendition) sequences
-func parseSGR(sgr string, current CellStyleExtended) CellStyleExtended {
-	// Simple SGR parser for common codes
-	// Full implementation would handle all SGR codes
-	if sgr == "" || sgr == "0" {
-		return CellStyleExtended{} // Reset
-	}
-	if sgr == "1" {
-		current.Bold = true
-	}
-	if sgr == "3" {
-		current.Italic = true
-	}
-	if sgr == "4" {
-		current.Underline = true
-	}
-	if sgr == "22" {
-		current.Bold = false
-	}
-	if sgr == "23" {
-		current.Italic = false
-	}
-	if sgr == "24" {
-		current.Underline = false
-	}
-	return current
-}
-
-// convertStyleExtended converts CellStyleExtended to CellStyle
-func convertStyleExtended(ext CellStyleExtended) CellStyle {
-	return CellStyle{
-		Bold:      ext.Bold,
-		Underline: ext.Underline,
-		Italic:    ext.Italic,
-		// Note: v1 simplified, colors will be handled in String() output
-	}
-}
-
-// ApplyLipglossStyle applies lipgloss style to text and returns the result
-func ApplyLipglossStyle(text string, style lipgloss.Style) string {
-	return style.Render(text)
-}
-
-// MeasureTextWithStyle measures text with lipgloss styling applied
-func MeasureTextWithStyle(text string, style lipgloss.Style) (width, height int) {
-	styled := style.Render(text)
-	lines := strings.Split(styled, "\n")
-
-	maxWidth := 0
-	for _, line := range lines {
-		// Strip ANSI codes for accurate width measurement
-		cleaned := stripANSI(line)
-		lineWidth := lipgloss.Width(cleaned)
-		if lineWidth > maxWidth {
-			maxWidth = lineWidth
-		}
-	}
-
-	return maxWidth, len(lines)
 }
 
 // stripANSI removes ANSI escape codes from a string
 func stripANSI(s string) string {
-	result := strings.Builder{}
-	i := 0
+	var result strings.Builder
+	var ansiCode bool
 
-	for i < len(s) {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			// Find the end of the escape sequence
-			end := strings.Index(s[i:], "m")
-			if end == -1 {
-				break
-			}
-			i += end + 1
-		} else {
-			result.WriteByte(s[i])
-			i++
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+
+		if c == '\x1b' {
+			// Start of ANSI escape sequence
+			ansiCode = true
+			continue
 		}
+
+		if ansiCode {
+			// Inside ANSI sequence, look for end marker
+			if c == 'm' {
+				ansiCode = false
+			}
+			continue
+		}
+
+		// Regular character
+		result.WriteRune(rune(c))
 	}
 
 	return result.String()
 }
 
-// ComponentRenderer is an interface for components that can render themselves.
-type ComponentRenderer interface {
-	// View returns the visual representation of the component
-	View() string
+// ApplyStyleToNode applies lipgloss styling to a LayoutNode's Style
+// NOTE: This is a no-op for now. Lipgloss styling is applied during the render phase
+// when writing to the CellBuffer, not to the LayoutNode's Style struct.
+// The LayoutNode.Style is for layout properties (width, height, padding, etc.),
+// while CellStyle is for rendering properties (colors, bold, underline, etc.).
+func ApplyStyleToNode(node *runtime.LayoutNode, lipglossStyle lipgloss.Style) {
+	// No-op: lipgloss styling is applied during rendering, not to layout node
+	// This function is kept for API compatibility but does nothing
+	_ = lipglossStyle
 }
 
-// RenderNode renders a layout node to a cell buffer using the configured style.
-// This function handles the rendering logic without exposing lipgloss to the runtime package.
-//
-// Parameters:
-//   - buf: The buffer to render to (via BufferWriter interface)
-//   - text: The text content to render (from Component.View())
-//   - x, y: The position to render at
-//   - zIndex: The Z-index for rendering order
-//   - width: The maximum width for wrapping (0 for no limit)
-func RenderNode(buf BufferWriter, text string, x, y, zIndex, width int) {
-	if buf == nil || text == "" {
-		return
-	}
-
-	// Create a basic lipgloss style for rendering
-	// v2: Components can expose their own style preferences
-	style := lipgloss.NewStyle()
-
-	// Apply width constraint if specified
-	if width > 0 {
-		style = style.Width(width)
-	}
-
-	// Render text to buffer using lipgloss adapter
-	RenderLipglossToBuffer(buf, text, style, x, y, zIndex)
-}
-
-// RenderNodeWithStyle renders a layout node with custom styling.
-// This allows components to provide their own lipgloss styles.
-func RenderNodeWithStyle(buf BufferWriter, text string, style lipgloss.Style, x, y, zIndex, width int) {
-	if buf == nil || text == "" {
-		return
-	}
-
-	// Apply width constraint if specified
-	if width > 0 {
-		style = style.Width(width)
-	}
-
-	RenderLipglossToBuffer(buf, text, style, x, y, zIndex)
+// MeasureLipglossText measures the width of text when rendered with lipgloss style
+func MeasureLipglossText(text string, style lipgloss.Style) int {
+	rendered := style.Render(text)
+	visualText := stripANSI(rendered)
+	return len([]rune(visualText))
 }
