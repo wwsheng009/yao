@@ -269,6 +269,12 @@ func (m *Model) needsRender() bool {
 		return true
 	}
 
+	// 检查是否有焦点组件 - 焦点组件需要渲染以显示光标闪烁
+	// 这是必要的，因为 cursor.BlinkMsg 不会设置 messageReceived 标志
+	if m.CurrentFocus != "" {
+		return true
+	}
+
 	// 检查是否有组件状态变化
 	if m.hasComponentChanges() {
 		return true

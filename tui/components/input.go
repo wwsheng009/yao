@@ -463,18 +463,6 @@ func (w *InputComponentWrapper) GetStateChanges() (map[string]interface{}, bool)
 	}, true
 }
 
-// NeedsRender returns true if the component needs to be re-rendered
-// This checks if the cursor visibility has changed since last render
-func (w *InputComponentWrapper) NeedsRender() bool {
-	// Get current cursor visibility from cursorHelper
-	currentVisible := w.cursorHelper.IsVisible()
-	changed := currentVisible != w.lastCursorVisible
-	if changed {
-		w.lastCursorVisible = currentVisible
-	}
-	return changed
-}
-
 // GetSubscribedMessageTypes returns the message types this component subscribes to
 func (w *InputComponentWrapper) GetSubscribedMessageTypes() []string {
 	return []string{
