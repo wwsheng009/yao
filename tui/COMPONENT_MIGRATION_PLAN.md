@@ -1,23 +1,27 @@
 # TUI Component Migration Plan
 
-## Current Status (2026-01-23)
+## Current Status (2026-01-24)
 
 ### ✅ Completed
 - Runtime Core Engine (Measure → Layout → Render)
-- Native Runtime Components: Input, Button, Text, Header, Footer, List
+- Native Runtime Components: Input, Button, Text, Header, Footer, List, Table, Form, Textarea, Progress, Spinner
 - Layout Components: Row, Column, Flex
-- DSL Factory with props binding
+- Overlay Components: Modal
+- DSL Factory with props binding for all components
 - Component Registry
 - Dynamic State Synchronization
 - Template Binding ({{key}})
-- Test Coverage: 8 Runtime tests all passing
+- Event System (Bubble Tea adapter, hit testing, dispatch)
+- Focus Management (FocusManager, tab navigation, click-to-focus)
+- Performance Optimization (measurement caching, dirty regions, diff rendering)
+- Test Coverage: Comprehensive tests all passing
 
-### 🎯 Next Priority: Table Component
+### 🎯 Next Priority: Advanced Components
 
 ## Phase 1: Complex Component Migrations
 
-### 1.1 Table Component (HIGH PRIORITY)
-**Status:** 🔄 In Progress
+### 1.1 Table Component ✅ COMPLETED
+**Status:** ✅ Complete
 **Complexity:** High
 **Value:** High - Essential for data-heavy applications
 
@@ -31,18 +35,14 @@
 - Filtering hooks
 
 **Files:**
-- `tui/ui/components/table.go` (NEW, ~700 lines)
-- `tui/runtime/dsl/factory.go` - add `applyTableProps()`, `ParseTableItems()`
-- `tui/runtime/registry/registry.go` - register "table"
-- `tui/model_runtime_integration.go` - add state sync for tables
-- `tui/runtime_e2e_test.go` - add `TestRuntimeTableComponent`
-
-**Estimated:** 2-3 hours
+- `tui/ui/components/table.go` ✅
+- `tui/runtime/dsl/factory.go` - `applyTableProps()` ✅
+- `tui/runtime/registry/registry.go` - registered "table" ✅
 
 ---
 
-### 1.2 Form Component
-**Status:** ⏳ Pending
+### 1.2 Form Component ✅ COMPLETED
+**Status:** ✅ Complete
 **Complexity:** Medium
 **Value:** High - Essential for data entry
 
@@ -55,16 +55,13 @@
 - Disabled state for all fields
 
 **Files:**
-- `tui/ui/components/form.go` (NEW, ~400 lines)
-- `tui/runtime/dsl/factory.go` - add `applyFormProps()`
-- Test: `TestRuntimeFormComponent`
-
-**Estimated:** 1.5-2 hours
+- `tui/ui/components/form.go` ✅
+- `tui/runtime/dsl/factory.go` - `applyFormProps()` ✅
 
 ---
 
-### 1.3 Modal/Dialog Component
-**Status:** ⏳ Pending
+### 1.3 Modal/Dialog Component ✅ COMPLETED
+**Status:** ✅ Complete
 **Complexity:** Medium
 **Value:** Medium - Important for overlays
 
@@ -72,16 +69,14 @@
 - Overlay rendering (z-index)
 - Title and content
 - Action buttons (confirm/cancel)
-- Backdrop dimming
+- Backdrop click to close
 - Keyboard shortcuts (ESC to close)
 - Focus trapping
 
 **Files:**
-- `tui/ui/components/modal.go` (NEW, ~350 lines)
-- `tui/runtime/dsl/factory.go` - add `applyModalProps()`
-- Test: `TestRuntimeModalComponent`
-
-**Estimated:** 1.5 hours
+- `tui/ui/components/modal.go` ✅
+- `tui/runtime/dsl/factory.go` - `applyModalProps()` ✅
+- `tui/runtime/registry/registry.go` - registered "modal" ✅
 
 ---
 
