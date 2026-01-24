@@ -403,7 +403,7 @@ func (w *InputComponentWrapper) View() string {
 // This is called by the Runtime before rendering.
 func (w *InputComponentWrapper) SetSize(width, height int) {
 	// Update the textinput model to use the allocated width
-	if width > 0 && width != w.model.Width() {
+	if width > 0 {
 		w.model.Width = width
 	}
 	// Height is typically 1 for input, but we can store it if needed
