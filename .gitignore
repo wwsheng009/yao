@@ -63,3 +63,5 @@ bindata.go
 tui/docs
 tui/demo
 .opencode
+.claude
+CLAUDE.md
