@@ -32,6 +32,10 @@ func (m *MockMeasurableComponent) GetID() string {
 
 func (m *MockMeasurableComponent) SetFocus(focus bool) {}
 
+func (m *MockMeasurableComponent) SetSize(width, height int) {
+	// 空实现
+}
+
 func (m *MockMeasurableComponent) GetFocus() bool {
 	return false
 }

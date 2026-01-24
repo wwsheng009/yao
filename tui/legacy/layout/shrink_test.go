@@ -54,6 +54,11 @@ func (m *MockShrinkableComponent) GetID() string {
 
 func (m *MockShrinkableComponent) SetFocus(focus bool) {}
 
+func (m *MockShrinkableComponent) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+}
+
 func (m *MockShrinkableComponent) GetFocus() bool {
 	return false
 }

@@ -94,6 +94,10 @@ func (m *MockComponent) SetFocus(focus bool) {
 	// 空实现
 }
 
+func (m *MockComponent) SetSize(width, height int) {
+	// 空实现
+}
+
 func (m *MockComponent) GetComponentType() string {
 	return "mock"
 }
