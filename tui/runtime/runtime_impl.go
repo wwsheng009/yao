@@ -32,6 +32,8 @@ type RuntimeImpl struct {
 	lastRoot    *LayoutNode  // Cached for focus updates
 	animMgr     *animation.Manager // Animation manager
 	animationsRunning bool     // Track if animations are active
+	selection   *SelectionManager // Text selection manager
+	clipboard   *Clipboard        // Clipboard for copy operations
 }
 
 // NewRuntime creates a new RuntimeImpl with the given dimensions.
@@ -43,11 +45,13 @@ func NewRuntime(width, height int) *RuntimeImpl {
 		height = 24
 	}
 	return &RuntimeImpl{
-		width:    width,
-		height:   height,
-		focusMgr: NewFocusManager(),
-		animMgr:  animation.NewManager(),
+		width:             width,
+		height:            height,
+		focusMgr:          NewFocusManager(),
+		animMgr:           animation.NewManager(),
 		animationsRunning: false,
+		selection:         NewSelectionManager(),
+		clipboard:         NewClipboard(),
 	}
 }
 
@@ -235,11 +239,22 @@ func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 		}
 	}
 
+	// Clear old selection flags before rendering
+	buf.ClearSelection()
+
 	frame := Frame{
 		Buffer: buf,
 		Width:  r.width,
 		Height: r.height,
 		Dirty:  len(r.dirtyRegions) > 0 || r.isDirty,
+	}
+
+	// Apply text selection highlight after all components are rendered
+	// This sets the Selected flag on cells in the selection range
+	// The visual highlighting (reverse video) is applied in String() method
+	if r.selection != nil {
+		r.selection.SetBuffer(buf)
+		r.selection.ApplyHighlight()
 	}
 
 	// Clear dirty flags after rendering
@@ -265,15 +280,14 @@ func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 	// This allows components like List to adjust their internal model dimensions
 	box.Node.Component.Instance.SetSize(box.W, box.H)
 
-	// Get component view text
+	// Get component view text (with lipgloss ANSI styling)
 	text := box.Node.Component.Instance.View()
 	if text == "" {
 		return
 	}
 
 	// Render text to buffer with multi-line support
-	// TODO: Extract color/style from node for proper rendering
-	cellStyle := CellStyle{} // Empty style for now
+	// Use SetStyledText to preserve lipgloss ANSI styling
 	lines := splitLines(text)
 
 	renderedLines := 0
@@ -287,18 +301,30 @@ func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 			break
 		}
 
+		// Trim the line to fit within the box width
+		// We need to count visible characters (excluding ANSI codes)
+		visibleLen := 0
 		runes := []rune(line)
-		for charIdx, char := range runes {
-			x := box.X + charIdx
-			if x >= buf.width {
-				break // Don't render past buffer width
+		i := 0
+		for i < len(runes) && visibleLen < box.W {
+			if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+				// Skip ANSI escape sequence
+				i += 2
+				for i < len(runes) && runes[i] != 'm' {
+					i++
+				}
+				if i < len(runes) {
+					i++ // skip 'm'
+				}
+			} else {
+				visibleLen++
+				i++
 			}
-			// Also check if we're past the box width
-			if charIdx >= box.W {
-				break
-			}
-			buf.SetContent(x, y, box.ZIndex, char, cellStyle, box.Node.ID)
 		}
+
+		// Use SetStyledText to preserve lipgloss styling
+		truncatedLine := string(runes[:i])
+		buf.SetStyledText(box.X, y, box.ZIndex, truncatedLine, box.Node.ID)
 		renderedLines++
 	}
 	_ = renderedLines // Use the variable to avoid unused warning
@@ -625,3 +651,148 @@ func (r *RuntimeImpl) AnimateTransition(fromID, toID string, duration int) {
 func durationFromInt(ms int) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
+
+// ============================================================================
+// Text Selection Support Methods
+// ============================================================================
+
+// GetSelection returns the text selection manager.
+func (r *RuntimeImpl) GetSelection() *SelectionManager {
+	return r.selection
+}
+
+// EnableSelection enables or disables text selection.
+func (r *RuntimeImpl) EnableSelection(enabled bool) {
+	if r.selection != nil {
+		r.selection.SetEnabled(enabled)
+	}
+}
+
+// IsSelectionEnabled returns whether text selection is enabled.
+func (r *RuntimeImpl) IsSelectionEnabled() bool {
+	return r.selection != nil && r.selection.IsEnabled()
+}
+
+// IsSelectionActive returns whether there is an active selection.
+func (r *RuntimeImpl) IsSelectionActive() bool {
+	return r.selection != nil && r.selection.IsActive()
+}
+
+// IsSelected returns whether the cell at (x, y) is selected.
+func (r *RuntimeImpl) IsSelected(x, y int) bool {
+	return r.selection != nil && r.selection.IsSelected(x, y)
+}
+
+// StartSelection begins a new selection at the given position.
+func (r *RuntimeImpl) StartSelection(x, y int) {
+	if r.selection != nil {
+		r.selection.Start(x, y)
+	}
+}
+
+// UpdateSelection updates the current selection end position.
+func (r *RuntimeImpl) UpdateSelection(x, y int) {
+	if r.selection != nil {
+		r.selection.Update(x, y)
+	}
+}
+
+// ExtendSelection extends the selection to the given position.
+func (r *RuntimeImpl) ExtendSelection(x, y int) {
+	if r.selection != nil {
+		r.selection.Extend(x, y)
+	}
+}
+
+// ClearSelection clears the current selection.
+func (r *RuntimeImpl) ClearSelection() {
+	if r.selection != nil {
+		r.selection.Clear()
+	}
+}
+
+// SelectAll selects all text in the buffer.
+func (r *RuntimeImpl) SelectAll() {
+	if r.selection != nil {
+		r.selection.SelectAll()
+	}
+}
+
+// SelectWord selects the word at the given position.
+func (r *RuntimeImpl) SelectWord(x, y int) {
+	if r.selection != nil {
+		r.selection.SelectWord(x, y)
+	}
+}
+
+// SelectLine selects the line at the given Y position.
+func (r *RuntimeImpl) SelectLine(y int) {
+	if r.selection != nil {
+		r.selection.SelectLine(y)
+	}
+}
+
+// GetSelectedText returns the selected text.
+func (r *RuntimeImpl) GetSelectedText() string {
+	if r.selection == nil {
+		return ""
+	}
+	return r.selection.GetSelectedText()
+}
+
+// GetSelectedTextCompact returns the selected text with trailing whitespace trimmed.
+func (r *RuntimeImpl) GetSelectedTextCompact() string {
+	if r.selection == nil {
+		return ""
+	}
+	return r.selection.GetSelectedTextCompact()
+}
+
+// GetSelectionRange returns the normalized selection range.
+func (r *RuntimeImpl) GetSelectionRange() (startX, endX, startY, endY int) {
+	if r.selection == nil {
+		return 0, 0, 0, 0
+	}
+	return r.selection.GetSelectionRange()
+}
+
+// SetSelectionHighlightStyle sets the style used for selection highlighting.
+func (r *RuntimeImpl) SetSelectionHighlightStyle(style CellStyle) {
+	if r.selection != nil {
+		r.selection.SetHighlightStyle(style)
+	}
+}
+
+// SetSelectionMode sets the selection mode.
+func (r *RuntimeImpl) SetSelectionMode(mode SelectionMode) {
+	if r.selection != nil {
+		r.selection.SetMode(mode)
+	}
+}
+
+// CopySelection copies the selected text to the clipboard.
+func (r *RuntimeImpl) CopySelection() (string, error) {
+	text := r.GetSelectedTextCompact()
+	if text == "" {
+		return "", nil
+	}
+	if r.clipboard == nil {
+		return text, nil
+	}
+	err := r.clipboard.Copy(text)
+	return text, err
+}
+
+// PasteFromClipboard retrieves text from the clipboard.
+func (r *RuntimeImpl) PasteFromClipboard() (string, error) {
+	if r.clipboard == nil {
+		return "", nil
+	}
+	return r.clipboard.Paste()
+}
+
+// IsClipboardSupported returns whether clipboard is supported on this platform.
+func (r *RuntimeImpl) IsClipboardSupported() bool {
+	return r.clipboard != nil && r.clipboard.IsSupported()
+}
+
