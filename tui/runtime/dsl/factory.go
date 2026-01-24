@@ -749,6 +749,23 @@ func (f *Factory) applyTableProps(comp *components.TableComponent, props map[str
 		comp.WithBorderColor(ColorNameToANSI(borderColor))
 	}
 
+	// Border style type: "normal", "rounded", "thick", "double", etc.
+	if borderStyle, ok := props["borderStyle"].(string); ok {
+		border := f.parseBorderStyle(borderStyle)
+		comp.WithBorderType(border)
+	}
+
+	// Advanced border options
+	if borderBottom, ok := props["borderBottom"].(bool); ok {
+		// Apply bottom border setting
+		// Note: bubbles/table always shows bottom border with border types
+		// If false, we could use HiddenBorder but that affects all borders
+		if !borderBottom {
+			// Use hidden border if bottom is explicitly false
+			comp.WithBorderType(lipgloss.HiddenBorder())
+		}
+	}
+
 	// Store bind data for later processing (after columns are set)
 	var bindData interface{}
 	if bd, ok := props["__bind_data"]; ok {
@@ -801,6 +818,24 @@ func (f *Factory) applyTableProps(comp *components.TableComponent, props map[str
 		if p, ok := parsePadding(padding); ok {
 			comp.WithPadding(p[0], p[1], p[2], p[3])
 		}
+	}
+}
+
+// parseBorderStyle converts a string border style name to lipgloss Border
+func (f *Factory) parseBorderStyle(style string) lipgloss.Border {
+	switch style {
+	case "normal":
+		return lipgloss.NormalBorder()
+	case "rounded":
+		return lipgloss.RoundedBorder()
+	case "thick":
+		return lipgloss.ThickBorder()
+	case "double":
+		return lipgloss.DoubleBorder()
+	case "hidden":
+		return lipgloss.HiddenBorder()
+	default:
+		return lipgloss.NormalBorder()
 	}
 }
 
@@ -1602,4 +1637,3 @@ func (f *Factory) ConvertObjectArrayToTableData(objArray []interface{}, table *c
 	}
 	return result
 }
-
