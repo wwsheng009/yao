@@ -204,22 +204,42 @@ func TestInputFromFile(t *testing.T) {
 	model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
 	// Trigger rendering
-	_ = model.View()
+	view := model.View()
 
-	t.Logf("RuntimeRoot has %d children", len(model.RuntimeRoot.Children))
+	// Check if we have output
+	t.Logf("View output length: %d", len(view))
 	t.Logf("UseRuntime: %v", model.UseRuntime)
 
-	// Count input components in focus list
-	inputCount := 0
-	for _, id := range model.runtimeFocusList {
-		if id == "username-input" || id == "email-input" || id == "password-input" {
-			inputCount++
+	// For legacy mode, check Components map
+	if !model.UseRuntime {
+		inputCount := 0
+		for id := range model.Components {
+			if id == "username-input" || id == "email-input" || id == "password-input" {
+				inputCount++
+			}
 		}
-	}
+		t.Logf("Found %d input components in Components map", inputCount)
+		if inputCount < 3 {
+			t.Errorf("Expected at least 3 input components in Components, got %d", inputCount)
+		}
+	} else {
+		// For runtime mode, check RuntimeRoot
+		if model.RuntimeRoot != nil {
+			t.Logf("RuntimeRoot has %d children", len(model.RuntimeRoot.Children))
+		}
 
-	t.Logf("Found %d input components in focus list", inputCount)
-	if inputCount < 3 {
-		t.Errorf("Expected at least 3 input components in focus list, got %d", inputCount)
+		// Count input components in focus list
+		inputCount := 0
+		for _, id := range model.runtimeFocusList {
+			if id == "username-input" || id == "email-input" || id == "password-input" {
+				inputCount++
+			}
+		}
+
+		t.Logf("Found %d input components in focus list", inputCount)
+		if inputCount < 3 {
+			t.Errorf("Expected at least 3 input components in focus list, got %d", inputCount)
+		}
 	}
 
 	t.Log("Input file test passed!")

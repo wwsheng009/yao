@@ -55,10 +55,12 @@ func TestInitializeComponentsReturnsCmds(t *testing.T) {
 	}
 }
 
-// TestModelInitCollectsComponentCmds tests that Model.Init() now collects component Init commands
+// TestModelInitCollectsComponentCmds tests that Model.Init() collects component Init commands
 func TestModelInitCollectsComponentCmds(t *testing.T) {
+	autofocus := true
 	cfg := &Config{
-		Name: "Test Model Init Collection",
+		Name:      "Test Model Init Collection",
+		AutoFocus: &autofocus, // Explicitly enable AutoFocus
 		Layout: Layout{
 			Direction: "vertical",
 			Children: []Component{
@@ -68,7 +70,7 @@ func TestModelInitCollectsComponentCmds(t *testing.T) {
 					Props: map[string]interface{}{
 						"placeholder": "Enter text",
 						"prompt":      "> ",
-						"disabled":    false, // Should return Focus Cmd
+						"disabled":    false,
 					},
 				},
 			},
@@ -76,12 +78,12 @@ func TestModelInitCollectsComponentCmds(t *testing.T) {
 	}
 
 	model := NewModel(cfg, nil)
-	
-	// Call Init which should now collect and return component Init commands
+
+	// Call Init which should collect and return component Init commands
 	cmd := model.Init()
-	
-	// Verify that we get a command back (from input component's Init method)
-	assert.NotNil(t, cmd, "Model.Init should return a command")
+
+	// Verify that we get a command back (FocusFirstComponentMsg from AutoFocus)
+	assert.NotNil(t, cmd, "Model.Init should return a command when AutoFocus is enabled and there are focusable components")
 }
 
 // TestInputComponentInitReturnsFocusCmd tests that InputComponentWrapper.Init returns Focus Cmd
