@@ -525,12 +525,23 @@ func (m *FormModel) GetFocus() bool {
 	return m.focused
 }
 
+// SetSize sets the allocated size for the form model.
+func (m *FormModel) SetSize(width, height int) {
+	// Form model doesn't store size - it uses the wrapper for size management
+}
+
 func (w *FormComponentWrapper) SetFocus(focus bool) {
 	w.model.SetFocus(focus)
 }
 
 func (w *FormComponentWrapper) GetFocus() bool {
 	return w.model.focused
+}
+
+// SetSize sets the allocated size for the component.
+func (w *FormComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
 }
 
 // GetValue returns the current value of the form component

@@ -253,6 +253,17 @@ func (m *TextModel) GetFocus() bool {
 	return false // Text component never has focus
 }
 
+// SetSize sets the allocated size for the text model.
+func (m *TextModel) SetSize(width, height int) {
+	// Text model stores the size for rendering
+	if width > 0 {
+		m.Width = width
+	}
+	if height > 0 {
+		m.Height = height
+	}
+}
+
 func (m *TextModel) GetComponentType() string {
 	return "text"
 }
