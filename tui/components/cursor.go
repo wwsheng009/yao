@@ -400,6 +400,12 @@ func (w *CursorComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *CursorComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *CursorComponentWrapper) PublishEvent(sourceID, eventName string, payload map[string]interface{}) tea.Cmd {
 	return core.PublishEvent(sourceID, eventName, payload)
 }

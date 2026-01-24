@@ -510,6 +510,12 @@ func (w *HelpComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *HelpComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *HelpComponentWrapper) GetComponentType() string {
 	return "help"
 }

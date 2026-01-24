@@ -900,6 +900,11 @@ func (m *TableModel) GetFocus() bool {
 	return m.Model.Focused()
 }
 
+// SetSize sets the allocated size for the table model.
+func (m *TableModel) SetSize(width, height int) {
+	// Table model doesn't directly store size - it uses View() to render dynamically
+}
+
 func (m *TableModel) Render(config core.RenderConfig) (string, error) {
 	// Parse configuration data
 	propsMap, ok := config.Data.(map[string]interface{})

@@ -343,6 +343,12 @@ func (w *PaginatorComponentWrapper) GetFocus() bool {
 	return w.props.Focused
 }
 
+// SetSize sets the allocated size for the component.
+func (w *PaginatorComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 // GetCurrentPage returns the current page (1-indexed)
 func (w *PaginatorComponentWrapper) GetCurrentPage() int {
 	return w.model.Page + 1

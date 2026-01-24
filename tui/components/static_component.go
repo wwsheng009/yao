@@ -60,6 +60,12 @@ func (c *StaticComponent) GetFocus() bool {
 	return false
 }
 
+// SetSize sets the allocated size for the component.
+func (c *StaticComponent) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (c *StaticComponent) GetComponentType() string {
 	return c.Type
 }

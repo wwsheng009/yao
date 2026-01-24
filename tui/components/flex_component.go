@@ -124,6 +124,12 @@ func (c *FlexComponent) GetFocus() bool {
 	return false
 }
 
+// SetSize sets the allocated size for the component.
+func (c *FlexComponent) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 // GetComponentType implements core.ComponentInterface.
 func (c *FlexComponent) GetComponentType() string {
 	return "flex"

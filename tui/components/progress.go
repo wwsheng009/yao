@@ -299,6 +299,12 @@ func (w *ProgressComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *ProgressComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 // GetPercent returns the current progress percentage
 func (w *ProgressComponentWrapper) GetPercent() float64 {
 	return w.props.Percent

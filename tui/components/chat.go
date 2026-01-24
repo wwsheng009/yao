@@ -760,6 +760,12 @@ func (w *ChatComponentWrapper) GetFocus() bool {
 	return w.TextInput.Focused()
 }
 
+// SetSize sets the allocated size for the component.
+func (w *ChatComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *ChatComponentWrapper) GetComponentType() string {
 	return "chat"
 }

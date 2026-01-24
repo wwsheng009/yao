@@ -494,6 +494,12 @@ func (w *TextareaComponentWrapper) GetFocus() bool {
 	return w.model.Focused()
 }
 
+// SetSize sets the allocated size for the component.
+func (w *TextareaComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (m *TextareaModel) GetComponentType() string {
 	return "textarea"
 }

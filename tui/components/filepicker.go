@@ -281,6 +281,12 @@ func (w *FilePickerComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *FilePickerComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *FilePickerComponentWrapper) GetComponentType() string {
 	return "filepicker"
 }

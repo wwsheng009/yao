@@ -873,6 +873,12 @@ func (w *MenuComponentWrapper) GetFocus() bool {
 	return w.model.focused
 }
 
+// SetSize sets the allocated size for the component.
+func (w *MenuComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 // Index returns the current cursor position
 func (w *MenuComponentWrapper) Index() int {
 	return w.model.Index()

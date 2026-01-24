@@ -255,6 +255,12 @@ func (w *FooterComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *FooterComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *FooterComponentWrapper) GetComponentType() string {
 	return "footer"
 }

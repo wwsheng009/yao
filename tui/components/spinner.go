@@ -315,6 +315,12 @@ func (w *SpinnerComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *SpinnerComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 // getSpinnerStyle returns the spinner style based on the style name
 func getSpinnerStyle(styleName string) spinner.Spinner {
 	switch styleName {

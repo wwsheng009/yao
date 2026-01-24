@@ -319,6 +319,12 @@ func (c *ListComponent) GetFocus() bool {
 	return c.props.Focused
 }
 
+// SetSize sets the allocated size for the component.
+func (c *ListComponent) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (c *ListComponent) GetComponentType() string {
 	return "list"
 }

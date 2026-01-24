@@ -311,6 +311,12 @@ func (w *TimerComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *TimerComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *TimerComponentWrapper) GetComponentType() string {
 	return "timer"
 }

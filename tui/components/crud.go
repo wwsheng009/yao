@@ -946,6 +946,12 @@ func (c *CRUDComponent) GetFocus() bool {
 	return false
 }
 
+// SetSize sets the allocated size for the component.
+func (c *CRUDComponent) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (c *CRUDComponent) GetComponentType() string {
 	return "crud"
 }

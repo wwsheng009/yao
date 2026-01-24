@@ -217,6 +217,12 @@ func (w *HeaderComponentWrapper) GetFocus() bool {
 	return w.focus
 }
 
+// SetSize sets the allocated size for the component.
+func (w *HeaderComponentWrapper) SetSize(width, height int) {
+	// Default implementation: store size if component has width/height fields
+	// Components can override this to handle size changes
+}
+
 func (w *HeaderComponentWrapper) GetComponentType() string {
 	return "header"
 }
