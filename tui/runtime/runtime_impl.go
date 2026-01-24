@@ -27,6 +27,7 @@ type RuntimeImpl struct {
 	lastResult  LayoutResult // Cached for event dispatch
 	dirtyRegions []Rect      // Track dirty regions for optimization
 	forceFullRender bool     // Force full render on next frame
+	isDirty     bool          // Global dirty flag for render cache invalidation
 	focusMgr    *FocusManager
 	lastRoot    *LayoutNode  // Cached for focus updates
 	animMgr     *animation.Manager // Animation manager
@@ -209,6 +210,7 @@ func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 		}
 		r.forceFullRender = false
 		r.dirtyRegions = nil
+		r.isDirty = false
 	} else {
 		// Partial render based on dirty regions
 		if len(r.dirtyRegions) > 0 {
@@ -237,8 +239,12 @@ func (r *RuntimeImpl) Render(result LayoutResult) Frame {
 		Buffer: buf,
 		Width:  r.width,
 		Height: r.height,
-		Dirty:  len(r.dirtyRegions) > 0,
+		Dirty:  len(r.dirtyRegions) > 0 || r.isDirty,
 	}
+
+	// Clear dirty flags after rendering
+	r.isDirty = false
+	r.dirtyRegions = nil
 
 	// Compute diff for next frame
 	r.computeDiff(&frame)
@@ -338,6 +344,23 @@ func (r *RuntimeImpl) MarkDirty(x, y, width, height int) {
 		Width:  width,
 		Height: height,
 	})
+}
+
+// MarkDirtyGlobal marks the entire runtime as dirty, forcing a full re-render.
+// This is used by the Model to invalidate the render cache.
+func (r *RuntimeImpl) MarkDirtyGlobal() {
+	r.isDirty = true
+}
+
+// IsDirty returns true if the runtime needs to re-render.
+func (r *RuntimeImpl) IsDirty() bool {
+	return r.isDirty || len(r.dirtyRegions) > 0
+}
+
+// ClearDirty clears the dirty flag.
+func (r *RuntimeImpl) ClearDirty() {
+	r.isDirty = false
+	r.dirtyRegions = nil
 }
 
 // MarkFullRender forces a full render on the next frame.

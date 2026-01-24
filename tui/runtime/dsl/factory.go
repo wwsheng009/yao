@@ -232,8 +232,14 @@ func (f *Factory) applyInputProps(comp *components.InputComponent, props map[str
 	if width, ok := props["width"].(int); ok {
 		comp.WithWidth(width)
 	}
+	if width, ok := props["width"].(float64); ok {
+		comp.WithWidth(int(width))
+	}
 	if maxLength, ok := props["maxLength"].(int); ok {
 		comp.WithMaxLength(maxLength)
+	}
+	if prompt, ok := props["prompt"].(string); ok {
+		comp.WithPrompt(prompt)
 	}
 	// Handle onChange callback
 	if onChange, ok := props["onChange"]; ok {
