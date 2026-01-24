@@ -291,8 +291,6 @@ func TestLayoutResponsive(t *testing.T) {
 // TestLayoutAbsolute 测试绝对定位
 // 重点验证：子元素的 X, Y 坐标是否相对于父元素偏移
 func TestLayoutAbsolute(t *testing.T) {
-	t.Skip("Runtime does not support absolute positioning yet. This feature needs to be implemented.")
-
 	model := setupModel(t, "absolute-layout.tui.yao", 80, 24)
 	root := getRealRoot(model)
 
@@ -308,14 +306,22 @@ func TestLayoutAbsolute(t *testing.T) {
 	cX, cY := container.X, container.Y
 	cW, cH := container.MeasuredWidth, container.MeasuredHeight
 
+	t.Logf("Container: X=%d Y=%d W=%d H=%d", cX, cY, cW, cH)
+
 	require.Equal(t, 3, len(container.Children))
 
+	background := container.Children[0]
 	modal := container.Children[1]
 	toast := container.Children[2]
 
+	t.Logf("Background: PosType=%v X=%d Y=%d AbsX=%d AbsY=%d", background.Position.Type, background.X, background.Y, background.AbsoluteX, background.AbsoluteY)
+	t.Logf("Modal: PosType=%v X=%d Y=%d AbsX=%d AbsY=%d", modal.Position.Type, modal.X, modal.Y, modal.AbsoluteX, modal.AbsoluteY)
+	t.Logf("Toast: PosType=%v X=%d Y=%d AbsX=%d AbsY=%d", toast.Position.Type, toast.X, toast.Y, toast.AbsoluteX, toast.AbsoluteY)
+
 	// Verify Modal Position (Top:4, Left:10)
-	assert.Equal(t, cX+10, modal.X, "Modal absolute Left")
-	assert.Equal(t, cY+4, modal.Y, "Modal absolute Top")
+	// For absolutely positioned elements, check AbsoluteX/AbsoluteY
+	assert.Equal(t, cX+10, modal.AbsoluteX, "Modal absolute Left")
+	assert.Equal(t, cY+4, modal.AbsoluteY, "Modal absolute Top")
 
 	// Verify Toast Position (Bottom:1, Right:2)
 	// Right: 2 means X = Width - 2 - ElementWidth
@@ -324,18 +330,21 @@ func TestLayoutAbsolute(t *testing.T) {
 	expectedToastX := cX + cW - 2 - 20
 	expectedToastY := cY + cH - 1 - 3
 
-	assert.Equal(t, expectedToastX, toast.X, "Toast absolute Right")
-	assert.Equal(t, expectedToastY, toast.Y, "Toast absolute Bottom")
+	assert.Equal(t, expectedToastX, toast.AbsoluteX, "Toast absolute Right")
+	assert.Equal(t, expectedToastY, toast.AbsoluteY, "Toast absolute Bottom")
 }
 
 // TestLayoutAlignment 测试对齐方式
 // 重点验证：Justify 导致的位置偏移
 func TestLayoutAlignment(t *testing.T) {
-	t.Skip("Runtime does not support justify/alignItems properties yet. This feature needs to be implemented.")
 
 	width := 60 // Small width to force spacing visible
 	model := setupModel(t, "alignment.tui.yao", width, 40)
 	root := getRealRoot(model)
+
+	t.Logf("Model UseRuntime: %v", model.UseRuntime)
+	t.Logf("Model RuntimeEngine: %v", model.RuntimeEngine != nil)
+	t.Logf("Model RuntimeRoot: %v", model.RuntimeRoot != nil)
 
 	// Root has many children pairs (Text label + Layout box)
 	// Box 1: Justify Start (Children[1])
@@ -344,17 +353,35 @@ func TestLayoutAlignment(t *testing.T) {
 
 	// 1. Justify Start (Standard)
 	boxStart := root.Children[1]
+	t.Logf("BoxStart: Type=%v Justify=%v W=%d H=%d Children=%d", boxStart.Type, boxStart.Style.Justify, boxStart.MeasuredWidth, boxStart.MeasuredHeight, len(boxStart.Children))
+	if len(boxStart.Children) > 0 {
+		for i, child := range boxStart.Children {
+			t.Logf("  Child %d: X=%d W=%d H=%d", i, child.X, child.MeasuredWidth, child.MeasuredHeight)
+		}
+	}
 	// Items should be at 0, ItemWidth, ItemWidth*2...
 	assert.Equal(t, boxStart.X, boxStart.Children[0].X, "Start: Item 1 should be at left edge")
 
 	// 2. Justify Center
 	boxCenter := root.Children[3]
+	t.Logf("BoxCenter: Type=%v Justify=%v W=%d H=%d Children=%d", boxCenter.Type, boxCenter.Style.Justify, boxCenter.MeasuredWidth, boxCenter.MeasuredHeight, len(boxCenter.Children))
+	if len(boxCenter.Children) > 0 {
+		for i, child := range boxCenter.Children {
+			t.Logf("  Child %d: X=%d W=%d H=%d", i, child.X, child.MeasuredWidth, child.MeasuredHeight)
+		}
+	}
 	// Item 1 should NOT be at left edge
 	// It should be shifted right by (TotalWidth - ContentWidth) / 2
 	assert.Greater(t, boxCenter.Children[0].X, boxCenter.X, "Center: Item 1 should be shifted right")
 
 	// 3. Justify Space Between
 	boxSpaceBetween := root.Children[5]
+	t.Logf("BoxSpaceBetween: Type=%v Justify=%v Children=%d", boxSpaceBetween.Type, boxSpaceBetween.Style.Justify, len(boxSpaceBetween.Children))
+	if len(boxSpaceBetween.Children) > 0 {
+		t.Logf("  Child 0: X=%d", boxSpaceBetween.Children[0].X)
+		lastItem := boxSpaceBetween.Children[len(boxSpaceBetween.Children)-1]
+		t.Logf("  Last Item: X=%d Width=%d", lastItem.X, lastItem.MeasuredWidth)
+	}
 
 	// Item 1 at Left, Item 3 at Right
 	assert.Equal(t, boxSpaceBetween.X, boxSpaceBetween.Children[0].X, "SpaceBetween: Item 1 at left")
