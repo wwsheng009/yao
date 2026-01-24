@@ -178,6 +178,27 @@ func (b *CellBuffer) GetContent(x, y int) Cell {
 	return b.cells[y][x]
 }
 
+// GetCell returns the cell at the given position (alias for GetContent).
+// This is the preferred name for consistency with SetCell.
+func (b *CellBuffer) GetCell(x, y int) Cell {
+	return b.GetContent(x, y)
+}
+
+// SetCell sets a cell at the given position without Z-Index checking.
+// This directly overwrites the cell regardless of Z-Index.
+// Use SetContent for Z-Index-aware cell setting.
+func (b *CellBuffer) SetCell(x, y int, char rune, style CellStyle, zIndex int) {
+	if x < 0 || x >= b.width || y < 0 || y >= b.height {
+		return
+	}
+
+	b.cells[y][x] = Cell{
+		Char:   char,
+		Style:  style,
+		ZIndex: zIndex,
+	}
+}
+
 // Clear clears the entire buffer
 func (b *CellBuffer) Clear() {
 	for y := 0; y < b.height; y++ {
