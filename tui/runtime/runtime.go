@@ -1,6 +1,9 @@
 package runtime
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Component is the base interface for all UI components.
 //
@@ -115,6 +118,11 @@ type Cell struct {
 	Style  CellStyle
 	ZIndex int
 	NodeID string // For hit testing
+	// StyledText stores the original ANSI-styled text from lipgloss
+	// When non-empty, this takes precedence over Char+Style for rendering
+	StyledText string
+	// Selected indicates this cell is part of a selection
+	Selected bool
 }
 
 // CellStyle represents rendering style for a cell.
@@ -199,6 +207,77 @@ func (b *CellBuffer) SetCell(x, y int, char rune, style CellStyle, zIndex int) {
 	}
 }
 
+// SetStyledText sets styled text at a given line.
+// The text should contain lipgloss ANSI escape codes for styling.
+// This stores the styled text in the first cell of the line and marks
+// subsequent cells as part of the styled text region.
+func (b *CellBuffer) SetStyledText(x, y, z int, text string, nodeID string) {
+	if y < 0 || y >= b.height || x < 0 || x >= b.width {
+		return
+	}
+
+	// Store the styled text in the first cell
+	// Mark the cell as containing styled text
+	if z >= b.cells[y][x].ZIndex {
+		b.cells[y][x] = Cell{
+			Char:       0, // 0 indicates styled text follows
+			StyledText: text,
+			ZIndex:     z,
+			NodeID:     nodeID,
+		}
+
+		// Mark the span of this styled text
+		// Count visible characters (excluding ANSI codes)
+		runes := []rune(text)
+		visibleLen := 0
+		i := 0
+		for i < len(runes) {
+			if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+				// Skip ANSI escape sequence
+				i += 2
+				for i < len(runes) && runes[i] != 'm' {
+					i++
+				}
+				if i < len(runes) {
+					i++ // skip 'm'
+				}
+			} else {
+				visibleLen++
+				i++
+			}
+		}
+
+		// Mark subsequent cells as part of this styled region
+		for offsetX := 1; offsetX < visibleLen && x+offsetX < b.width; offsetX++ {
+			if z >= b.cells[y][x+offsetX].ZIndex {
+				b.cells[y][x+offsetX] = Cell{
+					Char:   ' ', // Placeholder, styled text will be output
+					ZIndex: z,
+					NodeID: nodeID,
+					// StyledText empty - this is a continuation cell
+				}
+			}
+		}
+	}
+}
+
+// SetSelected sets the Selected flag for a cell at the given position.
+func (b *CellBuffer) SetSelected(x, y int, selected bool) {
+	if x < 0 || x >= b.width || y < 0 || y >= b.height {
+		return
+	}
+	b.cells[y][x].Selected = selected
+}
+
+// ClearSelection clears the selection flag for all cells.
+func (b *CellBuffer) ClearSelection() {
+	for y := 0; y < b.height; y++ {
+		for x := 0; x < b.width; x++ {
+			b.cells[y][x].Selected = false
+		}
+	}
+}
+
 // Clear clears the entire buffer
 func (b *CellBuffer) Clear() {
 	for y := 0; y < b.height; y++ {
@@ -224,6 +303,8 @@ func (b *CellBuffer) Height() int {
 
 // String returns the buffer as a string with ANSI escape codes for styling.
 // This outputs the buffer with proper terminal styling support.
+// Handles both CellStyle and lipgloss StyledText (with embedded ANSI codes).
+// Also applies selection highlighting (reverse video) to selected cells.
 func (b *CellBuffer) String() string {
 	if b.height == 0 {
 		return ""
@@ -232,22 +313,57 @@ func (b *CellBuffer) String() string {
 	lines := make([]string, b.height)
 	for y := 0; y < b.height; y++ {
 		var lineBuilder strings.Builder
-		currentStyle := b.cells[y][0].Style
+		x := 0
 
-		// Start with the initial style
-		lineBuilder.WriteString(styleToANSI(currentStyle))
-
-		for x := 0; x < b.width; x++ {
+		for x < b.width {
 			cell := b.cells[y][x]
 
-			// Check if style changed
-			if cell.Style != currentStyle {
-				lineBuilder.WriteString(styleToANSI(cell.Style))
-				currentStyle = cell.Style
-			}
+			// Check if this cell has styled text (from lipgloss)
+			if cell.StyledText != "" {
+				// Check if any part of this styled text region is selected
+				visibleLen := countVisibleChars(cell.StyledText)
+				hasSelection := false
+				for offsetX := 0; offsetX < visibleLen && x+offsetX < b.width; offsetX++ {
+					if b.cells[y][x+offsetX].Selected {
+						hasSelection = true
+						break
+					}
+				}
 
-			// Append character
-			lineBuilder.WriteRune(cell.Char)
+				// If any part is selected, wrap with reverse video
+				if hasSelection {
+					lineBuilder.WriteString("\x1b[7m") // Reverse video for selection
+				}
+
+				// Output the styled text directly (it already contains ANSI codes)
+				lineBuilder.WriteString(cell.StyledText)
+
+				// Reset reverse after styled text
+				if hasSelection {
+					lineBuilder.WriteString("\x1b[27m") // Reset reverse
+				}
+
+				// Skip continuation cells
+				x += visibleLen
+			} else {
+				// Regular cell: output character with style
+				// Apply reverse video if selected
+				if cell.Selected {
+					lineBuilder.WriteString("\x1b[7m")
+				}
+
+				if cell.Char == 0 {
+					lineBuilder.WriteRune(' ')
+				} else {
+					lineBuilder.WriteRune(cell.Char)
+				}
+
+				if cell.Selected {
+					lineBuilder.WriteString("\x1b[27m")
+				}
+
+				x++
+			}
 		}
 
 		// Reset style at end of line
@@ -256,6 +372,30 @@ func (b *CellBuffer) String() string {
 	}
 
 	return joinLines(lines)
+}
+
+// countVisibleChars counts the number of visible characters in a string,
+// excluding ANSI escape sequences.
+func countVisibleChars(s string) int {
+	runes := []rune(s)
+	count := 0
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
+			// Skip ANSI escape sequence
+			i += 2
+			for i < len(runes) && runes[i] != 'm' {
+				i++
+			}
+			if i < len(runes) {
+				i++ // skip 'm'
+			}
+		} else {
+			count++
+			i++
+		}
+	}
+	return count
 }
 
 // styleToANSI converts a CellStyle to ANSI escape codes
@@ -326,6 +466,11 @@ func styleToANSI(style CellStyle) string {
 // colorToANSICode converts a color string to ANSI color code
 // isBackground: true for background color (40-47), false for foreground (30-37)
 // Returns the ANSI code string or empty if no valid color
+//
+// Supported formats:
+// - Named colors: "red", "blue", "green", etc.
+// - 256-color mode: "0-255" (e.g., "214" for orange, "33" for blue)
+// - Hex colors: "#RRGGBB" (not yet supported, returns empty)
 func colorToANSICode(color string, isBackground bool) string {
 	if color == "" {
 		return ""
@@ -337,6 +482,19 @@ func colorToANSICode(color string, isBackground bool) string {
 		// Would need to use 38;2;R;G;B format for truecolor
 		// Just return empty for now
 		return ""
+	}
+
+	// Try to parse as 256-color code (0-255)
+	// This handles numeric strings like "214", "33", "240", etc.
+	if len(color) > 0 && color[0] >= '0' && color[0] <= '9' {
+		codeNum := 0
+		if _, err := fmt.Sscanf(color, "%d", &codeNum); err == nil && codeNum >= 0 && codeNum <= 255 {
+			// 256-color mode uses format: 38;5;N (foreground) or 48;5;N (background)
+			if isBackground {
+				return fmt.Sprintf("48;5;%d", codeNum)
+			}
+			return fmt.Sprintf("38;5;%d", codeNum)
+		}
 	}
 
 	// Basic ANSI color names
@@ -362,26 +520,49 @@ func colorToANSICode(color string, isBackground bool) string {
 		return baseCode + "6"
 	case "white":
 		return baseCode + "7"
-	// Bright variants
+	// Bright variants (use 90-97 for foreground, 100-107 for background)
 	case "bright-black", "gray":
-		return baseCode + "0" // Would need 90-97 for bright
+		if isBackground {
+			return "100"
+		}
+		return "90"
 	case "bright-red":
-		return baseCode + "1"
+		if isBackground {
+			return "101"
+		}
+		return "91"
 	case "bright-green":
-		return baseCode + "2"
+		if isBackground {
+			return "102"
+		}
+		return "92"
 	case "bright-yellow":
-		return baseCode + "3"
+		if isBackground {
+			return "103"
+		}
+		return "93"
 	case "bright-blue":
-		return baseCode + "4"
+		if isBackground {
+			return "104"
+		}
+		return "94"
 	case "bright-magenta":
-		return baseCode + "5"
+		if isBackground {
+			return "105"
+		}
+		return "95"
 	case "bright-cyan":
-		return baseCode + "6"
+		if isBackground {
+			return "106"
+		}
+		return "96"
 	case "bright-white":
-		return baseCode + "7"
+		if isBackground {
+			return "107"
+		}
+		return "97"
 	default:
-		// Try to parse as ANSI code number (e.g., "5" for magenta)
-		// For now, return empty
+		// Unknown color, return empty
 		return ""
 	}
 }
