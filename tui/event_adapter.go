@@ -227,13 +227,22 @@ func (m *Model) handleFocusTarget(targetID string) {
 // Supports single-click drag, double-click (word), triple-click (line).
 func (m *Model) handleSelectionMouseEvent(ev *event.MouseEvent) bool {
 	if m.RuntimeEngine == nil {
+		log.Trace("handleSelectionMouseEvent: RuntimeEngine is nil")
 		return false
 	}
 
 	selection := m.RuntimeEngine.GetSelection()
-	if selection == nil || !selection.IsEnabled() {
+	if selection == nil {
+		log.Trace("handleSelectionMouseEvent: selection is nil")
 		return false
 	}
+	if !selection.IsEnabled() {
+		log.Trace("handleSelectionMouseEvent: selection not enabled")
+		return false
+	}
+
+	log.Trace("handleSelectionMouseEvent: ev.Type=%d, Click=%d, X=%d, Y=%d",
+		ev.Type, ev.Click, ev.X, ev.Y)
 
 	switch ev.Type {
 	case event.MousePress:
