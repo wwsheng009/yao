@@ -261,18 +261,37 @@ func (r *RuntimeImpl) renderComponent(buf *CellBuffer, box LayoutBox) {
 		return
 	}
 
-	// Render text to buffer
-	// TODO: Handle multi-line text and wrapping
+	// Render text to buffer with multi-line support
 	// TODO: Extract color/style from node for proper rendering
 	cellStyle := CellStyle{} // Empty style for now
-	runes := []rune(text)
-	for i, char := range runes {
-		x := box.X + i
-		y := box.Y
-		if x < buf.width && y < buf.height && char != '\n' {
+	lines := splitLines(text)
+
+	renderedLines := 0
+	for lineIdx, line := range lines {
+		y := box.Y + lineIdx
+		if y >= buf.height {
+			break // Don't render past buffer height
+		}
+		// Also check if we're past the box height
+		if lineIdx >= box.H {
+			break
+		}
+
+		runes := []rune(line)
+		for charIdx, char := range runes {
+			x := box.X + charIdx
+			if x >= buf.width {
+				break // Don't render past buffer width
+			}
+			// Also check if we're past the box width
+			if charIdx >= box.W {
+				break
+			}
 			buf.SetContent(x, y, box.ZIndex, char, cellStyle, box.Node.ID)
 		}
+		renderedLines++
 	}
+	_ = renderedLines // Use the variable to avoid unused warning
 }
 
 // intersectsDirtyRegion checks if a layout box intersects any dirty region.
