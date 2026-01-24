@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yaoapp/yao/tui/runtime/event"
 	"github.com/yaoapp/yao/tui/ui/components"
-	"github.com/yaoapp/yao/tui/ui/layouts"
 )
 
 // Todo represents a single todo item
@@ -24,7 +24,7 @@ type TodoModel struct {
 	list      *components.ListComponent
 	header    *components.HeaderComponent
 	footer    *components.FooterComponent
-	focused    focusedComponent
+	focused   focusedComponent
 	err       error
 }
 
@@ -61,7 +61,7 @@ func (m *TodoModel) handleKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 	keyMsg := msg.(tea.KeyMsg)
 
 	switch keyMsg.Type {
-	case tea.KeyEnter, tea.KeyCtrlC:
+	case tea.KeyEnter:
 		// Enter key on input adds a todo
 		if m.focused == focusedInput && m.input.GetValue() != "" {
 			m.addTodo(m.input.GetValue())
@@ -85,21 +85,21 @@ func (m *TodoModel) handleKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyUp, tea.KeyDown:
 		// Arrow keys in list
 		if m.focused == focusedList {
-			m.list.HandleKey(&components.KeyEvent{Key: int(keyMsg.Type)})
+			m.list.HandleKey(&event.KeyEvent{Key: rune(keyMsg.Type), Type: event.KeyPress})
 		}
 		return m, nil
 
 	case 'j':
 		// j to move down in list
 		if m.focused == focusedList {
-			m.list.HandleKey(&components.KeyEvent{Key: 'j'})
+			m.list.HandleKey(&event.KeyEvent{Key: 'j', Type: event.KeyPress})
 		}
 		return m, nil
 
 	case 'k':
 		// k to move up in list
 		if m.focused == focusedList {
-			m.list.HandleKey(&components.KeyEvent{Key: 'k'})
+			m.list.HandleKey(&event.KeyEvent{Key: 'k', Type: event.KeyPress})
 		}
 		return m, nil
 
@@ -166,7 +166,7 @@ func (m *TodoModel) addTodo(text string) {
 
 // removeSelectedTodo removes the selected todo
 func (m *TodoModel) removeSelectedTodo() {
-	selectedIdx := m.list.GetSelectedIdx()
+	selectedIdx := m.list.GetSelectedIndex()
 	if selectedIdx >= 0 && selectedIdx < len(m.todos) {
 		m.todos = append(m.todos[:selectedIdx], m.todos[selectedIdx+1:]...)
 		m.updateList()
@@ -176,7 +176,7 @@ func (m *TodoModel) removeSelectedTodo() {
 
 // toggleSelectedTodo toggles the completed status
 func (m *TodoModel) toggleSelectedTodo() {
-	selectedIdx := m.list.GetSelectedIdx()
+	selectedIdx := m.list.GetSelectedIndex()
 	if selectedIdx >= 0 && selectedIdx < len(m.todos) {
 		m.todos[selectedIdx].Completed = !m.todos[selectedIdx].Completed
 		m.updateList()
@@ -186,16 +186,14 @@ func (m *TodoModel) toggleSelectedTodo() {
 
 // updateList refreshes the list display
 func (m *TodoModel) updateList() {
-	items := make([]*components.ListItem, len(m.todos))
+	items := make([]components.RuntimeListItem, len(m.todos))
 	for i, todo := range m.todos {
 		prefix := "[ ]"
 		if todo.Completed {
 			prefix = "[✓]"
 		}
-		items[i] = &components.ListItem{
-			ID:    todo.ID,
-			Label: prefix + " " + todo.Text,
-		}
+		item := components.NewRuntimeListItem(prefix+" "+todo.Text, "")
+		items[i] = item
 	}
 	m.list.WithItems(items)
 }
@@ -267,7 +265,7 @@ func NewTodoModel() *TodoModel {
 		list:      list,
 		header:    header,
 		footer:    footer,
-		focused:    focusedInput,
+		focused:   focusedInput,
 	}
 
 	// Add some sample todos
