@@ -5,7 +5,20 @@ import (
 	"github.com/yaoapp/yao/tui/framework/style"
 )
 
-// Component 组件接口
+// Event 事件类型别名 (向后兼容)
+type Event = event.Event
+
+// EventHandler 事件处理器类型别名 (向后兼容)
+type EventHandler = event.EventHandler
+
+// ==============================================================================
+// 向后兼容的 Component 接口
+// ==============================================================================
+// 这是旧的统一接口，新代码应该使用 Capability Interfaces
+// 新组件应该实现组合接口 (BaseComponent, InteractiveComponent 等)
+
+// Component 组件接口 (向后兼容)
+// 新代码建议使用 capability interfaces (BaseComponent, InteractiveComponent 等)
 type Component interface {
 	// 标识
 	ID() string
@@ -24,7 +37,7 @@ type Component interface {
 	GetMinSize() (width, height int)
 	GetMaxSize() (width, height int)
 
-	// 渲染
+	// 渲染 (旧接口，返回 string)
 	Render(ctx *RenderContext) string
 
 	// 事件
@@ -43,7 +56,7 @@ type Component interface {
 	GetStyle() style.Style
 }
 
-// RenderContext 渲染上下文
+// RenderContext 渲染上下文 (向后兼容)
 type RenderContext struct {
 	// 可用尺寸
 	AvailableWidth  int

@@ -51,6 +51,12 @@ const (
 
 	// 组合键
 	KeySpace
+
+	// Vim 风格导航键
+	KeyK // vim up
+	KeyJ // vim down
+	KeyH // vim left
+	KeyL // vim right
 )
 
 // KeyModifier 修饰键

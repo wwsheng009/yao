@@ -1,7 +1,6 @@
 package display
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/yaoapp/yao/tui/framework/component"
@@ -142,7 +141,7 @@ func (t *Table) Render(ctx *component.RenderContext) string {
 	// 渲染表头
 	if t.showHeader && len(t.columns) > 0 {
 		headerLine := "┌"
-		for i, col := range t.columns {
+		for i := range t.columns {
 			w := colWidths[i]
 			headerLine += strings.Repeat("─", w) + "┬"
 		}
@@ -164,7 +163,7 @@ func (t *Table) Render(ctx *component.RenderContext) string {
 
 		// 表头下划线
 		separatorLine := "├"
-		for i, w := range colWidths {
+		for _, w := range colWidths {
 			separatorLine += strings.Repeat("─", w) + "┼"
 		}
 		separatorLine = separatorLine[:len(separatorLine)-1] + "┤"

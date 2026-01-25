@@ -1,10 +1,5 @@
 package component
 
-import (
-	"github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/framework/style"
-)
-
 // Container 容器接口
 type Container interface {
 	Component

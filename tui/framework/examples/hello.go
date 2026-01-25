@@ -3,110 +3,39 @@ package main
 import (
 	"fmt"
 
-	"github.com/yaoapp/yao/tui/framework"
 	"github.com/yaoapp/yao/tui/framework/display"
-	"github.com/yaoapp/yao/tui/framework/input"
-	"github.com/yaoapp/yao/tui/framework/interactive"
-	"github.com/yaoapp/yao/tui/framework/layout"
+	"github.com/yaoapp/yao/tui/framework/event"
+	"github.com/yaoapp/yao/tui/framework/style"
 )
 
-// main 示例主函数
+// main 简单示例
 func main() {
-	app := framework.NewApp()
-
 	// 创建标题
-	title := display.NewText("TUI Framework Demo").
-		WithStyle(style.NewBuilder().
-			Bold().
-			Foreground(style.Blue).
-			Build())
+	title := display.NewText("TUI Framework V3")
+	title.SetStyle(style.NewStyle().Foreground(style.Blue).Bold(true))
 
 	// 创建说明文本
 	description := display.NewText(
-		"这是一个独立于 Bubble Tea 的 TUI 框架\n" +
-			"按 'q' 或 ESC 退出\n" +
-			"使用方向键操作",
+		"这是一个 TUI 框架示例\n" +
+			"按 'q' 或 ESC 退出",
 	)
 
-	// 创建输入框
-	nameInput := input.NewTextInputPlaceholder("请输入姓名...")
+	// 打印渲染结果
+	fmt.Println(title.Render(nil))
+	fmt.Println(description.Render(nil))
 
-	// 创建按钮
-	quitButton := interactive.NewButtonWithAction("退出", app.Quit)
+	// 演示事件处理
+	fmt.Println("\n--- 事件处理演示 ---")
 
-	// 使用 Flex 垂直布局
-	root := layout.NewColumn(layout.Column).
-		WithGap(1).
-		WithChildren(
-			title,
-			description,
-			nameInput,
-			layout.NewRow().WithChildren(
-				interactive.NewButton("确定"),
-				quitButton,
-			),
-		)
+	// 创建键盘事件
+	upEvent := event.NewSpecialKeyEvent(event.KeyUp)
+	fmt.Printf("事件类型: %d\n", upEvent.Type())
+	fmt.Printf("特殊键: %d\n", upEvent.Special)
 
-	// 设置根组件
-	app.SetRoot(root)
+	// Vim 风格键
+	kEvent := event.NewSpecialKeyEvent(event.KeyK)
+	fmt.Printf("Vim K 键: %d\n", kEvent.Special)
 
-	// 注册退出快捷键
-	app.OnKey('q', app.Quit)
-	app.OnKey(event.KeyEscape, app.Quit)
-
-	// 显示欢迎信息
-	fmt.Println("TUI Framework 启动...")
-	fmt.Println("按回车键开始")
-
-	// 运行应用
-	if err := app.Run(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-	}
+	jEvent := event.NewSpecialKeyEvent(event.KeyJ)
+	fmt.Printf("Vim J 键: %d\n", jEvent.Special)
 }
-
-// 事件类型
-type event struct{}
-
-// KeyEscape 常量
-const event KeyEscape = 27
-
-// style 包引用
-type style struct {
-	// 导出样式相关
-}
-
-// NewStyle 创建样式
-func NewStyle() *style {
-	return &style{}
-}
-
-// style 类型
-type style struct{}
-
-// NewBuilder 创建样式构建器
-func (s *style) NewBuilder() *style {
-	return s
-}
-
-// Bold 设置粗体
-func (s *style) Bold() *style {
-	return s
-}
-
-// Foreground 设置前景色
-func (s *style) Foreground(c Color) *style {
-	return s
-}
-
-// Color 颜色类型
-type Color string
-
-const (
-	Blue    Color = "blue"
-	Red     Color = "red"
-	Green   Color = "green"
-	Yellow  Color = "yellow"
-	Black   Color = "black"
-	White   Color = "white"
-	BrightBlack Color = "bright-black"
-)

@@ -424,15 +424,6 @@ func stripANSI(s string) string {
 	return result
 }
 
-// utf8RuneCount 计算 UTF-8 字符数
-func utf8RuneCount(s string) int {
-	count := 0
-	for range s {
-		count++
-	}
-	return count
-}
-
 // GetPreferredSize 获取首选尺寸
 func (b *Box) GetPreferredSize() (width, height int) {
 	if b.width > 0 {

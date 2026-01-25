@@ -2,7 +2,6 @@ package style
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -265,7 +264,7 @@ func ParseColor(s string) Color {
 
 // ParseRGB 解析 RGB 颜色
 func ParseRGB(r, g, b int) Color {
-	return fmt.Sprintf("rgb(%d,%d,%d)", r, g, b)
+	return Color(fmt.Sprintf("rgb(%d,%d,%d)", r, g, b))
 }
 
 // ParseHex 解析十六进制颜色
