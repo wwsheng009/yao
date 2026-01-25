@@ -1,96 +1,148 @@
-# Rendering System Design
+# Rendering System Design (V3)
+
+> **版本说明**: 本文档定义了 TUI 框架的渲染系统。V3 采用审查建议，引入 RenderTree 中间态、Dirty Region 主动标记、按需重绘机制。
 
 ## 概述
 
-渲染系统负责将组件绘制到终端屏幕。本文档详细描述了渲染管线、缓冲区管理和差分渲染。
+渲染系统负责将组件绘制到终端屏幕。V3 设计核心原则：
 
-## 渲染管线
+1. **Paint 不返回 string**: 直接写入 CellBuffer
+2. **RenderTree 中间态**: Component → RenderNode → Paint
+3. **Dirty Region 主动标记**: 不依赖 Cell diff
+4. **局部重绘**: 只渲染变化的区域
+5. **幂等性**: 相同输入必定产生相同输出
+
+## 渲染管线（V3）
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Rendering Pipeline                               │
-└─────────────────────────────────────────────────────────────────────────┘
-
-Component.Render()
+Component.Paint(ctx, buf)
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Phase 1: Component Render              │
-│  - 每个组件生成自己的内容                 │
-│  - 返回样式化的文本或 CellBuffer         │
+│  Phase 1: Paint (Component Side)       │
+│  - 组件生成 RenderNode 描述             │
+│  - 不直接操作 Buffer                    │
 └─────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Phase 2: Layout Composition            │
-│  - Runtime 布局引擎计算位置              │
-│  - 生成 LayoutBox 层级结构               │
+│  Phase 2: Build RenderTree            │
+│  - Runtime 组合 RenderNode 树          │
+│  - 应用 Z-order                        │
 └─────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Phase 3: Buffer Composition            │
-│  - 将组件内容合并到 CellBuffer           │
-│  - 应用 Z-order                         │
-│  - 处理重叠                             │
+│  Phase 3: Layout (Runtime Side)       │
+│  - 计算每个节点的 Bounds               │
+│  - 应用 Flexbox 约束                    │
 └─────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Phase 4: Diff Computation              │
-│  - 比较前后缓冲区                        │
-│  - 生成变更列表                         │
+│  Phase 4: Paint to Buffer              │
+│  - RenderTree → CellBuffer              │
+│  - 应用 Z-order 和裁剪                   │
 └─────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Phase 5: Terminal Output               │
-│  - 只输出变化的区域                      │
-│  - 优化 ANSI 序列                       │
+│  Phase 5: Dirty Region Diff           │
+│  - 只比较 Dirty Region                 │
+│  - 生成最小变更集                       │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│  Phase 6: Terminal Output              │
+│  - 输出 ANSI 转义码                      │
 └─────────────────────────────────────────┘
 ```
 
-## 核心类型
+## 核心类型定义
 
-### 1. 缓冲区
+### 1. Cell - 基础单元格
 
 ```go
-// 位于: tui/framework/screen/buffer.go
+// 位于: tui/runtime/paint/cell.go
 
-package screen
-
-// Buffer 渲染缓冲区
-type Buffer struct {
-    // 尺寸
-    width  int
-    height int
-
-    // 单元格数据
-    cells  [][]Cell
-
-    // 元数据
-    dirty   bool
-    version int
-}
+package paint
 
 // Cell 单元格
 type Cell struct {
     // 内容
-    Char       rune
-    StyledText string  // ANSI 样式文本
+    Char rune
 
     // 样式
-    Style      Style
+    Style CellStyle
 
     // 元数据
-    ZIndex     int
-    Selected   bool
-    Modified   bool  // 标记是否被修改
+    ZIndex    int
+    Modified  bool  // 是否被修改（用于 diff）
+}
+
+// CellStyle 单元格样式
+type CellStyle struct {
+    FG       Color
+    BG       Color
+    Bold     bool
+    Dim      bool
+    Italic   bool
+    Underline bool
+    Blink    bool
+    Reverse  bool
+}
+
+// Color 颜色
+type Color struct {
+    Type  ColorType
+    Value uint8
+}
+
+type ColorType int
+
+const (
+    ColorDefault ColorType = iota
+    ColorBasic
+    Color256
+    ColorRGB
+)
+
+// Clear 清空单元格
+func (c *Cell) Clear() {
+    c.Char = ' '
+    c.Style = CellStyle{}
+    c.Modified = false
+}
+
+// Clone 克隆单元格
+func (c *Cell) Clone() Cell {
+    return Cell{
+        Char:     c.Char,
+        Style:    c.Style,
+        ZIndex:   c.ZIndex,
+        Modified: c.Modified,
+    }
+}
+```
+
+### 2. CellBuffer - 虚拟画布
+
+```go
+// 位于: tui/runtime/paint/buffer.go
+
+package paint
+
+// CellBuffer 虚拟画布
+type CellBuffer struct {
+    cells  [][]Cell
+    width  int
+    height int
 }
 
 // NewBuffer 创建缓冲区
-func NewBuffer(width, height int) *Buffer {
-    b := &Buffer{
+func NewBuffer(width, height int) *CellBuffer {
+    b := &CellBuffer{
         width:  width,
         height: height,
         cells:  make([][]Cell, height),
@@ -99,10 +151,7 @@ func NewBuffer(width, height int) *Buffer {
     for y := 0; y < height; y++ {
         b.cells[y] = make([]Cell, width)
         for x := 0; x < width; x++ {
-            b.cells[y][x] = Cell{
-                Char:  ' ',
-                Style: DefaultStyle(),
-            }
+            b.cells[y][x] = Cell{Char: ' '}
         }
     }
 
@@ -110,7 +159,7 @@ func NewBuffer(width, height int) *Buffer {
 }
 
 // SetCell 设置单元格
-func (b *Buffer) SetCell(x, y int, char rune, style Style) {
+func (b *CellBuffer) SetCell(x, y int, char rune, style CellStyle) {
     if x < 0 || x >= b.width || y < 0 || y >= b.height {
         return
     }
@@ -119,604 +168,128 @@ func (b *Buffer) SetCell(x, y int, char rune, style Style) {
     cell.Char = char
     cell.Style = style
     cell.Modified = true
-    b.dirty = true
 }
 
-// SetStyledText 设置样式化文本
-func (b *Buffer) SetStyledText(x, y int, text string, style Style) {
-    if y < 0 || y >= b.height || x < 0 {
+// SetCellV 设置带变体的单元格
+func (b *CellBuffer) SetCellV(x, y int, char rune, variant CellVariant) {
+    if x < 0 || x >= b.width || y < 0 || y >= b.height {
         return
     }
 
-    // 解析 ANSI 序列，分割文本和样式
-    runes := []rune(text)
-    pos := x
+    cell := &b.cells[y][x]
+    cell.Char = char
+    cell.Modified = true
 
-    for i := 0; i < len(runes) && pos < b.width; {
-        // 处理 ANSI 转义序列
-        if runes[i] == '\x1b' && i+1 < len(runes) && runes[i+1] == '[' {
-            // 跳过 ANSI 序列
-            end := i + 2
-            for end < len(runes) && runes[end] != 'm' {
-                end++
-            }
-            if end < len(runes) {
-                end++  // 跳过 'm'
-            }
-
-            // 解析样式
-            ansiStyle := string(runes[i:end])
-            style = style.Merge(ParseANSIStyle(ansiStyle))
-            i = end
-        } else {
-            // 普通字符
-            b.SetCell(pos, y, runes[i], style)
-            pos++
-            i++
-        }
+    switch variant {
+    case VariantBold:
+        cell.Style.Bold = true
+    case VariantDim:
+        cell.Style.Dim = true
+    case VariantUnderline:
+        cell.Style.Underline = true
     }
-}
-
-// SetLine 设置一行文本
-func (b *Buffer) SetLine(y int, text string, style Style) {
-    runes := []rune(text)
-    for x, r := range runes {
-        if x >= b.width {
-            break
-        }
-        b.SetCell(x, y, r, style)
-    }
-}
-
-// Fill 填充区域
-func (b *Buffer) Fill(x, y, width, height int, char rune, style Style) {
-    for py := y; py < y+height && py < b.height; py++ {
-        for px := x; px < x+width && px < b.width; px++ {
-            b.SetCell(px, py, char, style)
-        }
-    }
-}
-
-// Clear 清空缓冲区
-func (b *Buffer) Clear() {
-    for y := 0; y < b.height; y++ {
-        for x := 0; x < b.width; x++ {
-            b.cells[y][x] = Cell{
-                Char:  ' ',
-                Style: DefaultStyle(),
-            }
-        }
-    }
-    b.dirty = false
-}
-
-// GetSize 获取缓冲区尺寸
-func (b *Buffer) GetSize() (width, height int) {
-    return b.width, b.height
 }
 
 // GetCell 获取单元格
-func (b *Buffer) GetCell(x, y int) Cell {
+func (b *CellBuffer) GetCell(x, y int) Cell {
     if x < 0 || x >= b.width || y < 0 || y >= b.height {
         return Cell{}
     }
     return b.cells[y][x]
 }
 
+// Size 获取缓冲区尺寸
+func (b *CellBuffer) Size() (width, height int) {
+    return b.width, b.height
+}
+
+// Resize 调整尺寸
+func (b *CellBuffer) Resize(width, height int) {
+    newCells := make([][]Cell, height)
+    for y := 0; y < height; y++ {
+        newCells[y] = make([]Cell, width)
+        if y < b.height {
+            copyX := min(width, b.width)
+            for x := 0; x < copyX; x++ {
+                newCells[y][x] = b.cells[y][x]
+            }
+        }
+    }
+    b.cells = newCells
+    b.width = width
+    b.height = height
+}
+
+// Clear 清空缓冲区
+func (b *CellBuffer) Clear() {
+    for y := 0; y < b.height; y++ {
+        for x := 0; x < b.width; x++ {
+            b.cells[y][x] = Cell{Char: ' '}
+        }
+    }
+}
+
+// Fill 填充区域
+func (b *CellBuffer) Fill(rect Rect, char rune, style CellStyle) {
+    for y := rect.Y; y < rect.Y+rect.Height && y < b.height; y++ {
+        for x := rect.X; x < rect.X+rect.Width && x < b.width; x++ {
+            b.SetCell(x, y, char, style)
+        }
+    }
+}
+
 // Clone 克隆缓冲区
-func (b *Buffer) Clone() *Buffer {
+func (b *CellBuffer) Clone() *CellBuffer {
     clone := NewBuffer(b.width, b.height)
     for y := 0; y < b.height; y++ {
         copy(clone.cells[y], b.cells[y])
     }
-    clone.dirty = b.dirty
-    clone.version = b.version + 1
     return clone
 }
+
+// CellVariant 单元格变体
+type CellVariant int
+
+const (
+    VariantNormal CellVariant = iota
+    VariantBold
+    VariantDim
+    VariantItalic
+    VariantUnderline
+    VariantBlink
+    VariantReverse
+)
 ```
 
-### 2. 差分引擎
+### 3. RenderNode - 渲染节点
 
 ```go
-// 位于: tui/framework/screen/diff.go
+// 位于: tui/runtime/paint/node.go
 
-package screen
+package paint
 
-// DiffChange 变更记录
-type DiffChange struct {
-    X     int
-    Y     int
-    Old   Cell
-    New   Cell
-}
+// RenderNode 渲染节点
+type RenderNode struct {
+    // 标识
+    ID string
 
-// DiffEngine 差分引擎
-type DiffEngine struct {
-    // 优化配置
-    mergeChanges bool  // 合并相邻变更
-    maxBatchSize int   // 最大批量大小
-}
-
-// NewDiffEngine 创建差分引擎
-func NewDiffEngine() *DiffEngine {
-    return &DiffEngine{
-        mergeChanges: true,
-        maxBatchSize: 1000,
-    }
-}
-
-// Diff 计算两个缓冲区的差异
-func (e *DiffEngine) Diff(old, new *Buffer) []DiffChange {
-    if old.width != new.width || old.height != new.height {
-        // 尺寸不同，全量更新
-        return e.fullDiff(new)
-    }
-
-    var changes []DiffChange
-
-    for y := 0; y < new.height; y++ {
-        for x := 0; x < new.width; x++ {
-            oldCell := old.cells[y][x]
-            newCell := new.cells[y][x]
-
-            if !e.cellsEqual(oldCell, newCell) {
-                changes = append(changes, DiffChange{
-                    X:   x,
-                    Y:   y,
-                    Old: oldCell,
-                    New: newCell,
-                })
-            }
-        }
-    }
-
-    if e.mergeChanges {
-        changes = e.mergeAdjacentChanges(changes)
-    }
-
-    return changes
-}
-
-// cellsEqual 比较单元格是否相等
-func (e *DiffEngine) cellsEqual(a, b Cell) bool {
-    return a.Char == b.Char &&
-           a.Style == b.Style &&
-           a.Selected == b.Selected
-}
-
-// fullDiff 全量差异
-func (e *DiffEngine) fullDiff(buf *Buffer) []DiffChange {
-    changes := make([]DiffChange, 0, buf.width*buf.height)
-
-    for y := 0; y < buf.height; y++ {
-        for x := 0; x < buf.width; x++ {
-            cell := buf.cells[y][x]
-            changes = append(changes, DiffChange{
-                X:   x,
-                Y:   y,
-                New: cell,
-            })
-        }
-    }
-
-    return changes
-}
-
-// mergeAdjacentChanges 合并相邻的变更
-func (e *DiffEngine) mergeAdjacentChanges(changes []DiffChange) []DiffChange {
-    if len(changes) == 0 {
-        return changes
-    }
-
-    // 按行分组
-    byLine := make(map[int][]DiffChange)
-    for _, c := range changes {
-        byLine[c.Y] = append(byLine[c.Y], c)
-    }
-
-    var merged []DiffChange
-
-    for y, lineChanges := range byLine {
-        // 按X排序
-        sort.Slice(lineChanges, func(i, j int) bool {
-            return lineChanges[i].X < lineChanges[j].X
-        })
-
-        // 合并相邻的相同样式变更
-        i := 0
-        for i < len(lineChanges) {
-            start := i
-            startStyle := lineChanges[i].New.Style
-
-            for i < len(lineChanges) &&
-                lineChanges[i].New.Style == startStyle &&
-                (i == start || lineChanges[i].X == lineChanges[i-1].X+1) {
-                i++
-            }
-
-            // 检查是否可以合并为范围输出
-            if i-start > 5 {  // 超过5个连续字符，使用范围
-                merged = append(merged, DiffChange{
-                    Y:   y,
-                    X:   lineChanges[start].X,
-                    New: lineChanges[start].New,
-                })
-            } else {
-                // 单独输出
-                for j := start; j < i; j++ {
-                    merged = append(merged, lineChanges[j])
-                }
-            }
-        }
-    }
-
-    return merged
-}
-```
-
-### 3. 绘制器
-
-```go
-// 位于: tui/framework/screen/painter.go
-
-package screen
-
-// Painter 绘制器
-type Painter struct {
-    terminal platform.Terminal
-    buffer   *Buffer
-}
-
-// NewPainter 创建绘制器
-func NewPainter(terminal platform.Terminal) *Painter {
-    return &Painter{
-        terminal: terminal,
-    }
-}
-
-// SetBuffer 设置当前缓冲区
-func (p *Painter) SetBuffer(buf *Buffer) {
-    p.buffer = buf
-}
-
-// Draw 绘制缓冲区到终端
-func (p *Painter) Draw(changes []DiffChange) error {
-    // 保存光标位置
-    p.saveCursor()
-
-    for _, change := range changes {
-        // 移动光标
-        p.moveCursor(change.X, change.Y)
-
-        // 设置样式
-        p.applyStyle(change.New.Style)
-
-        // 绘制字符
-        p.drawRune(change.New.Char)
-    }
-
-    // 重置样式
-    p.resetStyle()
-
-    // 恢复光标位置
-    p.restoreCursor()
-
-    // 刷新输出
-    return p.terminal.Flush()
-}
-
-// DrawFull 完整绘制
-func (p *Painter) DrawFull(buf *Buffer) error {
-    p.buffer = buf
-
-    // 清屏
-    p.clearScreen()
-
-    // 逐行绘制
-    for y := 0; y < buf.height; y++ {
-        p.moveCursor(0, y)
-        p.drawRow(y)
-    }
-
-    return p.terminal.Flush()
-}
-
-// drawRow 绘制一行
-func (p *Painter) drawRow(y int) {
-    if y < 0 || y >= p.buffer.height {
-        return
-    }
-
-    var currentStyle Style
-
-    for x := 0; x < p.buffer.width; x++ {
-        cell := p.buffer.cells[y][x]
-
-        // 样式变化时输出 ANSI 序列
-        if cell.Style != currentStyle {
-            p.applyStyle(cell.Style)
-            currentStyle = cell.Style
-        }
-
-        p.drawRune(cell.Char)
-    }
-}
-
-// saveCursor 保存光标位置
-func (p *Painter) saveCursor() {
-    p.terminal.WriteString("\x1b[s")
-}
-
-// restoreCursor 恢复光标位置
-func (p *Painter) restoreCursor() {
-    p.terminal.WriteString("\x1b[u")
-}
-
-// moveCursor 移动光标
-func (p *Painter) moveCursor(x, y int) {
-    // 使用 CSI H: ESC [ <row> ; <col> H
-    // 注意: 终端坐标从 1 开始
-    p.terminal.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
-}
-
-// applyStyle 应用样式
-func (p *Painter) applyStyle(style Style) {
-    var codes []string
-
-    // 前景色
-    if style.FG.Color != "" {
-        codes = append(codes, style.FG.toANSI(false))
-    }
-
-    // 背景色
-    if style.BG.Color != "" {
-        codes = append(codes, style.BG.toANSI(true))
-    }
-
-    // 粗体
-    if style.Bold {
-        codes = append(codes, "1")
-    }
-
-    // 斜体
-    if style.Italic {
-        codes = append(codes, "3")
-    }
-
-    // 下划线
-    if style.Underline {
-        codes = append(codes, "4")
-    }
-
-    // 反白
-    if style.Reverse {
-        codes = append(codes, "7")
-    }
-
-    if len(codes) > 0 {
-        p.terminal.WriteString("\x1b[" + strings.Join(codes, ";") + "m")
-    } else {
-        p.resetStyle()
-    }
-}
-
-// resetStyle 重置样式
-func (p *Painter) resetStyle() {
-    p.terminal.WriteString("\x1b[0m")
-}
-
-// drawRune 绘制字符
-func (p *Painter) drawRune(r rune) {
-    p.terminal.WriteString(string(r))
-}
-
-// clearScreen 清屏
-func (p *Painter) clearScreen() {
-    p.terminal.WriteString("\x1b[2J")
-    p.moveCursor(0, 0)
-}
-
-// clearLine 清除行
-func (p *Painter) clearLine(y int) {
-    p.moveCursor(0, y)
-    p.terminal.WriteString("\x1b[2K")
-}
-```
-
-### 4. 屏幕管理器
-
-```go
-// 位于: tui/framework/screen/manager.go
-
-package screen
-
-// Manager 屏幕管理器
-type Manager struct {
-    terminal platform.Terminal
-
-    // 双缓冲
-    front    *Buffer  // 当前显示的缓冲区
-    back     *Buffer  // 后台缓冲区
-
-    // 差分引擎
-    diff     *DiffEngine
-
-    // 绘制器
-    painter  *Painter
-
-    // 光标
-    cursor   Cursor
-    cursorVisible bool
-}
-
-// NewManager 创建屏幕管理器
-func NewManager(terminal platform.Terminal) *Manager {
-    return &Manager{
-        terminal: terminal,
-        diff:     NewDiffEngine(),
-        painter:  NewPainter(terminal),
-    }
-}
-
-// Init 初始化屏幕
-func (m *Manager) Init() error {
-    // 获取终端尺寸
-    width, height, err := m.terminal.GetSize()
-    if err != nil {
-        return err
-    }
-
-    // 创建缓冲区
-    m.front = NewBuffer(width, height)
-    m.back = NewBuffer(width, height)
-
-    // 进入备用屏幕
-    m.terminal.WriteString("\x1b[?1049h")
-
-    // 启用原始模式
-    m.terminal.EnableRawMode()
-
-    // 隐藏光标
-    m.hideCursor()
-
-    // 清屏
-    m.clearScreen()
-
-    return nil
-}
-
-// Close 关闭屏幕
-func (m *Manager) Close() error {
-    // 显示光标
-    m.showCursor()
-
-    // 退出原始模式
-    m.terminal.DisableRawMode()
-
-    // 退出备用屏幕
-    m.terminal.WriteString("\x1b[?1049l")
-
-    return nil
-}
-
-// Render 渲染缓冲区
-func (m *Manager) Render(buf *Buffer) error {
-    // 确保尺寸匹配
-    if buf.width != m.back.width || buf.height != m.back.height {
-        m.resize(buf.width, buf.height)
-        m.front = NewBuffer(buf.width, buf.height)
-    }
-
-    // 计算差异
-    changes := m.diff.Diff(m.front, buf)
-
-    // 应用变更
-    m.painter.SetBuffer(buf)
-    if err := m.painter.Draw(changes); err != nil {
-        return err
-    }
-
-    // 更新前缓冲
-    m.front = buf
-
-    return nil
-}
-
-// resize 调整尺寸
-func (m *Manager) resize(width, height int) {
-    m.back = NewBuffer(width, height)
-}
-
-// clearScreen 清屏
-func (m *Manager) clearScreen() {
-    m.terminal.WriteString("\x1b[2J")
-    m.moveCursor(0, 0)
-}
-
-// moveCursor 移动光标
-func (m *Manager) moveCursor(x, y int) {
-    m.terminal.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
-}
-
-// hideCursor 隐藏光标
-func (m *Manager) hideCursor() {
-    m.terminal.WriteString("\x1b[?25l")
-    m.cursorVisible = false
-}
-
-// showCursor 显示光标
-func (m *Manager) showCursor() {
-    m.terminal.WriteString("\x1b[?25h")
-    m.cursorVisible = true
-}
-
-// SetCursor 设置光标位置
-func (m *Manager) SetCursor(x, y int) {
-    m.cursor.X = x
-    m.cursor.Y = y
-
-    if m.cursorVisible {
-        m.moveCursor(x, y)
-    }
-}
-
-// GetCursor 获取光标位置
-func (m *Manager) GetCursor() (x, y int) {
-    return m.cursor.X, m.cursor.Y
-}
-
-// SetCursorVisible 设置光标可见性
-func (m *Manager) SetCursorVisible(visible bool) {
-    if visible != m.cursorVisible {
-        if visible {
-            m.showCursor()
-        } else {
-            m.hideCursor()
-        }
-        m.cursorVisible = visible
-    }
-}
-
-// GetSize 获取屏幕尺寸
-func (m *Manager) GetSize() (width, height int) {
-    return m.terminal.GetSize()
-}
-
-// Cursor 光标结构
-type Cursor struct {
-    X int
-    Y int
-}
-```
-
-## 组件渲染
-
-### 渲染上下文
-
-```go
-// 位于: tui/framework/component/render.go
-
-package component
-
-// RenderContext 渲染上下文
-type RenderContext struct {
-    // 可用尺寸
-    AvailableWidth  int
-    AvailableHeight int
-
-    // 组件位置 (相对于父组件)
-    X int
-    Y int
-
-    // 滚动偏移
-    OffsetX int
-    OffsetY int
-
-    // 继承的样式
-    InheritStyle Style
+    // 位置和尺寸（由 Layout 计算）
+    Bounds Rect
 
     // Z-index
-    ZIndex int
+    Z int
+
+    // 绘制函数（由 Component 提供）
+    PaintFunc func(ctx PaintContext, buf *CellBuffer)
+
+    // 子节点
+    Children []*RenderNode
+
+    // 样式
+    Style Style
+
+    // 可见性
+    Visible bool
 
     // 裁剪区域
     ClipRect *Rect
@@ -724,30 +297,32 @@ type RenderContext struct {
 
 // Rect 矩形区域
 type Rect struct {
-    X      int
-    Y      int
-    Width  int
-    Height int
+    X, Y, Width, Height int
+}
+
+// Empty 检查是否为空
+func (r Rect) Empty() bool {
+    return r.Width <= 0 || r.Height <= 0
 }
 
 // Contains 检查点是否在矩形内
-func (r *Rect) Contains(x, y int) bool {
+func (r Rect) Contains(x, y int) bool {
     return x >= r.X && x < r.X+r.Width &&
            y >= r.Y && y < r.Y+r.Height
 }
 
-// Intersect 计算两个矩形的交集
-func (r *Rect) Intersect(other *Rect) *Rect {
+// Intersect 计算交集
+func (r Rect) Intersect(other Rect) Rect {
     x1 := max(r.X, other.X)
     y1 := max(r.Y, other.Y)
     x2 := min(r.X+r.Width, other.X+other.Width)
     y2 := min(r.Y+r.Height, other.Y+other.Height)
 
     if x1 >= x2 || y1 >= y2 {
-        return nil  // 无交集
+        return Rect{} // 无交集
     }
 
-    return &Rect{
+    return Rect{
         X:      x1,
         Y:      y1,
         Width:  x2 - x1,
@@ -755,146 +330,111 @@ func (r *Rect) Intersect(other *Rect) *Rect {
     }
 }
 
-// NewRenderContext 创建渲染上下文
-func NewRenderContext(width, height int) *RenderContext {
-    return &RenderContext{
-        AvailableWidth:  width,
-        AvailableHeight: height,
+// Union 计算并集
+func (r Rect) Union(other Rect) Rect {
+    if r.Empty() {
+        return other
+    }
+    if other.Empty() {
+        return r
+    }
+
+    x1 := min(r.X, other.X)
+    y1 := min(r.Y, other.Y)
+    x2 := max(r.X+r.Width, other.X+other.Width)
+    y2 := max(r.Y+r.Height, other.Y+other.Height)
+
+    return Rect{
+        X:      x1,
+        Y:      y1,
+        Width:  x2 - x1,
+        Height: y2 - y1,
     }
 }
 
-// WithOffset 创建带偏移的上下文
-func (c *RenderContext) WithOffset(dx, dy int) *RenderContext {
-    return &RenderContext{
-        AvailableWidth:  c.AvailableWidth,
-        AvailableHeight: c.AvailableHeight,
-        X:               c.X + dx,
-        Y:               c.Y + dy,
-        OffsetX:         c.OffsetX,
-        OffsetY:         c.OffsetY,
-        InheritStyle:    c.InheritStyle,
-        ZIndex:          c.ZIndex,
-        ClipRect:        c.ClipRect,
+// NewRenderNode 创建渲染节点
+func NewRenderNode(id string) *RenderNode {
+    return &RenderNode{
+        ID:       id,
+        Children: make([]*RenderNode, 0),
+        Visible:  true,
     }
 }
 
-// WithClip 创建带裁剪的上下文
-func (c *RenderContext) WithClip(rect *Rect) *RenderContext {
-    clip := rect
-    if c.ClipRect != nil {
-        clip = c.ClipRect.Intersect(rect)
+// AddChild 添加子节点
+func (n *RenderNode) AddChild(child *RenderNode) {
+    n.Children = append(n.Children, child)
+}
+
+// Find 查找节点
+func (n *RenderNode) Find(id string) *RenderNode {
+    if n.ID == id {
+        return n
     }
-    return &RenderContext{
-        AvailableWidth:  c.AvailableWidth,
-        AvailableHeight: c.AvailableHeight,
-        X:               c.X,
-        Y:               c.Y,
-        OffsetX:         c.OffsetX,
-        OffsetY:         c.OffsetY,
-        InheritStyle:    c.InheritStyle,
-        ZIndex:          c.ZIndex,
-        ClipRect:        clip,
+    for _, child := range n.Children {
+        if found := child.Find(id); found != nil {
+            return found
+        }
     }
+    return nil
+}
+
+// Render 渲染到缓冲区
+func (n *RenderNode) Render(buf *CellBuffer, offsetX, offsetY int) {
+    if !n.Visible {
+        return
+    }
+
+    ctx := PaintContext{
+        Bounds:    n.Bounds,
+        AbsoluteX: offsetX + n.Bounds.X,
+        AbsoluteY: offsetY + n.Bounds.Y,
+        ZIndex:    n.Z,
+        ClipRect:  n.ClipRect,
+    }
+
+    // 绘制自身
+    if n.PaintFunc != nil {
+        n.PaintFunc(ctx, buf)
+    }
+
+    // 绘制子节点
+    for _, child := range n.Children {
+        child.Render(buf, offsetX+n.Bounds.X, offsetY+n.Bounds.Y)
+    }
+}
+
+// CalculateBounds 计算所有节点的边界
+func (n *RenderNode) CalculateBounds() {
+    // 递归计算子节点边界
+    for _, child := range n.Children {
+        child.CalculateBounds()
+    }
+
+    // 根据子节点调整自身边界
+    // （由 Layout Engine 完成）
 }
 ```
 
-### 基础渲染器
+### 4. DirtyRegion - 脏区域追踪
 
 ```go
-// 位于: tui/framework/component/renderer.go
+// 位于: tui/runtime/paint/dirty.go
 
-package component
-
-// Renderer 组件渲染器
-type Renderer struct {
-    buffer *screen.Buffer
-}
-
-// NewRenderer 创建渲染器
-func NewRenderer(buffer *screen.Buffer) *Renderer {
-    return &Renderer{buffer: buffer}
-}
-
-// Render 渲染组件
-func (r *Renderer) Render(comp Component, ctx *RenderContext) {
-    // 设置组件尺寸
-    comp.SetSize(ctx.AvailableWidth, ctx.AvailableHeight)
-
-    // 获取渲染内容
-    content := comp.Render(ctx)
-
-    // 绘制到缓冲区
-    r.drawContent(content, ctx)
-}
-
-// drawContent 绘制内容
-func (r *Renderer) drawContent(content string, ctx *RenderContext) {
-    lines := strings.Split(content, "\n")
-
-    for y, line := range lines {
-        if y >= ctx.AvailableHeight {
-            break
-        }
-        r.buffer.SetStyledText(ctx.X, ctx.Y+y, line, ctx.InheritStyle)
-    }
-}
-
-// RenderContainer 渲染容器组件
-func (r *Renderer) RenderContainer(container Container, ctx *RenderContext) {
-    children := container.GetChildren()
-
-    // 布局计算
-    layout := container.GetLayout()
-    if layout != nil {
-        layout.Layout(container, ctx.X, ctx.Y, ctx.AvailableWidth, ctx.AvailableHeight)
-    }
-
-    // 渲染子组件
-    for _, child := range children {
-        if !child.IsVisible() {
-            continue
-        }
-
-        // 获取子组件位置
-        childX := child.GetX()
-        childY := child.GetY()
-        childW, childH := child.GetSize()
-
-        // 创建子组件上下文
-        childCtx := ctx.WithOffset(childX, childY)
-        childCtx.AvailableWidth = childW
-        childCtx.AvailableHeight = childH
-
-        // 递归渲染
-        r.Render(child, childCtx)
-    }
-}
-```
-
-## 渲染优化
-
-### 1. 脏区域标记
-
-```go
-// 位于: tui/framework/screen/dirty.go
-
-package screen
+package paint
 
 // DirtyRegion 脏区域
 type DirtyRegion struct {
-    X      int
-    Y      int
-    Width  int
-    Height int
+    X, Y, Width, Height int
 }
 
-// DirtyTracker 脏区域跟踪器
+// DirtyTracker 脏区域追踪器
 type DirtyTracker struct {
     regions []DirtyRegion
     enabled bool
 }
 
-// NewDirtyTracker 创建脏区域跟踪器
+// NewDirtyTracker 创建脏区域追踪器
 func NewDirtyTracker() *DirtyTracker {
     return &DirtyTracker{
         regions: make([]DirtyRegion, 0),
@@ -902,12 +442,12 @@ func NewDirtyTracker() *DirtyTracker {
     }
 }
 
-// Enable 启用脏区域跟踪
+// Enable 启用脏区域追踪
 func (t *DirtyTracker) Enable() {
     t.enabled = true
 }
 
-// Disable 禁用脏区域跟踪
+// Disable 禁用脏区域追踪
 func (t *DirtyTracker) Disable() {
     t.enabled = false
 }
@@ -935,6 +475,19 @@ func (t *DirtyTracker) MarkDirty(x, y, width, height int) {
 
     // 添加新区域
     t.regions = append(t.regions, region)
+}
+
+// MarkComponent 标记组件为脏
+func (t *DirtyTracker) MarkComponent(node *RenderNode) {
+    if node == nil || !node.Visible {
+        return
+    }
+    t.MarkDirty(
+        node.Bounds.X,
+        node.Bounds.Y,
+        node.Bounds.Width,
+        node.Bounds.Height,
+    )
 }
 
 // mergeable 检查是否可合并
@@ -969,73 +522,73 @@ func (t *DirtyTracker) Clear() {
     t.regions = t.regions[:0]
 }
 
-// IsDirty 检查是否有脏区域
-func (t *DirtyTracker) IsDirty() bool {
+// HasAny 是否有任何脏区域
+func (t *DirtyTracker) HasAny() bool {
     return len(t.regions) > 0
+}
+
+// MarkAll 标记全屏为脏
+func (t *DirtyTracker) MarkAll(width, height int) {
+    t.regions = []DirtyRegion{
+        {X: 0, Y: 0, Width: width, Height: height},
+    }
 }
 ```
 
-### 2. 部分渲染
+### 5. DiffEngine - 差分引擎
 
 ```go
-// 位于: tui/framework/screen/partial.go
+// 位于: tui/runtime/paint/diff.go
 
-package screen
+package paint
 
-// PartialRenderer 部分渲染器
-type PartialRenderer struct {
-    buffer *Buffer
-    tracker *DirtyTracker
+// DiffChange 变更记录
+type DiffChange struct {
+    X, Y int
+    Old  Cell
+    New  Cell
 }
 
-// NewPartialRenderer 创建部分渲染器
-func NewPartialRenderer(buffer *Buffer) *PartialRenderer {
-    return &PartialRenderer{
-        buffer:  buffer,
-        tracker: NewDirtyTracker(),
+// DiffEngine 差分引擎
+type DiffEngine struct {
+    // 只比较 Dirty Region
+    dirtyOnly bool
+}
+
+// NewDiffEngine 创建差分引擎
+func NewDiffEngine() *DiffEngine {
+    return &DiffEngine{
+        dirtyOnly: true,
     }
 }
 
-// RenderComponent 渲染组件到指定区域
-func (r *PartialRenderer) RenderComponent(comp Component, x, y, width, height int) {
-    // 标记脏区域
-    r.tracker.MarkDirty(x, y, width, height)
-
-    // 渲染组件
-    ctx := NewRenderContext(width, height)
-    ctx.X = x
-    ctx.Y = y
-
-    renderer := NewRenderer(r.buffer)
-    renderer.Render(comp, ctx)
-}
-
-// GetChanges 获取变更
-func (r *PartialRenderer) GetChanges(old *Buffer) []DiffChange {
-    diff := NewDiffEngine()
-
-    if len(r.tracker.GetDirtyRegions()) == 0 {
-        // 无脏区域，无变更
-        return []DiffChange{}
+// Diff 计算两个缓冲区的差异
+func (e *DiffEngine) Diff(old, new *CellBuffer) []DiffChange {
+    if old.width != new.width || old.height != new.height {
+        // 尺寸不同，全量更新
+        return e.fullDiff(new)
     }
 
-    // 只比较脏区域
-    changes := make([]DiffChange, 0)
+    var changes []DiffChange
 
-    for _, region := range r.tracker.GetDirtyRegions() {
-        for y := region.Y; y < region.Y+region.Height && y < r.buffer.height; y++ {
-            for x := region.X; x < region.X+region.Width && x < r.buffer.width; x++ {
-                oldCell := old.GetCell(x, y)
-                newCell := r.buffer.GetCell(x, y)
+    // 如果启用 dirtyOnly，检查是否有脏区域
+    if e.dirtyOnly {
+        // TODO: 从 DirtyTracker 获取脏区域
+        // 这里简化处理，全量比较
+    }
 
-                if !cellsEqual(oldCell, newCell) {
-                    changes = append(changes, DiffChange{
-                        X:   x,
-                        Y:   y,
-                        Old: oldCell,
-                        New: newCell,
-                    })
-                }
+    for y := 0; y < new.height; y++ {
+        for x := 0; x < new.width; x++ {
+            oldCell := old.cells[y][x]
+            newCell := new.cells[y][x]
+
+            if !e.cellsEqual(oldCell, newCell) {
+                changes = append(changes, DiffChange{
+                    X:   x,
+                    Y:   y,
+                    Old: oldCell,
+                    New: newCell,
+                })
             }
         }
     }
@@ -1043,158 +596,219 @@ func (r *PartialRenderer) GetChanges(old *Buffer) []DiffChange {
     return changes
 }
 
-// ClearDirty 清除脏标记
-func (r *PartialRenderer) ClearDirty() {
-    r.tracker.Clear()
+// cellsEqual 比较单元格是否相等
+func (e *DiffEngine) cellsEqual(a, b Cell) bool {
+    return a.Char == b.Char && a.Style == b.Style
+}
+
+// fullDiff 全量差异
+func (e *DiffEngine) fullDiff(buf *CellBuffer) []DiffChange {
+    changes := make([]DiffChange, 0, buf.width*buf.height)
+
+    for y := 0; y < buf.height; y++ {
+        for x := 0; x < buf.width; x++ {
+            cell := buf.cells[y][x]
+            changes = append(changes, DiffChange{
+                X:   x,
+                Y:   y,
+                New: cell,
+            })
+        }
+    }
+
+    return changes
+}
+
+// Optimize 优化变更列表
+func (e *DiffEngine) Optimize(changes []DiffChange) []DiffChange {
+    if len(changes) == 0 {
+        return changes
+    }
+
+    // 按行分组
+    byLine := make(map[int][]DiffChange)
+    for _, c := range changes {
+        byLine[c.Y] = append(byLine[c.Y], c)
+    }
+
+    var optimized []DiffChange
+
+    for y, lineChanges := range byLine {
+        // 按X排序
+        sort.Slice(lineChanges, func(i, j int) bool {
+            return lineChanges[i].X < lineChanges[j].X
+        })
+
+        // 合并相邻的相同样式变更
+        i := 0
+        for i < len(lineChanges) {
+            start := i
+            startStyle := lineChanges[i].New.Style
+
+            for i < len(lineChanges) &&
+                lineChanges[i].New.Style == startStyle &&
+                (i == start || lineChanges[i].X == lineChanges[i-1].X+1) {
+                i++
+            }
+
+            // 检查是否可以合并为范围输出
+            if i-start > 3 {
+                // 使用范围
+                optimized = append(optimized, DiffChange{
+                    Y:   y,
+                    X:   lineChanges[start].X,
+                    New: lineChanges[start].New,
+                    Count: i - start, // 新增字段
+                })
+            } else {
+                // 单独输出
+                for j := start; j < i; j++ {
+                    optimized = append(optimized, lineChanges[j])
+                }
+            }
+        }
+    }
+
+    return optimized
 }
 ```
 
-## ANSI 转义码
-
-### 常用转义码
+## PaintContext - 绘制上下文
 
 ```go
-// 位于: tui/framework/screen/ansi.go
+// 位于: tui/runtime/paint/context.go
 
-package screen
+package paint
 
-// ANSICodes ANSI 转义码常量
-const (
-    // 光标控制
-    CursorHome          = "\x1b[H"
-    CursorUp            = "\x1b[A"
-    CursorDown          = "\x1b[B"
-    CursorForward       = "\x1b[C"
-    CursorBack          = "\x1b[D"
-    CursorSave          = "\x1b[s"
-    CursorRestore       = "\x1b[u"
-    CursorHide          = "\x1b[?25l"
-    CursorShow          = "\x1b[?25h"
+// PaintContext 绘制上下文
+type PaintContext struct {
+    // 绘制区域（相对于父组件）
+    Bounds Rect
 
-    // 屏幕控制
-    ScreenClear         = "\x1b[2J"
-    ScreenErase         = "\x1b[3J"
-    LineClear           = "\x1b[2K"
-    LineErase           = "\x1b[3K"
+    // 绝对屏幕坐标
+    AbsoluteX int
+    AbsoluteY int
 
-    // 滚动
-    ScrollUp            = "\x1b[%dS"
-    ScrollDown          = "\x1b[%dT"
+    // 继承样式
+    InheritStyle Style
 
-    // 备用屏幕
-    AltScreenEnter      = "\x1b[?1049h"
-    AltScreenExit       = "\x1b[?1049l"
+    // Z-index
+    ZIndex int
 
-    // 样式重置
-    ResetAll            = "\x1b[0m"
+    // 裁剪区域
+    ClipRect *Rect
 
-    // 颜色
-    ResetFG             = "\x1b[39m"
-    ResetBG             = "\x1b[49m"
-
-    // 粗体
-    BoldOn              = "\x1b[1m"
-    BoldOff             = "\x1b[22m"
-
-    // 斜体
-    ItalicOn            = "\x1b[3m"
-    ItalicOff           = "\x1b[23m"
-
-    // 下划线
-    UnderlineOn         = "\x1b[4m"
-    UnderlineOff        = "\x1b[24m"
-
-    // 反白
-    ReverseOn           = "\x1b[7m"
-    ReverseOff          = "\x1b[27m"
-
-    // 闪烁
-    BlinkOn             = "\x1b[5m"
-    BlinkOff            = "\x1b[25m"
-)
-
-// ColorCodes 256色代码
-var ColorCodes = map[string]int{
-    // 标准色
-    "black":   0,
-    "red":     1,
-    "green":   2,
-    "yellow":  3,
-    "blue":    4,
-    "magenta": 5,
-    "cyan":    6,
-    "white":   7,
-
-    // 高亮色
-    "bright-black":   8,
-    "bright-red":     9,
-    "bright-green":   10,
-    "bright-yellow":  11,
-    "bright-blue":    12,
-    "bright-magenta": 13,
-    "bright-cyan":    14,
-    "bright-white":   15,
+    // 元数据
+    Metadata map[string]interface{}
 }
 
-// FormatColor 格式化颜色代码
-func FormatColor(color string, bg bool) string {
-    if code, ok := ColorCodes[color]; ok {
-        if bg {
-            return fmt.Sprintf("48;5;%d", code)
-        }
-        return fmt.Sprintf("38;5;%d", code)
+// WithOffset 创建带偏移的上下文
+func (c PaintContext) WithOffset(dx, dy int) PaintContext {
+    return PaintContext{
+        Bounds:       c.Bounds,
+        AbsoluteX:    c.AbsoluteX + dx,
+        AbsoluteY:    c.AbsoluteY + dy,
+        InheritStyle: c.InheritStyle,
+        ZIndex:       c.ZIndex,
+        ClipRect:     c.ClipRect,
+        Metadata:     c.Metadata,
     }
-
-    // 尝试解析为数字
-    if n, err := strconv.Atoi(color); err == nil && n >= 0 && n <= 255 {
-        if bg {
-            return fmt.Sprintf("48;5;%d", n)
-        }
-        return fmt.Sprintf("38;5;%d", n)
-    }
-
-    return ""
 }
 
-// FormatRGB 格式化 RGB 颜色
-func FormatRGB(r, g, b int, bg bool) string {
-    if bg {
-        return fmt.Sprintf("48;2;%d;%d;%d", r, g, b)
+// WithClip 创建带裁剪的上下文
+func (c PaintContext) WithClip(rect Rect) PaintContext {
+    clip := rect
+    if c.ClipRect != nil {
+        clip = c.ClipRect.Intersect(rect)
     }
-    return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
+    return PaintContext{
+        Bounds:       c.Bounds,
+        AbsoluteX:    c.AbsoluteX,
+        AbsoluteY:    c.AbsoluteY,
+        InheritStyle: c.InheritStyle,
+        ZIndex:       c.ZIndex,
+        ClipRect:     &clip,
+        Metadata:     c.Metadata,
+    }
+}
+
+// IsClipped 检查点是否被裁剪
+func (c PaintContext) IsClipped(x, y int) bool {
+    if c.ClipRect == nil {
+        return false
+    }
+    return !c.ClipRect.Contains(x, y)
 }
 ```
 
-## 渲染示例
+## 输出接口
+
+### TerminalOutput - 终端输出
 
 ```go
-// 完整的渲染流程示例
+// 位于: tui/runtime/paint/output.go
 
-func ExampleRender() {
-    // 1. 创建屏幕管理器
-    terminal := platform.NewDefaultTerminal()
-    screen := screen.NewManager(terminal)
-    screen.Init()
-    defer screen.Close()
+package paint
 
-    // 2. 创建组件树
-    root := layout.NewFlex().
-        WithDirection(layout.Column).
-        WithChildren(
-            display.NewText("Hello, World!"),
-            input.NewTextInput(),
-        )
+// TerminalOutput 终端输出
+type TerminalOutput interface {
+    // Write 输出变更
+    Write(changes []DiffChange) error
 
-    // 3. 创建渲染缓冲区
-    width, height := screen.GetSize()
-    buffer := screen.NewBuffer(width, height)
+    // Flush 刷新输出
+    Flush() error
 
-    // 4. 渲染组件
-    renderer := component.NewRenderer(buffer)
-    ctx := component.NewRenderContext(width, height)
-    renderer.Render(root, ctx)
+    // Clear 清屏
+    Clear() error
+}
 
-    // 5. 输出到屏幕
-    screen.Render(buffer)
+// ANSIOutput ANSI 转义码输出
+type ANSIOutput struct {
+    writer io.Writer
+    cursor *CursorState
+}
+
+// Write 写入变更
+func (o *ANSIOutput) Write(changes []DiffChange) error {
+    for _, change := range changes {
+        // 移动光标
+        o.moveCursor(change.X, change.Y)
+
+        // 设置样式
+        o.applyStyle(change.New.Style)
+
+        // 绘制字符
+        o.writeRune(change.New.Char)
+    }
+
+    // 重置样式
+    o.resetStyle()
+
+    return nil
+}
+
+// Flush 刷新
+func (o *ANSIOutput) Flush() error {
+    if f, ok := o.writer.(interface{ Flush() error }); ok {
+        return f.Flush()
+    }
+    return nil
 }
 ```
+
+## V2 → V3 主要变更
+
+| 方面 | V2 | V3 |
+|------|----|----|
+| Render | 返回 `string` | `Paint(ctx, buf)` 直接写入 |
+| 中间态 | 无 | 引入 `RenderNode` |
+| Dirty | Cell diff | 主动标记 `DirtyRegion` |
+| Diff | 全量比较 | 只比较 Dirty 区域 |
+| 性能 | 可能有全量 repaint | 局部重绘 |
+| 幂等性 | 未明确 | 明确要求幂等性 |
+
+## 相关文档
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构总览
+- [COMPONENTS.md](COMPONENTS.md) - Component 接口
+- [BOUNDARIES.md](BOUNDARIES.md) - 层级边界

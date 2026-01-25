@@ -1,53 +1,125 @@
-# Event System Design
+# Event System Design (V3)
+
+> **版本说明**: 本文档定义了 TUI 框架的事件系统。V3 明确定义了事件流的三个阶段：Capture、Target、Bubble，确保事件传播顺序可预测、可测试。
 
 ## 概述
 
-事件系统是 TUI 框架的核心，负责处理所有用户输入和系统事件。本文档详细描述了事件系统的架构和实现。
+事件系统负责处理用户输入和系统事件。V3 核心设计原则：
 
-## 事件流架构
+1. **明确的阶段**: Capture → Target → Bubble
+2. **可预测的顺序**: 事件传播路径完全确定
+3. **可中断**: 任何处理器都可以停止传播
+4. **AI 友好**: 事件可记录、可回放
+5. **与 Action 解耦**: 底层 Event → 语义 Action
+
+## 与 Action 系统的关系
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          Event Flow                                     │
-└─────────────────────────────────────────────────────────────────────────┘
-
-User Input
+Platform Input (RawInput)
     │
     ▼
-┌─────────────────┐
-│  Platform Layer │ 原始输入 (stdin, 信号)
-│  (OS/Driver)    │
-└─────────────────┘
+┌─────────────────────────────────────────┐
+│  Event System (Runtime Layer)          │
+│  - 解析 ANSI 序列                        │
+│  - 分类事件类型                         │
+└─────────────────────────────────────────┘
     │
     ▼
-┌─────────────────┐
-│  Event Pump     │ 持续读取输入，生成原始事件
-│  (Goroutine)    │
-└─────────────────┘
+┌─────────────────────────────────────────┐
+│  InputProcessor + KeyMap               │
+│  - RawInput → Action (语义化)            │
+│  - 支持上下文感知                        │
+└─────────────────────────────────────────┘
     │
     ▼
-┌─────────────────┐
-│ Event Classifier │ 解析 ANSI 序列，分类事件
-└─────────────────┘
-    │
-    ▼
-┌─────────────────┐
-│  Event Router   │ 路由到目标组件
-└─────────────────┘
-    │
-    ├──► Capture Phase ──► 全局处理器
-    │
-    ├──► Target Phase ────► 目标组件
-    │
-    └──► Bubble Phase ────► 冒泡到父组件
+┌─────────────────────────────────────────┐
+│  Action Dispatcher (Framework Layer)    │
+│  - Capture Phase (全局拦截)               │
+│  - Target Phase (焦点目标)                │
+│  - Bubble Phase (父组件冒泡)               │
+└─────────────────────────────────────────┘
 ```
+
+> **重要**: Component 应该实现 `ActionTarget` 来响应操作，而不是直接监听 `KeyEvent`。这确保 UI 可回放、可测试。
+
+## 事件流阶段（V3 核心）
+
+### 三阶段模型
+
+```
+User Input (e.g., Enter key)
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│  Capture Phase (捕获阶段)               │
+│  Root → Parent → Target                  │
+│  ↓                                       │
+│  全局拦截器优先执行                      │
+│  用途: 快捷键、全局状态                  │
+└─────────────────────────────────────────┘
+    │ (如果未停止)
+    ▼
+┌─────────────────────────────────────────┐
+│  Target Phase (目标阶段)                │
+│  Target Component                       │
+│  ↓                                       │
+│  焦点目标处理 Action                   │
+└─────────────────────────────────────────┘
+    │ (如果未停止)
+    ▼
+┌─────────────────────────────────────────┐
+│  Bubble Phase (冒泡阶段)                │
+│  Target → Parent → Root                  │
+│  ↓                                       │
+│  父组件可以处理子组件未处理的事件       │
+└─────────────────────────────────────────┘
+```
+
+### 阶段定义
+
+```go
+// 位于: tui/runtime/event/phase.go
+
+package event
+
+// EventPhase 事件阶段
+type EventPhase int
+
+const (
+    PhaseCapture EventPhase = iota // 捕获阶段：从 Root 到 Target
+    PhaseTarget                  // 目标阶段：Target 本身
+    PhaseBubble                  // 冒泡阶段：从 Target 到 Root
+)
+
+// String 返回阶段名称
+func (p EventPhase) String() string {
+    switch p {
+    case PhaseCapture:
+        return "Capture"
+    case PhaseTarget:
+        return "Target"
+    case PhaseBubble:
+        return "Bubble"
+    default:
+        return "Unknown"
+    }
+}
+```
+
+### 传播规则
+
+| 阶段 | 顺序 | 处理器 | 停止条件 |
+|------|------|--------|---------|
+| Capture | Root → Target | CaptureHandler | `StopPropagation()` |
+| Target | Target | ActionTarget | 返回 `true` |
+| Bubble | Target → Root | BubbleHandler | `StopPropagation()` |
 
 ## 核心类型定义
 
-### 1. 事件接口
+### 1. Event 接口
 
 ```go
-// 位于: tui/framework/event/event.go
+// 位于: tui/runtime/event/event.go
 
 package event
 
@@ -56,14 +128,14 @@ type Event interface {
     // Type 返回事件类型
     Type() EventType
 
-    // Timestamp 返回事件时间戳
+    // Phase 返回当前阶段
+    Phase() EventPhase
+
+    // Timestamp 返回时间戳
     Timestamp() time.Time
 
-    // Source 返回事件源组件
-    Source() Component
-
     // Target 返回目标组件
-    Target() Component
+    Target() Node
 
     // PreventDefault 阻止默认行为
     PreventDefault()
@@ -71,7 +143,7 @@ type Event interface {
     // IsDefaultPrevented 是否已阻止默认行为
     IsDefaultPrevented() bool
 
-    // StopPropagation 停止事件传播
+    // StopPropagation 停止传播
     StopPropagation()
 
     // IsPropagationStopped 是否已停止传播
@@ -80,28 +152,33 @@ type Event interface {
 
 // BaseEvent 基础事件实现
 type BaseEvent struct {
-    eventType    EventType
-    timestamp    time.Time
-    source       Component
-    target       Component
-    prevented    bool
-    stopped      bool
+    eventType EventType
+    phase     EventPhase
+    timestamp time.Time
+    target    Node
+    prevented bool
+    stopped   bool
 }
 
-func (e *BaseEvent) Type() EventType { return e.eventType }
-func (e *BaseEvent) Timestamp() time.Time { return e.timestamp }
-func (e *BaseEvent) Source() Component { return e.source }
-func (e *BaseEvent) Target() Component { return e.target }
-func (e *BaseEvent) PreventDefault() { e.prevented = true }
-func (e *BaseEvent) IsDefaultPrevented() bool { return e.prevented }
-func (e *BaseEvent) StopPropagation() { e.stopped = true }
+func (e *BaseEvent) Type() EventType             { return e.eventType }
+func (e *BaseEvent) Phase() EventPhase           { return e.phase }
+func (e *BaseEvent) Timestamp() time.Time       { return e.timestamp }
+func (e *BaseEvent) Target() Node               { return e.target }
+func (e *BaseEvent) PreventDefault()          { e.prevented = true }
+func (e *BaseEvent) IsDefaultPrevented() bool  { return e.prevented }
+func (e *BaseEvent) StopPropagation()         { e.stopped = true }
 func (e *BaseEvent) IsPropagationStopped() bool { return e.stopped }
+
+// SetPhase 设置阶段（内部使用）
+func (e *BaseEvent) SetPhase(phase EventPhase) {
+    e.phase = phase
+}
 ```
 
 ### 2. 事件类型
 
 ```go
-// 位于: tui/framework/event/types.go
+// 位于: tui/runtime/event/types.go
 
 package event
 
@@ -109,60 +186,55 @@ package event
 type EventType int
 
 const (
-    // 键盘事件
-    EventKeyPress EventType = iota + 1000
-    EventKeyRelease
-    EventKeyRepeat
+    // 系统事件
+    EventInit EventType = iota + 1000
+    EventTick
+    EventResize
+    EventSignal
+    EventQuit
 
-    // 鼠标事件
+    // 键盘事件（原始，Platform 层）
+    EventKeyPress
+    EventKeyRelease
+
+    // 鼠标事件（原始，Platform 层）
     EventMousePress
     EventMouseRelease
     EventMouseMove
     EventMouseWheel
-    EventMouseEnter
-    EventMouseLeave
 
-    // 窗口事件
-    EventResize
-    EventFocus
-    EventBlur
-    EventClose
+    // Action 事件（语义化，Framework 层）
+    EventAction
 
     // 组件事件
     EventClick
-    EventDoubleClick
-    EventContextMenu
     EventChange
+    EventFocus
+    EventBlur
     EventSubmit
     EventCancel
-    EventSelect
-    EventExpand
-    EventCollapse
-
-    // 拖放事件
-    EventDragStart
-    EventDrag
-    EventDragEnd
-    EventDrop
-
-    // 焦点事件
-    EventFocusIn
-    EventFocusOut
-    EventFocusGained
-    EventFocusLost
 
     // 自定义事件
-    EventCustom = 10000
+    EventCustom = 20000
 )
 
 // String 返回事件类型名称
 func (t EventType) String() string {
     switch t {
-    case EventKeyPress: return "KeyPress"
-    case EventKeyRelease: return "KeyRelease"
-    case EventMousePress: return "MousePress"
-    case EventMouseRelease: return "MouseRelease"
-    // ...
+    case EventInit:
+        return "Init"
+    case EventTick:
+        return "Tick"
+    case EventResize:
+        return "Resize"
+    case EventSignal:
+        return "Signal"
+    case EventQuit:
+        return "Quit"
+    case EventKeyPress:
+        return "KeyPress"
+    case EventAction:
+        return "Action"
     default:
         if t >= EventCustom {
             return fmt.Sprintf("Custom(%d)", t)
@@ -172,26 +244,26 @@ func (t EventType) String() string {
 }
 ```
 
-### 3. 键盘事件
+### 3. 键盘事件（Platform 层）
 
 ```go
-// 位于: tui/framework/event/keyboard.go
+// 位于: tui/runtime/event/keyboard.go
 
 package event
 
-// KeyEvent 键盘事件
+// KeyEvent 键盘事件（原始输入）
 type KeyEvent struct {
     BaseEvent
 
     // 按键
-    Key      rune   // 字符键 (如 'a', 'A', '1')
-    Special  SpecialKey  // 特殊键 (如 Enter, Escape)
+    Key      rune      // 字符键 (如 'a', 'A', '1')
+    Special  SpecialKey // 特殊键 (如 Enter, Escape)
 
     // 修饰键
     Modifiers KeyModifier
 
     // 重复
-    Repeat    bool
+    Repeat bool
 }
 
 // SpecialKey 特殊键定义
@@ -222,44 +294,7 @@ const (
     KeyF1
     KeyF2
     KeyF3
-    KeyF4
-    KeyF5
-    KeyF6
-    KeyF7
-    KeyF8
-    KeyF9
-    KeyF10
-    KeyF11
-    KeyF12
-
-    // 组合键
-    KeySpace
-    KeyCtrlA
-    KeyCtrlB
-    KeyCtrlC
-    KeyCtrlD
-    KeyCtrlE
-    KeyCtrlF
-    KeyCtrlG
-    KeyCtrlH
-    KeyCtrlI
-    KeyCtrlJ
-    KeyCtrlK
-    KeyCtrlL
-    KeyCtrlM
-    KeyCtrlN
-    KeyCtrlO
-    KeyCtrlP
-    KeyCtrlQ
-    KeyCtrlR
-    KeyCtrlS
-    KeyCtrlT
-    KeyCtrlU
-    KeyCtrlV
-    KeyCtrlW
-    KeyCtrlX
-    KeyCtrlY
-    KeyCtrlZ
+    // ... F12
 )
 
 // KeyModifier 修饰键
@@ -269,415 +304,231 @@ const (
     ModShift KeyModifier = 1 << iota
     ModAlt
     ModCtrl
-    ModMeta  // Windows/Cmd 键
+    ModMeta
 )
 
 // Has 检查是否有修饰键
 func (m KeyModifier) Has(mod KeyModifier) bool {
     return m&mod != 0
 }
-
-// String 返回修饰键字符串
-func (m KeyModifier) String() string {
-    var parts []string
-    if m.Has(ModCtrl) {
-        parts = append(parts, "Ctrl")
-    }
-    if m.Has(ModAlt) {
-        parts = append(parts, "Alt")
-    }
-    if m.Has(ModShift) {
-        parts = append(parts, "Shift")
-    }
-    if m.Has(ModMeta) {
-        parts = append(parts, "Meta")
-    }
-    return strings.Join(parts, "+")
-}
-
-// KeyCombo 快捷键组合 (如 "Ctrl+C", "Alt+Shift+Delete")
-type KeyCombo struct {
-    Key       rune
-    Special   SpecialKey
-    Modifiers KeyModifier
-}
-
-// ParseKeyCombo 解析快捷键字符串
-func ParseKeyCombo(s string) (*KeyCombo, error) {
-    // 解析 "Ctrl+C", "Alt+Enter", "Shift+Tab" 等
-    combo := &KeyCombo{}
-
-    parts := strings.Split(s, "+")
-    for _, part := range parts {
-        switch strings.ToUpper(part) {
-        case "CTRL":
-            combo.Modifiers |= ModCtrl
-        case "ALT":
-            combo.Modifiers |= ModAlt
-        case "SHIFT":
-            combo.Modifiers |= ModShift
-        case "META":
-            combo.Modifiers |= ModMeta
-        default:
-            // 解析具体按键
-            if len(part) == 1 {
-                combo.Key = rune(part[0])
-            } else {
-                combo.Special = parseSpecialKey(part)
-            }
-        }
-    }
-
-    return combo, nil
-}
 ```
 
-### 4. 鼠标事件
+### 4. Action 事件（Framework 层）
 
 ```go
-// 位于: tui/framework/event/mouse.go
+// 位于: tui/runtime/event/action_event.go
 
 package event
 
-// MouseEvent 鼠标事件
-type MouseEvent struct {
+// ActionEvent Action 事件（语义化）
+type ActionEvent struct {
     BaseEvent
 
-    // 位置
-    X        int
-    Y        int
+    // Action 类型
+    Action ActionType
 
-    // 按钮
-    Button   MouseButton
-
-    // 动作
-    Action   MouseAction
-
-    // 修饰键
-    Modifiers KeyModifier
-
-    // 滚动
-    DeltaX   int  // 水平滚动
-    DeltaY   int  // 垂直滚动
+    // Payload
+    Payload any
 }
 
-// MouseButton 鼠标按钮
-type MouseButton int
+// ActionType Action 类型
+type ActionType string
 
 const (
-    MouseNone MouseButton = iota
-    MouseLeft
-    MouseMiddle
-    MouseRight
-    MouseWheelUp
-    MouseWheelDown
-    MouseWheelLeft
-    MouseWheelRight
+    // 导航
+    ActionNavigateNext   ActionType = "navigate_next"
+    ActionNavigatePrev   ActionType = "navigate_prev"
+    ActionNavigateUp     ActionType = "navigate_up"
+    ActionNavigateDown   ActionType = "navigate_down"
+
+    // 编辑
+    ActionInputText      ActionType = "input_text"
+    ActionDeleteChar     ActionType = "delete_char"
+    ActionDeleteWord     ActionType = "delete_word"
+
+    // 表单
+    ActionSubmit         ActionType = "submit"
+    ActionCancel         ActionType = "cancel"
+
+    // 系统
+    ActionQuit           ActionType = "quit"
 )
-
-// MouseAction 鼠标动作
-type MouseAction int
-
-const (
-    MousePress MouseAction = iota
-    MouseRelease
-    MouseMove
-    MouseDrag
-    MouseWheel
-)
-
-// HitTest 命中测试结果
-type HitTest struct {
-    Component Component
-    X        int  // 相对组件的 X 坐标
-    Y        int  // 相对组件的 Y 坐标
-    ZIndex   int
-}
-
-// HitTestInfo 命中测试信息
-type HitTestInfo struct {
-    hits     []HitTest
-    topMost  *HitTest
-}
-
-// Position 位置信息
-type Position struct {
-    X int
-    Y int
-}
-
-// Delta 位置变化
-func (p Position) Delta(other Position) (dx, dy int) {
-    return other.X - p.X, other.Y - p.Y
-}
-
-// Distance 距离
-func (p Position) Distance(other Position) float64 {
-    dx := float64(other.X - p.X)
-    dy := float64(other.Y - p.Y)
-    return math.Sqrt(dx*dx + dy*dy)
-}
 ```
 
-### 5. 窗口事件
+### 5. 处理器接口
 
 ```go
-// 位于: tui/framework/event/window.go
+// 位于: tui/runtime/event/handler.go
 
 package event
 
-// ResizeEvent 窗口大小改变事件
-type ResizeEvent struct {
-    BaseEvent
-    OldWidth  int
-    OldHeight int
-    NewWidth  int
-    NewHeight int
+// CaptureHandler 捕获阶段处理器
+type CaptureHandler interface {
+    // HandleCapture 处理捕获阶段的事件
+    HandleCapture(ev Event) bool
 }
 
-// FocusEvent 焦点事件
-type FocusEvent struct {
-    BaseEvent
-    Gained bool  // true = 获得焦点, false = 失去焦点
-    Reason FocusReason
+// TargetHandler 目标阶段处理器
+type TargetHandler interface {
+    // HandleTarget 处理目标阶段的事件
+    HandleTarget(ev Event) bool
 }
 
-// FocusReason 焦点变化原因
-type FocusReason int
-
-const (
-    FocusReasonTab FocusReason = iota  // Tab 导航
-    FocusReasonClick                   // 鼠标点击
-    FocusReasonProgrammatic            // 程序设置
-    FocusReasonModal                   // 模态框
-)
-
-// CloseEvent 关闭事件
-type CloseEvent struct {
-    BaseEvent
-    Reason CloseReason
-}
-
-// CloseReason 关闭原因
-type CloseReason int
-
-const (
-    CloseReasonUser CloseReason = iota  // 用户请求 (Ctrl+C, Ctrl+D)
-    CloseReasonSignal                   // 系统信号
-    CloseReasonError                    // 错误导致
-)
-```
-
-### 6. 组件事件
-
-```go
-// 位于: tui/framework/event/component.go
-
-package event
-
-// ClickEvent 点击事件
-type ClickEvent struct {
-    BaseEvent
-    X        int
-    Y        int
-    Button   MouseButton
-    Count    int  // 点击次数 (1=单击, 2=双击, 3=三击)
-}
-
-// ChangeEvent 值改变事件
-type ChangeEvent struct {
-    BaseEvent
-    OldValue interface{}
-    NewValue interface{}
-}
-
-// SubmitEvent 提交事件
-type SubmitEvent struct {
-    BaseEvent
-    Data map[string]interface{}
-}
-
-// SelectEvent 选择事件
-type SelectEvent struct {
-    BaseEvent
-    Index     int
-    Selected  bool
-    Value     interface{}
-}
-
-// ExpandEvent 展开/折叠事件
-type ExpandEvent struct {
-    BaseEvent
-    Expanded  bool
-    Index     int
+// BubbleHandler 冒泡阶段处理器
+type BubbleHandler interface {
+    // HandleBubble 处理冒泡阶段的事件
+    HandleBubble(ev Event) bool
 }
 ```
 
-## 事件处理
-
-### 事件处理器接口
+## 事件路由器
 
 ```go
-// 位于: tui/framework/event/handler.go
-
-package event
-
-// EventHandler 事件处理器接口
-type EventHandler interface {
-    HandleEvent(Event) bool
-}
-
-// EventHandlerFunc 事件处理器函数
-type EventHandlerFunc func(Event) bool
-
-func (f EventHandlerFunc) HandleEvent(ev Event) bool {
-    return f(ev)
-}
-
-// KeyHandler 键盘事件处理器
-type KeyHandler interface {
-    HandleKey(*KeyEvent) bool
-}
-
-// MouseHandler 鼠标事件处理器
-type MouseHandler interface {
-    HandleMouse(*MouseEvent) bool
-}
-
-// FocusHandler 焦点事件处理器
-type FocusHandler interface {
-    HandleFocus(*FocusEvent) bool
-}
-```
-
-### 事件路由器
-
-```go
-// 位于: tui/framework/event/router.go
+// 位于: tui/runtime/event/router.go
 
 package event
 
 // Router 事件路由器
 type Router struct {
-    // 全局处理器
-    globalHandlers map[EventType][]EventHandler
+    // 捕获阶段处理器（全局）
+    captureHandlers []CaptureHandler
 
-    // 捕获阶段处理器
-    captureHandlers []EventHandler
+    // 焦点管理器
+    focus *focus.Manager
 
-    // 目标查找
-    hitTest func(x, y int) []Component
-
-    // 队列
-    eventQueue chan Event
-    quit       chan struct{}
+    // 组件树根
+    root Node
 }
 
 // NewRouter 创建事件路由器
-func NewRouter() *Router {
+func NewRouter(root Node) *Router {
     return &Router{
-        globalHandlers: make(map[EventType][]EventHandler),
-        eventQueue:     make(chan Event, 100),
-        quit:          make(chan struct{}),
+        captureHandlers: make([]CaptureHandler, 0),
+        root:            root,
     }
 }
 
-// Subscribe 订阅事件
-func (r *Router) Subscribe(eventType EventType, handler EventHandler) func() {
-    r.globalHandlers[eventType] = append(r.globalHandlers[eventType], handler)
-
-    // 返回取消订阅函数
-    return func() {
-        r.Unsubscribe(eventType, handler)
-    }
-}
-
-// Unsubscribe 取消订阅
-func (r *Router) Unsubscribe(eventType EventType, handler EventHandler) {
-    handlers := r.globalHandlers[eventType]
-    for i, h := range handlers {
-        if h == handler {
-            r.globalHandlers[eventType] = append(handlers[:i], handlers[i+1:]...)
-            break
-        }
-    }
-}
-
-// AddCaptureHandler 添加捕获阶段处理器
-func (r *Router) AddCaptureHandler(handler EventHandler) {
+// AddCaptureHandler 添加捕获处理器
+func (r *Router) AddCaptureHandler(handler CaptureHandler) {
     r.captureHandlers = append(r.captureHandlers, handler)
 }
 
-// Route 路由事件到目标
-func (r *Router) Route(ev Event) {
-    // 1. 捕获阶段
-    for _, handler := range r.captureHandlers {
-        if handler.HandleEvent(ev) {
-            if ev.IsPropagationStopped() {
-                return
-            }
-        }
+// Route 路由事件
+func (r *Router) Route(ev Event) bool {
+    // 1. Capture Phase
+    if r.capturePhase(ev) {
+        return true
     }
 
-    // 2. 全局处理器
-    if handlers, ok := r.globalHandlers[ev.Type()]; ok {
-        for _, handler := range handlers {
-            if handler.HandleEvent(ev) {
-                if ev.IsPropagationStopped() {
-                    return
-                }
-            }
-        }
+    // 2. Target Phase
+    if r.targetPhase(ev) {
+        return true
     }
 
-    // 3. 目标阶段
-    if target := ev.Target(); target != nil {
-        if handler, ok := target.(EventHandler); ok {
-            handler.HandleEvent(ev)
-        }
-    }
-
-    // 4. 冒泡阶段
-    if !ev.IsPropagationStopped() {
-        r.bubble(ev)
-    }
+    // 3. Bubble Phase
+    return r.bubblePhase(ev)
 }
 
-// bubble 事件冒泡
-func (r *Router) bubble(ev Event) {
+// capturePhase 捕获阶段
+func (r *Router) capturePhase(ev Event) bool {
+    for _, handler := range r.captureHandlers {
+        ev.SetPhase(PhaseCapture)
+
+        if handler.HandleCapture(ev) {
+            return true // 停止传播
+        }
+
+        if ev.IsPropagationStopped() {
+            return true
+        }
+    }
+    return false
+}
+
+// targetPhase 目标阶段
+func (r *Router) targetPhase(ev Event) bool {
+    ev.SetPhase(PhaseTarget)
+
     target := ev.Target()
     if target == nil {
-        return
+        return false
+    }
+
+    // 尝试作为 TargetHandler 处理
+    if handler, ok := target.(TargetHandler); ok {
+        if handler.HandleTarget(ev) {
+            return true
+        }
+    }
+
+    // 尝试作为 ActionTarget 处理
+    if handler, ok := target.(component.ActionTarget); ok {
+        // 将 Event 转换为 Action
+        if actionEv, ok := ev.(*ActionEvent); ok {
+            return handler.HandleAction(&action.Action{
+                Type:    actionEv.Action,
+                Payload: actionEv.Payload,
+                Source:  actionEv.Source,
+            })
+        }
+    }
+
+    return false
+}
+
+// bubblePhase 冒泡阶段
+func (r *Router) bubblePhase(ev Event) bool {
+    ev.SetPhase(PhaseBubble)
+
+    target := ev.Target()
+    if target == nil {
+        return false
     }
 
     // 获取父组件链
     parents := r.getParentChain(target)
 
     // 向上冒泡
-    for _, parent := range parents {
-        if handler, ok := parent.(EventHandler); ok {
-            if handler.HandleEvent(ev) {
-                break
+    for i := len(parents) - 1; i >= 0; i-- {
+        if handler, ok := parents[i].(BubbleHandler); ok {
+            if handler.HandleBubble(ev) {
+                return true // 停止传播
             }
         }
+
         if ev.IsPropagationStopped() {
-            break
+            return true
         }
     }
+
+    return false
 }
 
-// SetHitTest 设置命中测试函数
-func (r *Router) SetHitTest(fn func(x, y int) []Component) {
-    r.hitTest = fn
+// getParentChain 获取父组件链
+func (r *Router) getParentChain(target Node) []Node {
+    // 遍历组件树，找到从 root 到 target 的路径
+    var path []Node
+
+    current := r.root
+    path = append(path, current)
+
+    // TODO: 实现树遍历算法
+    // 这里简化处理
+
+    return path
 }
 ```
 
 ## 事件泵
 
 ```go
-// 位于: tui/framework/event/pump.go
+// 位于: tui/runtime/event/pump.go
 
 package event
+
+import (
+    "github.com/yaoapp/yao/tui/platform"
+)
 
 // Pump 事件泵
 type Pump struct {
@@ -718,14 +569,16 @@ func (p *Pump) readLoop() {
         select {
         case <-p.quit:
             return
+
         default:
-            data, err := p.reader.Read()
+            input, err := p.reader.ReadEvent()
             if err != nil {
                 // 处理错误
                 continue
             }
 
-            events := p.parser.Parse(data)
+            // 解析事件
+            events := p.parser.Parse(input)
             for _, ev := range events {
                 select {
                 case p.queue <- ev:
@@ -738,467 +591,89 @@ func (p *Pump) readLoop() {
 }
 ```
 
-## 事件解析器
-
-```go
-// 位于: tui/framework/event/parser.go
-
-package event
-
-// Parser 事件解析器
-type Parser struct {
-    buffer []byte
-    state  parseState
-}
-
-// NewParser 创建解析器
-func NewParser() *Parser {
-    return &Parser{
-        buffer: make([]byte, 0, 256),
-    }
-}
-
-// Parse 解析输入数据
-func (p *Parser) Parse(data []byte) []Event {
-    p.buffer = append(p.buffer, data...)
-
-    var events []Event
-
-    for len(p.buffer) > 0 {
-        // 检查是否是 ANSI 转义序列
-        if p.buffer[0] == '\x1b' {
-            ev, consumed := p.parseANSI()
-            if ev != nil {
-                events = append(events, ev)
-            }
-            p.buffer = p.buffer[consumed:]
-        } else {
-            // 普通字符
-            events = append(events, &KeyEvent{
-                Key:   rune(p.buffer[0]),
-            })
-            p.buffer = p.buffer[1:]
-        }
-    }
-
-    return events
-}
-
-// parseANSI 解析 ANSI 转义序列
-func (p *Parser) parseANSI() (Event, int) {
-    if len(p.buffer) < 2 {
-        return nil, 0
-    }
-
-    // CSI 序列: ESC [
-    if p.buffer[1] == '[' {
-        return p.parseCSI()
-    }
-
-    // 其他序列
-    return nil, 0
-}
-
-// parseCSI 解析 CSI 序列
-func (p *Parser) parseCSI() (Event, int) {
-    // CSI 格式: ESC [ <params> <intermediate> <final>
-    // 例如: ESC [ A (上键), ESC [ 1 ; 5 B (Ctrl+Shift+下键)
-
-    // 查找结束字符
-    end := 2
-    for end < len(p.buffer) {
-        c := p.buffer[end]
-        if c >= 0x40 && c <= 0x7E {
-            break
-        }
-        end++
-    }
-
-    if end >= len(p.buffer) {
-        return nil, 0  // 序列不完整
-    }
-
-    final := p.buffer[end]
-    params := string(p.buffer[2:end])
-
-    // 解析参数
-    numbers := p.parseNumbers(params)
-
-    // 根据最终字符确定事件类型
-    switch final {
-    case 'A':  // 上键
-        return &KeyEvent{Special: KeyUp}, end + 1
-    case 'B':  // 下键
-        return &KeyEvent{Special: KeyDown}, end + 1
-    case 'C':  // 右键
-        return &KeyEvent{Special: KeyRight}, end + 1
-    case 'D':  // 左键
-        return &KeyEvent{Special: KeyLeft}, end + 1
-    case 'Z':  // Shift+Tab
-        return &KeyEvent{Special: KeyTab, Modifiers: ModShift}, end + 1
-    // ... 更多 CSI 序列
-    }
-
-    return nil, end + 1
-}
-
-// parseNumbers 解析数字参数
-func (p *Parser) parseNumbers(s string) []int {
-    if s == "" {
-        return []int{}
-    }
-
-    parts := strings.Split(s, ";")
-    numbers := make([]int, len(parts))
-    for i, part := range parts {
-        if part == "" {
-            numbers[i] = 0
-        } else {
-            n, _ := strconv.Atoi(part)
-            numbers[i] = n
-        }
-    }
-    return numbers
-}
-```
-
-## 常用 ANSI 转义序列
-
-```go
-// 位于: tui/framework/event/ansi_codes.go
-
-package event
-
-// ANSICodes ANSI 转义码映射
-var ANSICodes = map[string]Event{
-    // 光标键
-    "\x1b[A": &KeyEvent{Special: KeyUp},
-    "\x1b[B": &KeyEvent{Special: KeyDown},
-    "\x1b[C": &KeyEvent{Special: KeyRight},
-    "\x1b[D": &KeyEvent{Special: KeyLeft},
-
-    // 功能键
-    "\x1bOP": &KeyEvent{Special: KeyF1},
-    "\x1bOQ": &KeyEvent{Special: KeyF2},
-    "\x1bOR": &KeyEvent{Special: KeyF3},
-    "\x1bOS": &KeyEvent{Special: KeyF4},
-
-    // 编辑键
-    "\x1b[1~": &KeyEvent{Special: KeyHome},
-    "\x1b[2~": &KeyEvent{Special: KeyInsert},
-    "\x1b[3~": &KeyEvent{Special: KeyDelete},
-    "\x1b[4~": &KeyEvent{Special: KeyEnd},
-    "\x1b[5~": &KeyEvent{Special: KeyPageUp},
-    "\x1b[6~": &KeyEvent{Special: KeyPageDown},
-
-    // 控制键
-    "\x1b[H": &KeyEvent{Special: KeyHome},
-    "\x1b[F": &KeyEvent{Special: KeyEnd},
-
-    // Tab
-    "\x09":   &KeyEvent{Special: KeyTab},
-    "\x1b[Z": &KeyEvent{Special: KeyTab, Modifiers: ModShift},
-}
-
-// ModifiedKeyCodes 修饰键组合
-// 格式: ESC [ <modifier> + <key>
-// modifier: 1=Shift, 2=Alt, 4=Ctrl, 8=Meta
-var ModifiedKeyCodes = map[string]KeyModifier{
-    "\x1b[1;2": ModShift,    // Shift+Key
-    "\x1b[1;3": ModAlt,      // Alt+Key
-    "\x1b[1;4": ModAlt | ModShift,    // Alt+Shift+Key
-    "\x1b[1;5": ModCtrl,     // Ctrl+Key
-    "\x1b[1;6": ModCtrl | ModShift,   // Ctrl+Shift+Key
-    "\x1b[1;7": ModCtrl | ModAlt,     // Ctrl+Alt+Key
-    "\x1b[1;8": ModCtrl | ModAlt | ModShift,  // Ctrl+Alt+Shift+Key
-}
-```
-
-## 鼠标事件支持
-
-```go
-// 位于: tui/framework/event/mouse_support.go
-
-package event
-
-// EnableMouse 启用鼠标支持
-func EnableMouse(terminal platform.Terminal) error {
-    // 启用鼠标跟踪模式
-    // SGR 模式 (最推荐): ESC [ ? 1006 h
-    _, err := terminal.WriteString("\x1b[?1006h")
-    if err != nil {
-        return err
-    }
-
-    // 启用鼠标拖拽
-    _, err = terminal.WriteString("\x1b[?1002h")
-    return err
-}
-
-// DisableMouse 禁用鼠标支持
-func DisableMouse(terminal platform.Terminal) error {
-    _, err := terminal.WriteString("\x1b[?1006l")
-    if err != nil {
-        return err
-    }
-    _, err = terminal.WriteString("\x1b[?1002l")
-    return err
-}
-
-// ParseMouseEvent 解析鼠标事件 (SGR 模式)
-// 格式: ESC [ <button> ; <x> ; <y> M
-func ParseMouseEvent(data []byte) (*MouseEvent, int) {
-    // ESC [ < 0 ; 1 ; 2 M
-    //      ^   ^  ^
-    //      |   |  └─ Y (从1开始)
-    //      |   └──── X (从1开始)
-    //      └──────── Button (按下=正数, 释放=负数或+32)
-
-    if len(data) < 6 || data[0] != '\x1b' || data[1] != '[' {
-        return nil, 0
-    }
-
-    // 查找结束字符 'M' 或 'm'
-    end := 2
-    for end < len(data) && data[end] != 'M' && data[end] != 'm' {
-        end++
-    }
-    if end >= len(data) {
-        return nil, 0
-    }
-
-    // 解析参数
-    params := strings.Split(string(data[2:end]), ";")
-    if len(params) != 3 {
-        return nil, 0
-    }
-
-    button, _ := strconv.Atoi(params[0])
-    x, _ := strconv.Atoi(params[1])
-    y, _ := strconv.Atoi(params[2])
-
-    // 判断动作
-    action := MousePress
-    if data[end] == 'm' || button >= 64 {
-        action = MouseRelease
-        if button >= 64 {
-            button -= 64
-        } else {
-            button = 0
-        }
-    }
-
-    // 判断按钮
-    mouseBtn := MouseNone
-    switch button {
-    case 0:
-        mouseBtn = MouseLeft
-    case 1:
-        mouseBtn = MouseMiddle
-    case 2:
-        mouseBtn = MouseRight
-    case 32:
-        mouseBtn = MouseLeft
-        action = MouseMove  // 拖拽
-    case 33:
-        mouseBtn = MouseMiddle
-        action = MouseMove
-    case 34:
-        mouseBtn = MouseRight
-        action = MouseMove
-    case 64, 65:
-        mouseBtn = MouseWheelUp
-        action = MouseWheel
-    case 66, 67:
-        mouseBtn = MouseWheelDown
-        action = MouseWheel
-    }
-
-    return &MouseEvent{
-        X:      x - 1,  // 转换为从0开始
-        Y:      y - 1,
-        Button: mouseBtn,
-        Action: action,
-    }, end + 1
-}
-```
-
-## 快捷键绑定
-
-```go
-// 位于: tui/framework/event/keymap.go
-
-package event
-
-// KeyMap 快捷键映射
-type KeyMap struct {
-    bindings map[string]EventHandler
-}
-
-// NewKeyMap 创建快捷键映射
-func NewKeyMap() *KeyMap {
-    return &KeyMap{
-        bindings: make(map[string]EventHandler),
-    }
-}
-
-// Bind 绑定快捷键
-func (k *KeyMap) Bind(combo string, handler EventHandler) error {
-    parsed, err := ParseKeyCombo(combo)
-    if err != nil {
-        return err
-    }
-
-    key := k.makeKey(parsed.Special, parsed.Key, parsed.Modifiers)
-    k.bindings[key] = handler
-    return nil
-}
-
-// BindFunc 绑定快捷键到函数
-func (k *KeyMap) BindFunc(combo string, handler func(*KeyEvent)) error {
-    return k.Bind(combo, EventHandlerFunc(func(ev Event) bool {
-        if keyEv, ok := ev.(*KeyEvent); ok {
-            handler(keyEv)
-            return true
-        }
-        return false
-    }))
-}
-
-// Lookup 查找快捷键处理器
-func (k *KeyMap) Lookup(ev *KeyEvent) (EventHandler, bool) {
-    key := k.makeKey(ev.Special, ev.Key, ev.Modifiers)
-    handler, ok := k.bindings[key]
-    return handler, ok
-}
-
-// makeKey 生成映射键
-func (k *KeyMap) makeKey(special SpecialKey, key rune, modifiers KeyModifier) string {
-    return fmt.Sprintf("%d:%d:%d", special, key, modifiers)
-}
-
-// 常用快捷键
-const (
-    KeyQuit    = "Ctrl+C"
-    KeyCancel  = "Escape"
-    KeyConfirm = "Enter"
-    KeySubmit  = "Ctrl+Enter"
-    KeyHelp    = "F1"
-    KeySave    = "Ctrl+S"
-    KeyOpen    = "Ctrl+O"
-    KeyNew     = "Ctrl+N"
-    KeyClose   = "Ctrl+W"
-    KeyCopy    = "Ctrl+C"  // 有选择时
-    KeyPaste   = "Ctrl+V"
-    KeyCut     = "Ctrl+X"
-    KeySelectAll = "Ctrl+A"
-    KeyFind    = "Ctrl+F"
-    KeyUndo    = "Ctrl+Z"
-    KeyRedo    = "Ctrl+Y"
-)
-```
-
-## 事件队列
-
-```go
-// 位于: tui/framework/event/queue.go
-
-package event
-
-// Queue 事件队列
-type Queue struct {
-    events   []Event
-    capacity int
-}
-
-// NewQueue 创建事件队列
-func NewQueue(capacity int) *Queue {
-    return &Queue{
-        events:   make([]Event, 0, capacity),
-        capacity: capacity,
-    }
-}
-
-// Push 添加事件到队列
-func (q *Queue) Push(ev Event) bool {
-    if len(q.events) >= q.capacity {
-        return false
-    }
-    q.events = append(q.events, ev)
-    return true
-}
-
-// Pop 从队列弹出事件
-func (q *Queue) Pop() (Event, bool) {
-    if len(q.events) == 0 {
-        return nil, false
-    }
-    ev := q.events[0]
-    q.events = q.events[1:]
-    return ev, true
-}
-
-// Peek 查看队首事件
-func (q *Queue) Peek() (Event, bool) {
-    if len(q.events) == 0 {
-        return nil, false
-    }
-    return q.events[0], true
-}
-
-// Clear 清空队列
-func (q *Queue) Clear() {
-    q.events = q.events[:0]
-}
-
-// Len 返回队列长度
-func (q *Queue) Len() int {
-    return len(q.events)
-}
-
-// Filter 过滤队列
-func (q *Queue) Filter(pred func(Event) bool) []Event {
-    var result []Event
-    for _, ev := range q.events {
-        if pred(ev) {
-            result = append(result, ev)
-        }
-    }
-    return result
-}
-```
-
 ## 使用示例
 
-```go
-// 创建事件路由器
-router := event.NewRouter()
+### 示例 1: 注册捕获处理器
 
-// 订阅全局事件
-router.Subscribe(event.EventKeyPress, event.EventHandlerFunc(func(ev event.Event) bool {
+```go
+// 全局快捷键处理
+type GlobalShortcutHandler struct{}
+
+func (h *GlobalShortcutHandler) HandleCapture(ev event.Event) bool {
     if keyEv, ok := ev.(*event.KeyEvent); ok {
+        // Ctrl+Q 全局退出
         if keyEv.Key == 'q' && keyEv.Modifiers.Has(event.ModCtrl) {
-            // 退出应用
             app.Quit()
-            return true
+            return true // 停止传播
         }
     }
     return false
-}))
+}
 
-// 订阅窗口大小变化
-router.Subscribe(event.EventResize, event.EventHandlerFunc(func(ev event.Event) bool {
-    resizeEv := ev.(*event.ResizeEvent)
-    app.Resize(resizeEv.NewWidth, resizeEv.NewHeight)
-    return true
-}))
+router.AddCaptureHandler(&GlobalShortcutHandler{})
+```
 
-// 设置组件事件处理器
-button.SetEventHandler(event.EventHandlerFunc(func(ev event.Event) bool {
-    if ev.Type() == event.EventClick {
-        button.OnClick()
-        return true
+### 示例 2: 组件冒泡处理
+
+```go
+type Form struct {
+    *component.BaseComponent
+    children []Node
+}
+
+func (f *Form) HandleBubble(ev event.Event) bool {
+    if actionEv, ok := ev.(*event.ActionEvent); ok {
+        if actionEv.Action == event.ActionSubmit {
+            // 表单级别的提交验证
+            if !f.Validate() {
+                return true // 阻止冒泡
+            }
+        }
     }
     return false
-}))
+}
 ```
+
+### 示例 3: 事件流测试
+
+```go
+func TestEventFlow(t *testing.T) {
+    router := event.NewRouter(root)
+
+    // 添加测试处理器
+    captureCalled := false
+    targetCalled := false
+    bubbleCalled := false
+
+    router.AddCaptureHandler(&TestCaptureHandler{
+        onHandle: func() { captureCalled = true },
+    })
+
+    // 模拟事件
+    ev := &TestEvent{target: button}
+
+    router.Route(ev)
+
+    // 验证阶段顺序
+    assert.True(t, captureCalled, "Capture phase should be called first")
+    assert.True(t, targetCalled, "Target phase should be called second")
+    assert.True(t, bubbleCalled, "Bubble phase should be called last")
+}
+```
+
+## V2 → V3 主要变更
+
+| 方面 | V2 | V3 |
+|------|----|----|
+| 阶段定义 | 不明确 | 明确 Capture/Target/Bubble |
+| 处理器 | 单一 EventHandler | Capture/Target/Bubble 分离 |
+| Component | HandleEvent | HandleAction (语义化) |
+| 可预测性 | 顺序不确定 | 完全确定 |
+| AI 友好 | 难以回放 | 可记录、可测试 |
+
+## 相关文档
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构总览
+- [ACTION_SYSTEM.md](ACTION_SYSTEM.md) - Action 系统
+- [FOCUS_SYSTEM.md](FOCUS_SYSTEM.md) - Focus 系统
+- [BOUNDARIES.md](BOUNDARIES.md) - 层级边界

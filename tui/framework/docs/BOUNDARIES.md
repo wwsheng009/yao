@@ -1,10 +1,12 @@
-# Framework Boundaries and Interfaces
+# Framework Boundaries and Interfaces (V3)
+
+> **版本说明**: 本文档定义了 TUI 框架各层之间的边界和接口契约，确保模块间的清晰分离和可替换性。
 
 ## 概述
 
-本文档定义了新 TUI 框架各层之间的边界和接口契约，确保模块间的清晰分离和可替换性。
+本文档定义了四层架构之间的边界和接口契约。这些边界是架构的"物理隔离线"，**违反这些边界的代码不应被接受**。
 
-## 层次边界
+## 四层边界
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -12,184 +14,219 @@
 │  应用程序代码 - 用户创建的具体应用                                        │
 │  依赖: Framework API                                                    │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                    ↓ depends on
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Framework Boundary                               │
 │  tui/framework/* - 新框架代码                                            │
 │  依赖: Runtime API, Platform API                                        │
-│  提供: Component, Event, Style, Screen 接口                             │
+│  提供: Component, Factory, Style 接口                                  │
+│  禁止: 直接操作 Terminal, 处理 RawInput                                  │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                    ↓ depends on
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Runtime Boundary                                 │
-│  tui/runtime/* - 现有布局引擎 (复用)                                     │
+│  tui/runtime/* - 布局引擎内核 (纯 Go，无外部依赖)                         │
 │  依赖: 无 (纯内核)                                                       │
-│  提供: Layout, CellBuffer, Focus, Animation, Event 接口                 │
+│  提供: Layout, Paint, Focus, Action 接口                                │
+│  禁止: import framework, 知道 Component 类型                             │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                                    ↓ depends on
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Platform Boundary                                │
-│  终端 I/O - 系统级操作                                                   │
+│  tui/platform/* - 平台抽象                                              │
 │  依赖: OS, Terminal Driver                                              │
-│  提供: 原始输入/输出, 窗口大小, 信号处理                                 │
+│  提供: Screen, Cursor, Input, Signal 接口                              │
+│  禁止: 知道 Framework, Runtime, Component                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 模块接口定义
+## 依赖规则（强制）
 
-### 1. Framework → Runtime 接口
-
-#### 1.1 布局接口
+### ✅ 允许的依赖
 
 ```go
-// Framework 使用 Runtime 的布局接口
-// 位于: tui/framework/internal/runtime_adapter.go
+// ✅ Application 可以依赖 Framework
+import "github.com/yaoapp/yao/tui/framework"
 
-package runtime_adapter
+// ✅ Framework 可以依赖 Runtime
+import "github.com/yaoapp/yao/tui/runtime"
 
-import (
-    "github.com/yaoapp/yao/tui/runtime"
-)
+// ✅ Framework 可以依赖 Platform
+import "github.com/yaoapp/yao/tui/platform"
 
-// RuntimeAdapter 适配 Runtime 接口到 Framework
-type RuntimeAdapter struct {
-    runtime *runtime.RuntimeImpl
-}
-
-// LayoutNode 转换
-func (a *RuntimeAdapter) ToRuntimeNode(component Component) *runtime.LayoutNode {
-    node := &runtime.LayoutNode{
-        ID:       component.ID(),
-        Type:     a.mapComponentType(component),
-        Children: []*runtime.LayoutNode{},
-    }
-
-    // 设置尺寸约束
-    node.Constraints = runtime.BoxConstraints{
-        Min: runtime.Size{Width: component.MinWidth(), Height: component.MinHeight()},
-        Max: runtime.Size{Width: component.MaxWidth(), Height: component.MaxHeight()},
-    }
-
-    return node
-}
-
-// Frame 转换
-func (a *RuntimeAdapter) FromRuntimeFrame(frame runtime.Frame) *Frame {
-    return &Frame{
-        Buffer: frame.Buffer,
-        Width:  frame.Width,
-        Height: frame.Height,
-    }
-}
-
-// 禁止: Runtime 不应依赖 Framework 的任何类型
-// 禁止: Runtime 不应导入 framework 包
+// ✅ Platform 实现可以依赖 OS
+import "os"
+import "syscall"
 ```
 
-#### 1.2 可复用的 Runtime 能力
-
-| 模块 | 接口 | Framework 使用方式 |
-|------|------|-------------------|
-| Layout | `runtime.Layout()` | 调用获取布局结果 |
-| CellBuffer | `runtime.CellBuffer` | 直接使用虚拟画布 |
-| Focus | `runtime.FocusManager` | 委托焦点管理 |
-| Event | `runtime.EventDispatcher` | 委托事件分发 |
-| Animation | `runtime.AnimationManager` | 委托动画控制 |
-| Selection | `runtime.SelectionManager` | 委托选择管理 |
-| Clipboard | `runtime.Clipboard` | 委托剪贴板操作 |
-
-### 2. Framework → Platform 接口
-
-#### 2.1 终端接口
+### ❌ 禁止的依赖
 
 ```go
-// 位于: tui/framework/platform/terminal.go
+// ❌ Runtime 绝不依赖 Framework
+// tui/runtime/ 不能导入 tui/framework/
+import "github.com/yaoapp/yao/tui/framework"  // 禁止！
+
+// ❌ Platform 绝不依赖 Framework 或 Runtime
+// platform 包只提供抽象接口
+import "github.com/yaoapp/yao/tui/framework"  // 禁止！
+
+// ❌ Component 绝不直接操作 Terminal
+// 必须通过 Runtime CellBuffer
+import "github.com/yaoapp/yao/tui/platform"   // 禁止！
+
+// ❌ 跨层直接访问
+// Application 不能直接使用 Runtime 内部类型
+import "github.com/yaoapp/yao/tui/runtime"    // 禁止！
+```
+
+## Platform 层接口
+
+### 设计原则
+
+Platform 层只提供"能力抽象"，不包含"语义"。
+
+- ✅ 提供原始输入/输出能力
+- ❌ 不理解 Focus、Event、Component、Layout
+
+### 1. Screen 接口（V3: 从 Terminal 拆分）
+
+```go
+// 位于: tui/platform/screen.go
 
 package platform
 
-// Terminal 终端抽象接口
-type Terminal interface {
+// Screen 屏幕输出抽象
+type Screen interface {
     // 初始化
     Init() error
     Close() error
 
-    // 屏幕操作
-    EnterAlternateScreen() error
-    ExitAlternateScreen() error
-    EnableRawMode() error
-    DisableRawMode() error
-
-    // 光标操作
-    ShowCursor() error
-    HideCursor() error
-    MoveCursor(x, y int) error
+    // 尺寸
+    Size() (width, height int)
 
     // 输出
     Write(data []byte) (int, error)
-    WriteString(s string) (int, error)
     Flush() error
 
-    // 输入
-    Read() ([]byte, error)
+    // 清屏
+    Clear() error
 
-    // 窗口
-    GetSize() (width, height int, err error)
-    MonitorSize(callback func(width, height int))
-
-    // 信号
-    HandleSignals(signals []os.Signal, handler func(sig os.Signal))
+    // 备用屏幕
+    EnterAlternateScreen() error
+    ExitAlternateScreen() error
 }
 
-// DefaultTerminal 默认实现
-type DefaultTerminal struct {
-    // 实现 Terminal 接口
+// DefaultScreen 默认实现 (Unix)
+type DefaultScreen struct {
+    file    *os.File
+    oldState *term.State
 }
 
-// WindowsTerminal Windows 特定实现
-type WindowsTerminal struct {
-    // 使用 Windows Console API
+// WindowsScreen Windows 实现
+type WindowsScreen struct {
+    handle uintptr
+    // Windows Console API
 }
 ```
 
-#### 2.2 输入设备接口
+### 2. Cursor 接口（V3: 从 Terminal 拆分）
 
 ```go
-// 位于: tui/framework/platform/input.go
+// 位于: tui/platform/cursor.go
 
 package platform
 
-// InputReader 输入读取器接口
+// Cursor 光标控制抽象
+type Cursor interface {
+    // 显示控制
+    Show() error
+    Hide() error
+
+    // 移动
+    Move(x, y int) error
+
+    // 位置查询
+    Position() (x, y int, err error)
+
+    // 样式
+    SetStyle(style CursorStyle) error
+}
+
+// CursorStyle 光标样式
+type CursorStyle int
+
+const (
+    CursorBlock   CursorStyle = iota
+    CursorUnderline
+    CursorBar
+)
+```
+
+### 3. InputReader 接口（V3: 从 Terminal 拆分）
+
+```go
+// 位于: tui/platform/input.go
+
+package platform
+
+// InputReader 输入读取抽象
 type InputReader interface {
-    // 读取输入事件
-    ReadEvent() (Event, error)
+    // 读取单个输入
+    ReadEvent() (RawInput, error)
 
     // 启动读取循环
-    Start(events chan<- Event) error
+    Start(events chan<- RawInput) error
 
     // 停止读取
     Stop() error
 }
 
-// KeyboardEvent 键盘事件
-type KeyboardEvent struct {
-    Key       rune
+// RawInput 原始输入
+type RawInput struct {
+    Type RawInputType
+
+    // 键盘
+    Key      rune
+    Special  SpecialKey
     Modifiers KeyModifier
-    Special   SpecialKey
+
+    // 鼠标
+    MouseX   int
+    MouseY   int
+    MouseButton MouseButton
+    MouseAction MouseAction
+
+    // 其他
+    Data     []byte
+    Timestamp time.Time
 }
 
-// MouseEvent 鼠标事件
-type MouseEvent struct {
-    X      int
-    Y      int
-    Button MouseButton
-    Action MouseAction
-    Modifiers KeyModifier
-}
+// RawInputType 输入类型
+type RawInputType int
 
-// KeyModifier 键盘修饰键
+const (
+    InputKeyPress RawInputType = iota
+    InputKeyRelease
+    InputMouse
+    InputResize
+    InputPaste
+    InputSignal
+)
+
+// SpecialKey 特殊键
+type SpecialKey int
+
+const (
+    KeyUnknown SpecialKey = iota
+    KeyEscape
+    KeyEnter
+    KeyTab
+    KeyBackspace
+    KeyDelete
+    // ...
+)
+
+// KeyModifier 修饰键
 type KeyModifier uint8
 
 const (
@@ -198,446 +235,334 @@ const (
     ModCtrl
     ModMeta
 )
-
-// SpecialKey 特殊键
-type SpecialKey int
-
-const (
-    KeyEscape SpecialKey = iota
-    KeyEnter
-    KeyTab
-    KeyBackspace
-    KeyDelete
-    KeyInsert
-    KeyHome
-    KeyEnd
-    KeyPageUp
-    KeyPageDown
-    KeyUp
-    KeyDown
-    KeyLeft
-    KeyRight
-    KeyF1
-    // ... F12
-)
-
-// MouseButton 鼠标按钮
-type MouseButton int
-
-const (
-    MouseLeft MouseButton = iota
-    MouseMiddle
-    MouseRight
-)
-
-// MouseAction 鼠标动作
-type MouseAction int
-
-const (
-    MousePress MouseAction = iota
-    MouseRelease
-    MouseMove
-    MouseWheel
-)
 ```
 
-### 3. Framework 组件接口
-
-#### 3.1 核心组件接口
+### 4. SignalHandler 接口（V3: 从 Terminal 拆分）
 
 ```go
-// 位于: tui/framework/component/component.go
+// 位于: tui/platform/signal.go
 
-package component
+package platform
 
-// Component 组件基础接口
-type Component interface {
-    // 标识
+// SignalHandler 信号处理抽象
+type SignalHandler interface {
+    // 注册信号处理
+    Handle(signals []os.Signal, handler func(os.Signal))
+
+    // 启动监听
+    Start() error
+
+    // 停止监听
+    Stop() error
+}
+
+// DefaultSignalHandler 默认实现
+type DefaultSignalHandler struct {
+    signals []os.Signal
+    handler func(os.Signal)
+    stop    chan struct{}
+}
+```
+
+## Runtime 层接口
+
+### 设计原则
+
+Runtime 是"纯内核"，可独立测试、复用。
+
+- ✅ 提供布局、绘制、焦点、Action 处理
+- ❌ 不依赖 Framework、Platform、Component
+
+### 1. Layout Engine
+
+```go
+// 位于: tui/runtime/layout/engine.go
+
+package layout
+
+// Engine 布局引擎
+type Engine struct {
+    // 纯布局逻辑，无外部依赖
+}
+
+// Layout 计算布局
+func (e *Engine) Layout(nodes []Node, constraints Constraints) []LayoutBox {
+    // Flexbox 算法
+}
+
+// Measure 测量尺寸
+func (e *Engine) Measure(node Node, constraints Constraints) Size {
+    // 测量逻辑
+}
+
+// Node 布局节点
+type Node interface {
     ID() string
-
-    // 生命周期
-    Mount(parent Component)
-    Unmount()
-
-    // 尺寸
-    SetSize(width, height int)
-    GetSize() (width, height int)
-    GetPreferredSize() (width, height int)
-    GetMinSize() (width, height int)
-    GetMaxSize() (width, height int)
-
-    // 渲染
-    Render(ctx RenderContext) string
-
-    // 事件
-    HandleEvent(ev Event) bool
-
-    // 状态
-    SetVisible(bool)
-    IsVisible() bool
-    SetEnabled(bool)
-    IsEnabled() bool
+    Children() []Node
+    Constraints() Constraints
 }
 
-// RenderContext 渲染上下文
-type RenderContext struct {
-    // 可用尺寸
-    AvailableWidth  int
-    AvailableHeight int
-
-    // 偏移量 (用于滚动)
-    OffsetX int
-    OffsetY int
-
-    // 样式继承
-    InheritStyle Style
-
-    // Z-index
-    ZIndex int
+// LayoutBox 布局结果
+type LayoutBox struct {
+    ID     string
+    X, Y   int
+    Width  int
+    Height int
 }
 ```
 
-#### 3.2 容器组件接口
+### 2. Paint Engine
 
 ```go
-// 位于: tui/framework/component/container.go
+// 位于: tui/runtime/paint/engine.go
 
-package component
+package paint
 
-// Container 容器接口
-type Container interface {
-    Component
-
-    // 子组件管理
-    Add(child Component)
-    Remove(child Component)
-    RemoveAt(index int)
-    GetChildren() []Component
-    GetChild(index int) Component
-    ChildCount() int
-
-    // 布局
-    SetLayout(layout Layout)
-    GetLayout() Layout
+// Engine 绘制引擎
+type Engine struct {
+    buffer *CellBuffer
+    dirty  *DirtyTracker
 }
 
-// Layout 布局接口
-type Layout interface {
-    // 测量
-    Measure(container Container, availableWidth, availableHeight int) (width, height int)
+// Paint 绘制组件
+func (e *Engine) Paint(node Node, box LayoutBox) {
+    // 绘制逻辑
+}
 
-    // 布局
-    Layout(container Container, x, y, width, height int)
+// Diff 计算差异
+func (e *Engine) Diff(old, new *CellBuffer) []DiffChange {
+    // Diff 逻辑
+}
 
-    // 通知变更
-    Invalidate()
+// CellBuffer 虚拟画布
+type CellBuffer struct {
+    cells  [][]Cell
+    width  int
+    height int
+}
+
+// Cell 单元格
+type Cell struct {
+    Char   rune
+    Style  CellStyle
+}
+
+// CellStyle 单元格样式
+type CellStyle struct {
+    FG       Color
+    BG       Color
+    Bold     bool
+    Underline bool
 }
 ```
 
-#### 3.3 交互组件接口
+### 3. Focus Manager
 
 ```go
-// 位于: tui/framework/component/interactive.go
+// 位于: tui/runtime/focus/manager.go
+
+package focus
+
+// Manager 焦点管理器
+type Manager struct {
+    path   FocusPath
+    scopes []*FocusScope
+}
+
+// FocusPath 焦点路径
+type FocusPath []string
+
+// FocusScope 焦点作用域
+type FocusScope struct {
+    ID         string
+    Type       ScopeType
+    Focusables []string
+}
+
+// SetFocus 设置焦点
+func (m *Manager) SetFocus(id string) bool
+
+// PushScope 推入作用域
+func (m *Manager) PushScope(scope *FocusScope)
+
+// PopScope 弹出作用域
+func (m *Manager) PopScope()
+```
+
+### 4. Action Dispatcher
+
+```go
+// 位于: tui/runtime/action/dispatcher.go
+
+package action
+
+// Dispatcher Action 分发器
+type Dispatcher struct {
+    targets        map[string]Target
+    globalHandlers map[ActionType][]Handler
+    focus          *focus.Manager
+}
+
+// Dispatch 分发 Action
+func (d *Dispatcher) Dispatch(a *Action) bool {
+    // 1. 全局处理器
+    // 2. 焦点目标
+    // 3. 指定目标
+}
+
+// Action Action 定义
+type Action struct {
+    Type      ActionType
+    Payload   any
+    Source    string
+    Timestamp time.Time
+}
+
+// Target Action 目标
+type Target interface {
+    ID() string
+    HandleAction(a *Action) bool
+}
+```
+
+## Framework 层接口
+
+### 设计原则
+
+Framework 是"应用层桥接"，组装 Runtime 能力。
+
+- ✅ 提供 Component、Factory、Style
+- ✅ 适配 Runtime 到应用需求
+- ❌ 不直接操作 Platform，不处理 RawInput
+
+### 1. Component 接口
+
+```go
+// 位于: tui/framework/component/node.go
 
 package component
+
+// Node 基础节点接口
+type Node interface {
+    ID() string
+    Type() string
+}
+
+// Paintable 可绘制组件
+type Paintable interface {
+    Node
+    Paint(ctx PaintContext, buf *runtime.CellBuffer)
+}
+
+// ActionTarget 可处理 Action 的组件
+type ActionTarget interface {
+    Node
+    HandleAction(a *runtime.Action) bool
+}
 
 // Focusable 可聚焦组件
 type Focusable interface {
-    Component
-
-    // 焦点
-    SetFocus(bool)
-    HasFocus() bool
-    CanFocus() bool
-
-    // 焦点导航
-    FocusNext() Component
-    FocusPrev() Component
+    Node
+    FocusID() string
+    OnFocus()
+    OnBlur()
 }
 
-// Validatable 可验证组件 (用于表单)
-type Validatable interface {
-    Component
-
-    // 验证
-    Validate() error
-    SetValidator(validator Validator)
-    IsValid() bool
+// BaseComponent 基础组件（组合）
+type BaseComponent interface {
+    Node
+    Paintable
 }
 
-// Validator 验证器
-type Validator interface {
-    Validate(value interface{}) error
-}
-
-// Updatable 可更新组件
-type Updatable interface {
-    Component
-
-    // 更新
-    Update(value interface{}) error
-    GetValue() interface{}
-}
-
-// Scrollable 可滚动组件
-type Scrollable interface {
-    Component
-
-    // 滚动
-    ScrollTo(x, y int)
-    ScrollBy(dx, dy int)
-    GetScrollPosition() (x, y int)
-    GetScrollRange() (minX, minY, maxX, maxY int)
-    SetScrollSize(width, height int)
+// InteractiveComponent 交互组件（组合）
+type InteractiveComponent interface {
+    BaseComponent
+    ActionTarget
+    Focusable
 }
 ```
 
-### 4. Framework 事件接口
-
-#### 4.1 事件系统接口
+### 2. Factory 接口
 
 ```go
-// 位于: tui/framework/event/event.go
+// 位于: tui/framework/component/factory.go
 
-package event
+package component
 
-// Event 事件接口
-type Event interface {
-    Type() EventType
-    Timestamp() time.Time
-    Source() Component
-    PreventDefault()
-    IsDefaultPrevented() bool
-    StopPropagation()
-    IsPropagationStopped() bool
+// Factory 组件工厂（DSL 入口）
+type Factory struct {
+    runtime *runtime.Runtime
 }
 
-// EventHandler 事件处理器
-type EventHandler interface {
-    HandleEvent(Event) bool
-}
-
-// EventListener 事件监听器
-type EventListener func(Event) bool
-
-// EventBus 事件总线
-type EventBus interface {
-    // 订阅
-    Subscribe(eventType EventType, handler EventHandler) Subscription
-    SubscribeTo(component Component, eventType EventType, handler EventHandler) Subscription
-
-    // 取消订阅
-    Unsubscribe(sub Subscription)
-
-    // 发布
-    Publish(ev Event)
-
-    // 路由
-    RouteTo(component Component, ev Event) bool
-}
-
-// Subscription 订阅句柄
-type Subscription interface {
-    Unsubscribe()
-}
-```
-
-### 5. 样式系统接口
-
-#### 5.1 样式接口
-
-```go
-// 位于: tui/framework/style/style.go
-
-package style
-
-// Style 样式接口
-type Style interface {
-    // 应用到文本
-    Apply(text string) string
-
-    // 合并
-    Merge(other Style) Style
-
-    // 克隆
-    Clone() Style
-}
-
-// Styled 可样式化接口
-type Styled interface {
-    SetStyle(style Style)
-    GetStyle() Style
-}
-
-// Themable 可主题化接口
-type Themable interface {
-    SetTheme(theme Theme)
-    GetTheme() Theme
-}
-
-// Theme 主题接口
-type Theme interface {
-    GetName() string
-    GetColor(name string) Color
-    GetStyle(name string) Style
-}
-```
-
-### 6. 边界约束
-
-#### 6.1 禁止的依赖
-
-```go
-// ❌ 禁止: Runtime 依赖 Framework
-// tui/runtime/ 不能导入 tui/framework/
-
-// ❌ 禁止: Platform 依赖 Framework 业务逻辑
-// platform 包只能提供抽象接口
-
-// ❌ 禁止: Component 直接访问 Terminal
-// 必须通过 ScreenManager 间接访问
-
-// ❌ 禁止: 跨层直接访问
-// Application 不能直接使用 Runtime 内部类型
-```
-
-#### 6.2 允许的依赖
-
-```go
-// ✅ 允许: Framework 依赖 Runtime
-// import "github.com/yaoapp/yao/tui/runtime"
-
-// ✅ 允许: Framework 依赖 Platform
-// import "github.com/yaoapp/yao/tui/framework/platform"
-
-// ✅ 允许: Application 依赖 Framework
-// import "github.com/yaoapp/yao/tui/framework"
-
-// ✅ 允许: 通过接口解耦
-// 使用接口而非具体实现
-```
-
-### 7. 数据边界
-
-#### 7.1 类型转换规则
-
-```go
-// 位于: tui/framework/internal/converter.go
-
-package internal
-
-// EventTypeConverter 事件类型转换器
-type EventTypeConverter struct{}
-
-// ToFrameworkEvent 转换平台事件到框架事件
-func (c *EventTypeConverter) ToFrameworkEvent(platformEv platform.Event) event.Event {
-    switch pe := platformEv.(type) {
-    case *platform.KeyboardEvent:
-        return &event.KeyEvent{
-            Key:       pe.Key,
-            Modifiers: event.KeyModifier(pe.Modifiers),
-        }
-    case *platform.MouseEvent:
-        return &event.MouseEvent{
-            X:      pe.X,
-            Y:      pe.Y,
-            Button: event.MouseButton(pe.Button),
-        }
-    }
-    return nil
-}
-
-// ToRuntimeStyle 转换框架样式到运行时样式
-func (c *EventTypeConverter) ToRuntimeStyle(style style.Style) runtime.CellStyle {
-    return runtime.CellStyle{
-        FG:         c.convertColor(style.FG()),
-        BG:         c.convertColor(style.BG()),
-        Bold:       style.Bold(),
-        Underline:  style.Underline(),
-        // ...
+// CreateFromSpec 从 Spec 创建组件
+func (f *Factory) CreateFromSpec(spec ComponentSpec) (Node, error) {
+    switch spec.Type {
+    case "text":
+        return f.createText(spec)
+    case "button":
+        return f.createButton(spec)
+    // ...
     }
 }
-```
 
-### 8. 生命周期边界
-
-#### 8.1 应用生命周期
-
-```go
-// 位于: tui/framework/app.go
-
-type LifecycleState int
-
-const (
-    StateCreated LifecycleState = iota
-    StateInitializing
-    StateRunning
-    StatePaused
-    StateStopping
-    StateStopped
-    StateError
-)
-
-// Lifecycle 生命周期接口
-type Lifecycle interface {
-    OnCreate()
-    OnInit()
-    OnStart()
-    OnPause()
-    OnResume()
-    OnStop()
-    OnDestroy()
-    OnError(err error)
+// ComponentSpec 组件规格（DSL）
+type ComponentSpec struct {
+    Type   string                 // "text", "button", ...
+    Props  map[string]interface{} // 组件属性
+    Style  StyleSpec              // 样式规格
+    Events map[string]string      // 事件绑定
+    Children []ComponentSpec      // 子组件
 }
 ```
 
-#### 8.2 组件生命周期
+### 3. Screen Manager（Framework 层）
 
-```
-     Created
-        │
-        ▼
-    Mounted ──────┐
-        │         │
-        ▼         │
-    Updated ◄─────┘
-        │
-        ▼
-   Unmounted
-        │
-        ▼
-    Destroyed
-```
+```go
+// 位于: tui/framework/screen/manager.go
 
-## 依赖关系图
+package screen
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Dependencies                                  │
-└─────────────────────────────────────────────────────────────────────────┘
+// Manager 屏幕管理器
+type Manager struct {
+    screen   platform.Screen
+    runtime  *runtime.Runtime
+    frontBuf *runtime.CellBuffer
+    backBuf  *runtime.CellBuffer
+}
 
-Application (用户代码)
-    ↓ depends on
-Framework (tui/framework/*)
-    ↓ depends on
-    ├─→ Runtime (tui/runtime/*)
-    └─→ Platform (tui/framework/platform/*)
-           ↓ depends on
-           OS / Terminal Driver
+// Render 渲染缓冲区到屏幕
+func (m *Manager) Render(buf *runtime.CellBuffer) error {
+    // 1. Diff
+    changes := m.runtime.Diff(m.frontBuf, buf)
 
-禁止的依赖:
-    Runtime ←←← Framework (逆向依赖)
-    Platform ←←← Application (跨层依赖)
-    Runtime ←←← Platform (边界违反)
+    // 2. 输出
+    for _, change := range changes {
+        m.screen.Write(change.ToANSI())
+    }
+
+    // 3. Flush
+    return m.screen.Flush()
+}
 ```
 
-## 接口稳定性
+## 边界检查清单
 
-| 层级 | 稳定性 | 说明 |
-|------|--------|------|
-| Application API | Stable | 对外公开 API |
-| Framework Core | Stable | 核心接口 |
-| Framework Internal | Volatile | 内部实现可能变化 |
-| Runtime API | Stable | 复用的 Runtime 接口 |
-| Platform API | Stable | 平台抽象接口 |
-| Platform Impl | Volatile | 平台特定实现 |
+在提交代码前，请确认：
+
+- [ ] Runtime 没有导入 Framework
+- [ ] Platform 没有导入 Framework 或 Runtime
+- [ ] Component 没有导入 Platform
+- [ ] Component 只实现需要的能力接口
+- [ ] Component 只处理 Action，不处理 RawInput
+- [ ] 所有状态变化可追溯到 Action
+- [ ] Render 函数只使用传入的 Context 和 Buffer
+
+## 边界违反后果
+
+| 严重程度 | 后果 |
+|---------|------|
+| 轻微 | 警告，要求修复 |
+| 中等 | 拒绝合并，要求重构 |
+| 严重 | 阻止发布，要求架构重新评审 |
+
+> **记住：这些边界不是限制创造力，而是保护架构长期健康的护栏。**

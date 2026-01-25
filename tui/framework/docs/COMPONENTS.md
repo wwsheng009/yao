@@ -1,1300 +1,646 @@
-# Component Design - Phase 2
+# Component Interface Design V3
 
-## 概述
+> **版本说明**: 本文档定义了重构后的 Component 接口系统。V3 采用 Capability Interfaces 模式，将 Component 拆分为多个小型、可组合的能力接口。
 
-本文档详细描述第二阶段（Phase 2）的组件设计，包括所有基础和高级组件的完整规格说明。
+## 设计原则
 
-## 组件层次结构
+1. **最小接口**: 每个接口只定义一种核心能力
+2. **可组合**: 通过接口组合实现复杂组件
+3. **无强制**: 组件只实现需要的能力
+4. **可替换**: 接口为替换而设计
 
-```
-Component (接口)
-    │
-    ├── BaseComponent (基础实现)
-    │
-    ├── Display Components (显示组件)
-    │   ├── Text
-    │   ├── Paragraph
-    │   ├── Code
-    │   └── Separator
-    │
-    ├── Interactive Components (交互组件)
-    │   ├── Button
-    │   ├── Checkbox
-    │   ├── Radio
-    │   ├── Toggle
-    │   └── Slider
-    │
-    ├── Input Components (输入组件)
-    │   ├── TextInput
-    │   ├── TextArea
-    │   ├── PasswordInput
-    │   ├── NumberInput
-    │   └── Select
-    │
-    ├── Container Components (容器组件)
-    │   ├── Box
-    │   ├── Flex
-    │   ├── Grid
-    │   ├── Stack
-    │   └── Tabs
-    │
-    ├── Display Collections (集合显示)
-    │   ├── List
-    │   ├── Table
-    │   ├── Tree
-    │   └── Calendar
-    │
-    ├── Widget Components (小部件)
-    │   ├── ProgressBar
-    │   ├── Spinner
-    │   ├── Meter
-    │   ├── Gauge
-    │   └── Chart
-    │
-    └── Form Components (表单组件)
-        ├── Form
-        ├── Field
-        ├── Label
-        ├── Validation
-        └── Schema
-```
+## 为什么拆分 Component？
 
-## 基础组件
-
-### 1. Text (文本显示)
-
-#### 接口定义
+### ❌ V1: 胖接口
 
 ```go
-// 位于: tui/framework/component/display/text.go
+type Component interface {
+    ID() string
+    Mount(parent Container) error
+    Unmount() error
+    Measure(constraints Constraints) Size
+    Render(ctx RenderContext) string  // 返回 string!
+    HandleEvent(ev Event) bool
+    IsFocused() bool
+    IsEnabled() bool
+    IsVisible() bool
+}
+```
 
-package display
+**问题**：
+- 所有组件必须实现所有方法
+- 大量 no-op 实现
+- Render 返回 string 无法支持 diff
+- 直接处理 KeyEvent 导致无法回放
 
-// Text 文本显示组件
-type Text struct {
+### ✅ V3: 能力接口
+
+```go
+// 基础
+type Node interface {
+    ID() string
+    Type() string
+}
+
+// 能力（按需实现）
+type Paintable interface {
+    Node
+    Paint(ctx PaintContext, buf *runtime.CellBuffer)
+}
+
+type ActionTarget interface {
+    Node
+    HandleAction(a *runtime.Action) bool
+}
+
+type Focusable interface {
+    Node
+    FocusID() string
+    OnFocus()
+    OnBlur()
+}
+
+// 组合接口
+type BaseComponent interface {
+    Node
+    Paintable
+}
+```
+
+**优势**：
+- 无 no-op 实现
+- 组件只实现需要的能力
+- AI 可以查询组件能力
+- 易于测试和 Mock
+
+## 核心能力接口
+
+### 1. Node - 基础节点
+
+```go
+// 位于: tui/framework/component/node.go
+
+package component
+
+// Node 所有组件的基础接口
+type Node interface {
+    // ID 返回组件唯一标识
+    ID() string
+
+    // Type 返回组件类型
+    Type() string
+}
+
+// NewNode 创建基础节点
+func NewNode(id, componentType string) Node {
+    return &baseNode{
+        id:   id,
+        typ:  componentType,
+    }
+}
+
+type baseNode struct {
+    id  string
+    typ string
+}
+
+func (n *baseNode) ID() string { return n.id }
+func (n *baseNode) Type() string { return n.typ }
+```
+
+### 2. Mountable - 可挂载
+
+```go
+// 位于: tui/framework/component/mountable.go
+
+package component
+
+// Mountable 可挂载组件
+type Mountable interface {
+    Node
+
+    // Mount 挂载到父组件
+    Mount(parent Container) error
+
+    // Unmount 卸载
+    Unmount() error
+
+    // IsMounted 是否已挂载
+    IsMounted() bool
+}
+
+// Container 容器接口
+type Container interface {
+    Node
+    Add(child Node) error
+    Remove(id string) error
+    Children() []Node
+}
+
+// MountableState 可挂载状态
+type MountableState struct {
+    mounted bool
+    parent  Container
+}
+
+func (s *MountableState) IsMounted() bool {
+    return s.mounted
+}
+```
+
+### 3. Measurable - 可测量
+
+```go
+// 位于: tui/framework/component/measurable.go
+
+package component
+
+// Constraints 尺寸约束
+type Constraints struct {
+    MinWidth  int
+    MaxWidth  int
+    MinHeight int
+    MaxHeight int
+}
+
+// Size 尺寸
+type Size struct {
+    Width  int
+    Height int
+}
+
+// Measurable 可测量组件
+type Measurable interface {
+    Node
+
+    // Measure 测量首选尺寸
+    Measure(constraints Constraints) Size
+
+    // GetSize 获取当前尺寸
+    GetSize() Size
+}
+
+// MeasurableState 可测量状态
+type MeasurableState struct {
+    width  int
+    height int
+}
+
+func (s *MeasurableState) Width() int  { return s.width }
+func (s *MeasurableState) Height() int { return s.height }
+
+func (s *MeasurableState) SetSize(w, h int) {
+    s.width = w
+    s.height = h
+}
+```
+
+### 4. Paintable - 可绘制（V3 关键变更）
+
+```go
+// 位于: tui/framework/component/paintable.go
+
+package component
+
+import (
+    "github.com/yaoapp/yao/tui/runtime/paint"
+)
+
+// PaintContext 绘制上下文
+type PaintContext struct {
+    // 可用区域
+    Bounds Rect
+
+    // 绝对位置
+    AbsoluteX int
+    AbsoluteY int
+
+    // 继承样式
+    InheritStyle Style
+
+    // Z-index
+    ZIndex int
+
+    // 裁剪区域
+    ClipRect *Rect
+}
+
+// Paintable 可绘制组件
+type Paintable interface {
+    Node
+
+    // Paint 绘制到缓冲区
+    // V3: 不返回 string，而是直接写入 buffer
+    Paint(ctx PaintContext, buf *paint.CellBuffer)
+}
+
+// PaintableState 可绘制状态
+type PaintableState struct {
+    visible bool
+    opacity float32
+}
+
+func (s *PaintableState) IsVisible() bool {
+    return s.visible
+}
+```
+
+### 5. ActionTarget - Action 处理（V3 关键变更）
+
+```go
+// 位于: tui/framework/component/actionable.go
+
+package component
+
+import (
+    "github.com/yaoapp/yao/tui/runtime/action"
+)
+
+// ActionTarget 可处理 Action 的组件
+type ActionTarget interface {
+    Node
+
+    // HandleAction 处理语义化动作
+    // V3: 不处理 KeyEvent，只处理 Action
+    HandleAction(a *action.Action) bool
+}
+
+// 示例: TextInput 实现
+func (t *TextInput) HandleAction(a *action.Action) bool {
+    switch a.Type {
+    case action.ActionInputText:
+        if text, ok := a.Payload.(string); ok {
+            t.Insert(text)
+            return true
+        }
+    case action.ActionDeleteChar:
+        t.DeleteChar()
+        return true
+    case action.ActionNavigateLeft:
+        t.MoveCursor(-1)
+        return true
+    }
+    return false
+}
+```
+
+### 6. Focusable - 可聚焦（V3 关键变更）
+
+```go
+// 位于: tui/framework/component/focusable.go
+
+package component
+
+// Focusable 可聚焦组件
+type Focusable interface {
+    Node
+
+    // FocusID 返回焦点标识
+    FocusID() string
+
+    // OnFocus 获得焦点
+    OnFocus()
+
+    // OnBlur 失去焦点
+    OnBlur()
+}
+
+// FocusableState 焦点状态
+type FocusableState struct {
+    focused bool
+}
+
+func (s *FocusableState) IsFocused() bool {
+    return s.focused
+}
+
+func (s *FocusableState) SetFocus(focused bool) {
+    s.focused = focused
+}
+```
+
+### 7. Scrollable - 可滚动
+
+```go
+// 位于: tui/framework/component/scrollable.go
+
+package component
+
+// Scrollable 可滚动组件
+type Scrollable interface {
+    Node
+
+    // ScrollTo 滚动到指定位置
+    ScrollTo(x, y int)
+
+    // ScrollBy 相对滚动
+    ScrollBy(dx, dy int)
+
+    // GetScrollPosition 获取滚动位置
+    GetScrollPosition() (x, y int)
+
+    // GetScrollRange 获取滚动范围
+    GetScrollRange() (minX, minY, maxX, maxY int)
+}
+
+// ScrollableState 滚动状态
+type ScrollableState struct {
+    offsetX       int
+    offsetY       int
+    contentWidth  int
+    contentHeight int
+}
+```
+
+### 8. Validatable - 可验证
+
+```go
+// 位于: tui/framework/component/validatable.go
+
+package component
+
+// Validatable 可验证组件
+type Validatable interface {
+    Node
+
+    // Validate 验证
+    Validate() error
+
+    // IsValid 是否有效
+    IsValid() bool
+
+    // ValidationMessage 验证消息
+    ValidationMessage() string
+}
+```
+
+### 9. Updatable - 可更新
+
+```go
+// 位于: tui/framework/component/updatable.go
+
+package component
+
+// Updatable 可更新组件
+type Updatable interface {
+    Node
+
+    // GetValue 获取值
+    GetValue() any
+
+    // SetValue 设置值
+    SetValue(value any) error
+
+    // OnChange 值变化回调
+    OnChange(fn func(any))
+}
+```
+
+## 组合接口
+
+### BaseComponent - 基础组件
+
+```go
+// 位于: tui/framework/component/base.go
+
+package component
+
+// BaseComponent 基础组件（组合常用能力）
+type BaseComponent interface {
+    Node
+    Paintable
+}
+
+// 大多数组件应该实现 BaseComponent
+```
+
+### InteractiveComponent - 交互组件
+
+```go
+// 位于: tui/framework/component/interactive.go
+
+package component
+
+// InteractiveComponent 交互组件
+type InteractiveComponent interface {
+    BaseComponent
+    ActionTarget
+    Focusable
+}
+
+// Button, Input 等交互组件应该实现 InteractiveComponent
+```
+
+### ContainerComponent - 容器组件
+
+```go
+// 位于: tui/framework/component/container.go
+
+package component
+
+// ContainerComponent 容器组件
+type ContainerComponent interface {
     BaseComponent
 
-    // 内容
+    // Add 添加子组件
+    Add(child Node) error
+
+    // Remove 移除子组件
+    Remove(id string) error
+
+    // Children 获取子组件
+    Children() []Node
+
+    // ChildCount 子组件数量
+    ChildCount() int
+
+    // Child 获取子组件
+    Child(id string) (Node, bool)
+}
+```
+
+## 接口断言和类型检查
+
+```go
+// 位于: tui/framework/component/traits.go
+
+package component
+
+// IsPaintable 检查是否可绘制
+func IsPaintable(n Node) bool {
+    _, ok := n.(Paintable)
+    return ok
+}
+
+// IsFocusable 检查是否可聚焦
+func IsFocusable(n Node) bool {
+    _, ok := n.(Focusable)
+    return ok
+}
+
+// IsActionTarget 检查是否可处理 Action
+func IsActionTarget(n Node) bool {
+    _, ok := n.(ActionTarget)
+    return ok
+}
+
+// ToPaintable 转换为 Paintable
+func ToPaintable(n Node) (Paintable, bool) {
+    p, ok := n.(Paintable)
+    return p, ok
+}
+
+// ToFocusable 转换为 Focusable
+func ToFocusable(n Node) (Focusable, bool) {
+    f, ok := n.(Focusable)
+    return f, ok
+}
+
+// GetCapabilities 获取组件所有能力
+func GetCapabilities(n Node) []string {
+    var caps []string
+
+    if _, ok := n.(Paintable); ok {
+        caps = append(caps, "Paintable")
+    }
+    if _, ok := n.(ActionTarget); ok {
+        caps = append(caps, "ActionTarget")
+    }
+    if _, ok := n.(Focusable); ok {
+        caps = append(caps, "Focusable")
+    }
+    if _, ok := n.(Scrollable); ok {
+        caps = append(caps, "Scrollable")
+    }
+    if _, ok := n.(Validatable); ok {
+        caps = append(caps, "Validatable")
+    }
+
+    return caps
+}
+```
+
+## 组件实现示例
+
+### 示例 1: Text 组件（最小化）
+
+```go
+// 位于: tui/framework/display/text.go
+
+package display
+
+type Text struct {
+    *component.MountableState
+    *component.MeasurableState
     content string
-    lines   []string
-
-    // 样式
     style   style.Style
-
-    // 布局
-    align   TextAlign  // Left, Center, Right, Justify
-    wrap    bool       // 自动换行
-    maxLines int       // 最大行数 (0 = 无限制)
-
-    // 截断
-    truncate string    // "head", "tail", "middle", ""
-    ellipsis string    // 省略符号 (默认 "...")
 }
 
-// TextAlign 文本对齐
-type TextAlign int
+func NewText(id, content string) *Text {
+    return &Text{
+        MountableState:   &component.MountableState{},
+        MeasurableState: &component.MeasurableState{},
+        content:         content,
+    }
+}
 
-const (
-    AlignLeft TextAlign = iota
-    AlignCenter
-    AlignRight
-    AlignJustify
-)
+func (t *Text) ID() string   { return t.MountableState.ID }
+func (t *Text) Type() string { return "text" }
+
+func (t *Text) Measure(constraints component.Constraints) component.Size {
+    // 测量文本尺寸
+    width := runewidth.StringWidth(t.content)
+    return component.Size{
+        Width:  min(width, constraints.MaxWidth),
+        Height: 1,
+    }
+}
+
+func (t *Text) Paint(ctx component.PaintContext, buf *runtime.CellBuffer) {
+    // 绘制到 buffer
+    for i, r := range t.content {
+        buf.SetCell(ctx.AbsoluteX+i, ctx.AbsoluteY, r, t.style)
+    }
+}
 ```
 
-#### API
+### 示例 2: Button 组件（交互）
 
 ```go
-// 创建
-func NewText(content string) *Text
-func NewStyledText(content string, style style.Style) *Text
+// 位于: tui/framework/interactive/button.go
 
-// 配置 (链式)
-func (t *Text) WithAlign(align TextAlign) *Text
-func (t *Text) WithWrap(wrap bool) *Text
-func (t *Text) WithMaxLines(max int) *Text
-func (t *Text) WithTruncate(mode string) *Text
-func (t *Text) WithEllipsis(ellipsis string) *Text
+package interactive
 
-// 操作
-func (t *Text) SetContent(content string)
-func (t *Text) GetContent() string
-func (t *Text) Append(text string)
-func (t *Text) Clear()
-
-// 测量
-func (t *Text) Measure(constraints Constraints) Size
-```
-
-#### 渲染示例
-
-```
-┌─────────────────────────────────┐
-│ Left aligned text               │
-│         Center text             │
-│                    Right text   │
-│                                 │
-│ Long text that wraps to the    │
-│ next line when the container is │
-│ not wide enough.                │
-└─────────────────────────────────┘
-```
-
-### 2. Box (盒子容器)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/layout/box.go
-
-package layout
-
-// Box 盒子容器
-type Box struct {
-    BaseContainer
-
-    // 边框
-    border  Border
-    borderStyle style.Style
-
-    // 间距
-    padding BoxSpacing  // 内边距
-    margin  BoxSpacing  // 外边距
-
-    // 尺寸
-    width  Dimension
-    height Dimension
-
-    // 背景
-    bgColor Color
-}
-
-// Border 边框定义
-type Border struct {
-    Top    bool
-    Bottom bool
-    Left   bool
-    Right  bool
-
-    // 样式
-    Style BorderStyle  // Normal, Rounded, Double, Thick, Hidden
-}
-
-// BorderStyle 边框样式
-type BorderStyle int
-
-const (
-    BorderNormal BorderStyle = iota
-    BorderRounded
-    BorderDouble
-    BorderThick
-    BorderHidden
-    BorderCustom  // 使用自定义字符
-)
-
-// BoxSpacing 间距
-type BoxSpacing struct {
-    Top    int
-    Right  int
-    Bottom int
-    Left   int
-}
-
-// Dimension 尺寸
-type Dimension struct {
-    Value   int
-    Unit    DimensionUnit
-    Percent float64  // 当 Unit = Percent
-}
-
-type DimensionUnit int
-
-const (
-    UnitPixel DimensionUnit = iota
-    UnitPercent
-    UnitFlex    // flex-grow
-    UnitAuto    // 自动计算
-)
-```
-
-#### API
-
-```go
-// 创建
-func NewBox() *Box
-
-// 边框
-func (b *Box) Border(enabled bool) *Box
-func (b *Box) BorderStyle(style BorderStyle) *Box
-func (b *Box) BorderColor(color Color) *Box
-
-// 间距
-func (b *Box) Padding(all int) *Box
-func (b *Box) PaddingV(vertical int) *Box
-func (b *Box) PaddingH(horizontal int) *Box
-func (b *Box) PaddingTop(v int) *Box
-func (b *Box) PaddingRight(v int) *Box
-func (b *Box) PaddingBottom(v int) *Box
-func (b *Box) PaddingLeft(v int) *Box
-
-// 尺寸
-func (b *Box) Width(w int) *Box
-func (b *Box) Height(h int) *Box
-func (b *Box) WidthPercent(p float64) *Box
-func (b *Box) HeightPercent(p float64) *Box
-func (b *Box) Flex() *Box
-
-// 背景
-func (b *Box) Background(color Color) *Box
-```
-
-#### 渲染示例
-
-```
-┌─────────────────────────────────┐
-│ ┌───────┐                       │
-│ │       │  Margin (外边距)        │
-│ │ ┌───┐ │                       │
-│ │ │   │ │  Padding (内边距)      │
-│ │ │ X │ │  Content              │
-│ │ │   │ │                       │
-│ │ └───┘ │                       │
-│ │       │                       │
-│ └───────┘                       │
-│                                 │
-└─────────────────────────────────┘
-```
-
-### 3. ProgressBar (进度条)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/widget/progress.go
-
-package widget
-
-// ProgressBar 进度条
-type ProgressBar struct {
-    InteractiveComponent
-
-    // 值
-    value    float64  // 当前值
-    max      float64  // 最大值
-
-    // 显示
-    showPercent bool
-    showValue   bool
-
-    // 样式
-    fillStyle   style.Style
-    emptyStyle  style.Style
-    textStyle   style.Style
-
-    // 不确定状态
-    indeterminate bool
-    indeterminatePos int
-
-    // 方向
-    horizontal bool
-}
-
-// ProgressBarStyle 进度条样式
-type ProgressBarStyle struct {
-    Fill    style.Style
-    Empty   style.Style
-    Text    style.Style
-
-    // 字符
-    FillChar    rune  // 默认 '█'
-    EmptyChar   rune  // 默认 '░'
-
-    // 边框
-    ShowBorder  bool
-    BorderStyle BorderStyle
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewProgressBar() *ProgressBar
-func NewProgressBarMax(max float64) *ProgressBar
-
-// 值操作
-func (p *ProgressBar) SetValue(value float64)
-func (p *ProgressBar) GetValue() float64
-func (p *ProgressBar) SetMax(max float64)
-func (p *ProgressBar) Increment(delta float64)
-func (p *ProgressBar) GetPercent() float64
-
-// 显示
-func (p *ProgressBar) ShowPercent(show bool) *ProgressBar
-func (p *ProgressBar) ShowValue(show bool) *ProgressBar
-
-// 样式
-func (p *ProgressBar) SetFillStyle(style style.Style)
-func (p *ProgressBar) SetEmptyStyle(style style.Style)
-
-// 不确定状态
-func (p *ProgressBar) SetIndeterminate(indeterminate bool)
-func (p *ProgressBar) IsIndeterminate() bool
-```
-
-#### 渲染示例
-
-```
-确定状态:
-┌─────────────────────────────────┐
-│ Progress: [████████████░░░░] 75%│
-│ Progress: [████████████████] 100%│
-│         [████████░░░░░░░░]  40% │
-└─────────────────────────────────┘
-
-不确定状态:
-┌─────────────────────────────────┐
-│ Loading:  [░░░████░░░░░░░░░░░░] │
-│           [░░░░░░░██████░░░░░░] │
-└─────────────────────────────────┘
-```
-
-## 输入组件
-
-### 4. TextInput (文本输入)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/input/textinput.go
-
-package input
-
-// TextInput 文本输入框
-type TextInput struct {
-    InteractiveComponent
-
-    // 值
-    value     string
-    cursor    int
-    selection Selection
-
-    // 配置
-    placeholder string
-    password    bool
-    echo        rune  // 密码遮罩字符
-
-    // 限制
-    maxLength   int
-    validator   Validator
-
-    // 样式
-    placeholderStyle style.Style
-    cursorStyle     style.Style
-    selectionStyle  style.Style
-
-    // 历史
-    history    []string
-    historyPos int
-}
-
-// Selection 文本选择
-type Selection struct {
-    Start int
-    End   int
-    Active bool
-}
-
-// Validator 验证器
-type Validator interface {
-    Validate(value string) error
-}
-
-// InputValidator 输入验证函数
-type InputValidator func(string) error
-
-func (v InputValidator) Validate(value string) error {
-    return v(value)
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewTextInput() *TextInput
-func NewTextInputPlaceholder(placeholder string) *TextInput
-
-// 值操作
-func (t *TextInput) SetValue(value string)
-func (t *TextInput) GetValue() string
-func (t *TextInput) Clear()
-
-// 光标
-func (t *TextInput) SetCursor(pos int)
-func (t *TextInput) GetCursor() int
-func (t *TextInput) CursorStart()
-func (t *TextInput) CursorEnd()
-
-// 选择
-func (t *TextInput) SelectAll()
-func (t *TextInput) ClearSelection()
-func (t *TextInput) GetSelection() string
-func (t *TextInput) DeleteSelection()
-
-// 配置
-func (t *TextInput) SetPlaceholder(text string)
-func (t *TextInput) SetPassword(enabled bool)
-func (t *TextInput) SetEcho(char rune)
-func (t *TextInput) SetMaxLength(max int)
-
-// 验证
-func (t *TextInput) SetValidator(validator Validator)
-func (t *TextInput) Validate() error
-func (t *TextInput) IsValid() bool
-
-// 历史
-func (t *TextInput) HistoryAdd(value string)
-func (t *TextInput) HistoryPrev()
-func (t *TextInput) HistoryNext()
-
-// 样式
-func (t *TextInput) SetPlaceholderStyle(style style.Style)
-func (t *TextInput) SetCursorStyle(style style.Style)
-func (t *TextInput) SetSelectionStyle(style style.Style)
-```
-
-#### 键盘快捷键
-
-| 按键 | 动作 |
-|------|------|
-| `←` `→` | 移动光标 |
-| `Ctrl+A` | 光标到开头 |
-| `Ctrl+E` | 光标到末尾 |
-| `Backspace` | 删除前一个字符 |
-| `Delete` | 删除后一个字符 |
-| `Ctrl+W` | 删除前一个单词 |
-| `Ctrl+K` | 删除到行尾 |
-| `Ctrl+U` | 删除到行首 |
-| `Ctrl+C` | 复制选择 |
-| `Ctrl+X` | 剪切选择 |
-| `Ctrl+V` | 粘贴 |
-| `Ctrl+A` | 全选 |
-| `↑` `↓` | 历史记录 |
-
-#### 渲染示例
-
-```
-普通输入:
-┌─────────────────────────────────┐
-│ Username: [john_doe           ] │
-│          └─────光标─────┘         │
-└─────────────────────────────────┘
-
-密码输入:
-┌─────────────────────────────────┐
-│ Password: [••••••••            ] │
-└─────────────────────────────────┘
-
-占位符:
-┌─────────────────────────────────┐
-│ Search: [Type to search...    ] │
-│         └─────灰色─────┘         │
-└─────────────────────────────────┘
-
-选择文本:
-┌─────────────────────────────────┐
-│ Input: [Hello[ world]         ] │
-│        └─────反白─────┘          │
-└─────────────────────────────────┘
-```
-
-### 5. TextArea (多行输入)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/input/textarea.go
-
-package input
-
-// TextArea 多行文本输入
-type TextArea struct {
-    InteractiveComponent
-
-    // 内容
-    lines    []string
-    cursor   CursorPos
-
-    // 滚动
-    scrollX  int
-    scrollY  int
-
-    // 配置
-    lineNumbers bool
-    wordWrap    bool
-    syntax      SyntaxHighlighter
-
-    // 标尺
-    showRuler    bool
-    rulerColumns []int
-}
-
-// CursorPos 光标位置
-type CursorPos struct {
-    Line int
-    Col  int
-}
-
-// SyntaxHighlighter 语法高亮
-type SyntaxHighlighter interface {
-    Highlight(line string, col int) []style.Style
-}
-
-// TextAreaStyle 多行输入样式
-type TextAreaStyle struct {
-    LineNumberStyle style.Style
-    CurrentLineStyle style.Style
-    RulerStyle      style.Style
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewTextArea() *TextArea
-func NewTextAreaLines(lines []string) *TextArea
-
-// 内容
-func (t *TextArea) SetLines(lines []string)
-func (t *TextArea) GetLines() []string
-func (t *TextArea) GetText() string
-func (t *TextArea) SetText(text string)
-func (t *TextArea) AppendLine(line string)
-func (t *TextArea) InsertLine(pos int, line string)
-func (t *TextArea) DeleteLine(pos int)
-
-// 光标
-func (t *TextArea) SetCursor(line, col int)
-func (t *TextArea) GetCursor() CursorPos
-
-// 滚动
-func (t *TextArea) ScrollTo(line, col int)
-func (t *TextArea) ScrollBy(deltaLine, deltaCol int)
-
-// 配置
-func (t *TextArea) SetLineNumbers(show bool)
-func (t *TextArea) SetWordWrap(enabled bool)
-func (t *TextArea) SetSyntax(highlighter SyntaxHighlighter)
-func (t *TextArea) SetRuler(columns []int)
-```
-
-#### 渲染示例
-
-```
-带行号:
-┌─────────────────────────────────┐
-│ 1 │ func hello() {              │
-│ 2 │     fmt.Println("Hello")    │
-│ 3 │ }                           │
-│   └─光标                         │
-└─────────────────────────────────┘
-
-带标尺:
-┌─────────────────────────────────┐
-│   │    10    20    30    40     │
-│ 1 │ func hello() {              │
-│ 2 │     fmt.Println("Hello")    │
-│ 3 │ }                           │
-└─────────────────────────────────┘
-```
-
-## 集合组件
-
-### 6. List (列表)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/display/list.go
-
-package display
-
-// List 列表组件
-type List struct {
-    InteractiveComponent
-
-    // 数据
-    items    []ListItem
-    cursor   int
-    selected map[int]bool  // 多选
-
-    // 滚动
-    offset   int
-
-    // 配置
-    showCursor bool
-    multiSelect bool
-    showFilter bool  // 过滤器
-
-    // 样式
-    cursorStyle style.Style
-    selectedStyle style.Style
-    dimStyle    style.Style  // 非选中项样式
-}
-
-// ListItem 列表项
-type ListItem struct {
-    Text      string
-    Value     interface{}
-    Disabled  bool
-    Icon      rune  // 前缀图标
-    Secondary string  // 次要文本
-}
-
-// ListStyle 列表样式
-type ListStyle struct {
-    Cursor      style.Style
-    Selected    style.Style
-    Dim         style.Style
-
-    // 前缀
-    ShowPrefix  bool
-    Prefix      map[string]rune  // "selected": "•", "unselected": " "
-
-    // 分隔符
-    ShowDivider bool
-    Divider     rune
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewList() *List
-func NewListItems(items []string) *List
-
-// 数据
-func (l *List) SetItems(items []ListItem)
-func (l *List) AddItem(item ListItem)
-func (l *List) RemoveItem(index int)
-func (l *List) ClearItems()
-func (l *List) GetItem(index int) ListItem
-func (l *List) GetItemCount() int
-
-// 选择
-func (l *List) SetCursor(index int)
-func (l *List) GetCursor() int
-func (l *List) CursorDown()
-func (l *List) CursorUp()
-func (l *List) PageDown()
-func (l *List) PageUp()
-func (l *List) Top()
-func (l *List) Bottom()
-
-// 多选
-func (l *List) SetMultiSelect(enabled bool)
-func (l *List) Select(index int)
-func (l *List) Deselect(index int)
-func (l *List) ToggleSelect(index int)
-func (l *List) SelectAll()
-func (l *List) DeselectAll()
-func (l *List) GetSelected() []int
-func (l *List) GetSelectedItems() []ListItem
-```
-
-#### 渲染示例
-
-```
-单选:
-┌─────────────────────────────────┐
-│ ▶ Item 1                        │
-│   Item 2                        │
-│   Item 3                        │
-│   Item 4                        │
-└─────────────────────────────────┘
-
-多选:
-┌─────────────────────────────────┐
-│ ▶ ✓ Item 1                      │
-│   ✓ Item 2                      │
-│     Item 3                      │
-│     Item 4                      │
-└─────────────────────────────────┘
-
-带次要文本:
-┌─────────────────────────────────┐
-│ ▶ ✓ John Doe                    │
-│     john@example.com            │
-│   ✓ Jane Smith                  │
-│     jane@example.com            │
-│     Bob Johnson                 │
-│     bob@example.com            │
-└─────────────────────────────────┘
-```
-
-### 7. Table (表格)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/display/table.go
-
-package display
-
-// Table 表格组件
-type Table struct {
-    InteractiveComponent
-
-    // 列定义
-    columns []Column
-
-    // 数据
-    rows    []TableRow
-    cursor  int
-    selected map[int]bool
-
-    // 滚动
-    offsetX  int
-    offsetY  int
-
-    // 排序
-    sortBy   int
-    sortDesc bool
-
-    // 固定
-    fixedRows int
-    fixedCols int
-
-    // 配置
-    showHeader bool
-    showCursor bool
-    multiSelect bool
-    striped bool
-
-    // 样式
-    headerStyle  style.Style
-    cursorStyle  style.Style
-    selectedStyle style.Style
-    stripedStyle style.Style
-}
-
-// Column 列定义
-type Column struct {
-    Title    string
-    Width    int  // 0 = 自动
-    Align    TextAlign
-    Sortable bool
-    Visible  bool
-}
-
-// TableRow 表格行
-type TableRow struct {
-    Cells   []TableCell
-    Data    interface{}  // 原始数据
-    Expander *Expander  // 展开子行
-}
-
-// TableCell 表格单元格
-type TableCell struct {
-    Text    string
-    Style   style.Style
-    ColSpan int
-    RowSpan int
-}
-
-// Expander 展开器
-type Expander struct {
-    Expanded bool
-    Content []TableRow
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewTable() *Table
-func NewTableColumns(columns []Column) *Table
-
-// 列
-func (t *Table) SetColumns(columns []Column)
-func (t *Table) AddColumn(column Column)
-func (t *Table) RemoveColumn(index int)
-func (t *Table) GetColumn(index int) Column
-
-// 行
-func (t *Table) SetRows(rows []TableRow)
-func (t *Table) AddRow(row TableRow)
-func (t *Table) RemoveRow(index int)
-func (t *Table) ClearRows()
-func (t *Table) GetRow(index int) TableRow
-func (t *Table) GetRowCount() int
-
-// 单元格
-func (t *Table) SetCell(row, col int, cell TableCell)
-func (t *Table) GetCell(row, col int) TableCell
-
-// 选择
-func (t *Table) SetCursor(row, col int)
-func (t *Table) GetCursor() (row, col int)
-func (t *Table) SelectRow(index int)
-func (t *Table) GetSelectedRows() []int
-
-// 排序
-func (t *Table) SortBy(column int, desc bool)
-func (t *Table) GetSort() (column int, desc bool)
-
-// 滚动
-func (t *Table) ScrollTo(row, col int)
-func (t *Table) ScrollBy(deltaRow, deltaCol int)
-
-// 固定
-func (t *Table) SetFixedRows(count int)
-func (t *Table) SetFixedCols(count int)
-```
-
-#### 渲染示例
-
-```
-基本表格:
-┌─────────────────────────────────┐
-│ ┌───┬────────────┬──────────┐ │
-│ │ # │ Name       │ Status   │ │
-│ ├───┼────────────┼──────────┤ │
-│ │ ▶ │ Item 1     │ Active   │ │
-│ │   │ Item 2     │ Inactive │ │
-│ │   │ Item 3     │ Active   │ │
-│ └───┴────────────┴──────────┘ │
-└─────────────────────────────────┘
-
-固定表头和首列:
-┌─────────────────────────────────┐
-│ ┌───┬────────┬────────┬──────┐ │
-│ │ ■ │ Col 1  │ Col 2  │ Col 3│ │ ← 固定
-│ ├───┼────────┼────────┼──────┤ │
-│ │ ▶ │ A      │ B      │ C    │ │ ← 固定
-│ ├───┼────────┼────────┼──────┤ │
-│ │   │ D      │ E      │ F    │ │
-│ │   │ G      │ H      │ I    │ │
-│ └───┴────────┴────────┴──────┘ │
-└─────────────────────────────────┘
-
-可展开:
-┌─────────────────────────────────┐
-│ ┌──────┬────────────┐          │
-│ │ ▼    │ Category 1  │          │
-│ │      ├───┬────────┤          │
-│ │      │ • │ Item 1.1│          │
-│ │      │ • │ Item 1.2│          │
-│ ├──────┼────────────┤          │
-│ │ ▶    │ Category 2  │          │
-│ └──────┴────────────┘          │
-└─────────────────────────────────┘
-```
-
-## 表单组件
-
-### 8. Form (表单)
-
-#### 接口定义
-
-```go
-// 位于: tui/framework/component/form/form.go
-
-package form
-
-// Form 表单容器
-type Form struct {
-    ContainerComponent
-
-    // 字段
-    fields   []Field
-    fieldMap map[string]Field
-
-    // 导航
-    current  int
-
-    // 按钮
-    buttons []Button
-
-    // 提交
-    onSubmit func(data map[string]interface{}) error
-    onCancel func()
-
-    // 布局
-    layout   FormLayout  // Vertical, Horizontal, Grid
-}
-
-// Field 表单字段接口
-type Field interface {
-    Component
-
-    // 字段信息
-    Name() string
-    Label() string
-    Value() interface{}
-    SetValue(value interface{}) error
-
-    // 验证
-    Validate() error
-    IsValid() bool
-    SetValidator(validator Validator)
-
-    // 状态
-    SetRequired(required bool)
-    IsRequired() bool
-    SetEnabled(enabled bool)
-    IsEnabled() bool
-}
-
-// Validator 验证器
-type Validator interface {
-    Validate(value interface{}) error
-    Message() string
-}
-
-// FormLayout 表单布局
-type FormLayout int
-
-const (
-    FormLayoutVertical FormLayout = iota  // 标签在上，输入在下
-    FormLayoutHorizontal                   // 标签在左，输入在右
-    FormLayoutGrid                        // 网格布局
-)
-
-// FormBuilder 表单构建器
-type FormBuilder struct {
-    form *Form
-}
-```
-
-#### API
-
-```go
-// 创建
-func NewForm() *Form
-func NewFormBuilder() *FormBuilder
-
-// 字段
-func (f *Form) AddField(field Field)
-func (f *Form) RemoveField(name string)
-func (f *Form) GetField(name string) (Field, bool)
-func (f *Form) GetFields() []Field
-
-// 导航
-func (f *Form) NextField()
-func (f *Form) PrevField()
-func (f *Form) SetCurrent(index int)
-func (f *Form) GetCurrent() Field
-
-// 数据
-func (f *Form) GetValue(name string) (interface{}, error)
-func (f *Form) SetValue(name string, value interface{}) error
-func (f *Form) GetValues() map[string]interface{}
-func (f *Form) SetValues(data map[string]interface{})
-
-// 验证
-func (f *Form) Validate() error
-func (f *Form) IsValid() bool
-
-// 提交
-func (f *Form) SetOnSubmit(handler func(map[string]interface{}) error)
-func (f *Form) Submit() error
-func (f *Form) Cancel()
-```
-
-#### 预定义字段
-
-```go
-// 位于: tui/framework/component/form/fields.go
-
-// TextField 文本字段
-type TextField struct {
-    BaseField
-    input *input.TextInput
-}
-
-// NumberField 数字字段
-type NumberField struct {
-    BaseField
-    input   *input.TextInput
-    min     float64
-    max     float64
-    step    float64
-}
-
-// SelectField 选择字段
-type SelectField struct {
-    BaseField
-    list    *display.List
-    options []SelectOption
-}
-
-// CheckboxField 复选框字段
-type CheckboxField struct {
-    BaseField
-    checkbox *interactive.Checkbox
-}
-
-// DateField 日期字段
-type DateField struct {
-    BaseField
-    input   *input.TextInput
-    format  string
-}
-
-// BaseField 字段基类
-type BaseField struct {
-    name     string
+type Button struct {
+    *component.MountableState
+    *component.MeasurableState
+    *component.FocusableState
     label    string
-    required bool
-    enabled  bool
-    validator Validator
-    help     string
+    onClick  func()
+}
+
+func NewButton(id, label string) *Button {
+    return &Button{
+        MountableState:   &component.MountableState{},
+        MeasurableState: &component.MeasurableState{},
+        FocusableState:  &component.FocusableState{},
+        label:          label,
+    }
+}
+
+func (b *Button) ID() string   { return b.MountableState.ID }
+func (b *Button) Type() string { return "button" }
+
+func (b *Button) FocusID() string { return b.ID() }
+
+func (b *Button) OnFocus() {
+    b.FocusableState.SetFocus(true)
+}
+
+func (b *Button) OnBlur() {
+    b.FocusableState.SetFocus(false)
+}
+
+func (b *Button) HandleAction(a *runtime.Action) bool {
+    switch a.Type {
+    case runtime.ActionSubmit:
+        if b.onClick != nil {
+            b.onClick()
+        }
+        return true
+    }
+    return false
+}
+
+func (b *Button) Paint(ctx component.PaintContext, buf *runtime.CellBuffer) {
+    // 根据 focused 状态绘制不同样式
+    style := b.style
+    if b.FocusableState.IsFocused() {
+        style = style.WithBorder(style.BorderFocused)
+    }
+    // ...
 }
 ```
 
-#### 预定义验证器
+## V2 → V3 变更对照
 
-```go
-// 位于: tui/framework/component/form/validation.go
+| 方面 | V2 | V3 |
+|------|----|----|
+| Component | 单一胖接口 | 能力接口拆分 |
+| Render | `Render() string` | `Paint(ctx, buf)` |
+| Event | `HandleEvent(Event)` | `HandleAction(Action)` |
+| Focus | `IsFocused() bool` | `FocusID() string` |
+| 可选能力 | 强制实现所有方法 | 只实现需要的能力 |
+| AI 查询 | 无法查询组件能力 | `GetCapabilities()` |
 
-// Required 必填验证
-func Required() Validator
+## 总结
 
-// MinLength 最小长度
-func MinLength(min int) Validator
+V3 Component 接口设计：
 
-// MaxLength 最大长度
-func MaxLength(max int) Validator
-
-// Email 邮箱验证
-func Email() Validator
-
-// Pattern 正则验证
-func Pattern(pattern string) Validator
-
-// Range 范围验证
-func Range(min, max float64) Validator
-
-// Custom 自定义验证
-func Custom(fn func(interface{}) error) Validator
-
-// AllOf 所有验证都通过
-func AllOf(validators ...Validator) Validator
-
-// AnyOf 任一验证通过
-func AnyOf(validators ...Validator) Validator
-```
-
-#### 渲染示例
-
-```
-垂直布局:
-┌─────────────────────────────────┐
-│          User Form              │
-├─────────────────────────────────┤
-│ Name:                          │
-│ [____________________________] │
-│                                │
-│ Email:                         │
-│ [____________________________] │
-│                                │
-│ Age:                           │
-│ [____]                         │
-│                                │
-│ [ ] Subscribe to newsletter    │
-│                                │
-│ [Submit]  [Cancel]             │
-└─────────────────────────────────┘
-
-水平布局:
-┌─────────────────────────────────┐
-│ Name:     [_______________]     │
-│ Email:    [_______________]     │
-│ Age:      [____]                │
-│                [Submit] [Cancel]│
-└─────────────────────────────────┘
-```
-
-## 高级特性
-
-### 9. 键盘导航
-
-所有交互组件支持一致的键盘导航：
-
-| 按键 | 动作 |
-|------|------|
-| `Tab` | 下一个字段/组件 |
-| `Shift+Tab` | 上一个字段/组件 |
-| `Enter` | 提交/确认 |
-| `Escape` | 取消/关闭 |
-| `↑` `↓` | 上/下移动 |
-| `←` `→` | 左/右移动 |
-| `PageUp` `PageDown` | 翻页 |
-| `Home` `End` | 跳到首/尾 |
-
-### 10. 焦点管理
-
-```go
-// FocusManager 焦点管理器
-type FocusManager struct {
-    components []Focusable
-    current    int
-    cyclic     bool  // 循环导航
-}
-
-func (f *FocusManager) Register(component Focusable)
-func (f *FocusManager) Next()
-func (f *FocusManager) Prev()
-func (f *FocusManager) SetCurrent(index int)
-func (f *FocusManager) GetCurrent() Focusable
-```
-
-### 11. 主题支持
-
-所有组件支持主题：
-
-```go
-// Theme 主题
-type Theme struct {
-    // 颜色
-    Primary   Color
-    Secondary Color
-    Success   Color
-    Warning   Color
-    Error     Color
-    Info      Color
-
-    // 组件样式
-    Text      style.Style
-    Button    style.Style
-    Input     style.Style
-    List      ListStyle
-    Table     TableStyle
-    Form      FormStyle
-}
-
-// 预设主题
-var LightTheme Theme
-var DarkTheme Theme
-var DraculaTheme Theme
-var NordTheme Theme
-```
-
-### 12. 可访问性
-
-```go
-// Accessible 可访问性接口
-type Accessible interface {
-    Component
-
-    // 屏幕阅读器
-    SetLabel(label string)
-    GetLabel() string
-    SetHint(hint string)
-    GetHint() string
-
-    // 状态
-    SetRole(role AriaRole)
-    GetRole() AriaRole
-}
-
-type AriaRole int
-
-const (
-    RoleButton AriaRole = iota
-    RoleInput
-    RoleList
-    RoleListItem
-    RoleTable
-    RoleGrid
-    RoleDialog
-)
-```
-
-## 组件生命周期
-
-```
-     Created
-        │
-        ▼
-    Mounting ────┐
-        │         │ Mount(parent)
-        ▼         │
-     Mounted ─────┘
-        │
-        ▼
-    ┌────┴────┐
-    │         │
- Update    Render
-    │         │
-    └────┬────┘
-         │
-         ▼
-    Updating ───┐
-        │        │ HandleEvent
-        ▼        │
-    Updated ─────┘
-        │
-        ▼
-   Unmounting
-        │
-        ▼
-    Unmounted
-        │
-        ▼
-    Destroyed
-```
-
-## 测试示例
-
-```go
-func TestTextInput(t *testing.T) {
-    input := NewTextInput()
-    input.SetSize(20, 1)
-
-    // 测试输入
-    input.HandleEvent(&KeyEvent{Key: 'H'})
-    input.HandleEvent(&KeyEvent{Key: 'e'})
-    input.HandleEvent(&KeyEvent{Key: 'l'})
-    input.HandleEvent(&KeyEvent{Key: 'l'})
-    input.HandleEvent(&KeyEvent{Key: 'o'})
-
-    assert.Equal(t, "Hello", input.GetValue())
-    assert.Equal(t, 5, input.GetCursor())
-
-    // 测试删除
-    input.HandleEvent(&KeyEvent{Special: KeyBackspace})
-    assert.Equal(t, "Hell", input.GetValue())
-    assert.Equal(t, 4, input.GetCursor())
-
-    // 测试验证
-    input.SetValidator(MinLength(5))
-    assert.False(t, input.IsValid())
-}
-
-func TestTable(t *testing.T) {
-    table := NewTable()
-    table.SetColumns([]Column{
-        {Title: "Name", Width: 20},
-        {Title: "Age", Width: 10},
-    })
-    table.AddRow(TableRow{
-        Cells: []TableCell{
-            {Text: "John"},
-            {Text: "30"},
-        },
-    })
-
-    assert.Equal(t, 1, table.GetRowCount())
-
-    // 测试选择
-    table.SelectRow(0)
-    selected := table.GetSelectedRows()
-    assert.Equal(t, []int{0}, selected)
-}
-```
+1. **9 个能力接口**: Node, Mountable, Measurable, Paintable, ActionTarget, Focusable, Scrollable, Validatable, Updatable
+2. **3 个组合接口**: BaseComponent, InteractiveComponent, ContainerComponent
+3. **Paint 不返回 string**: 直接写入 CellBuffer
+4. **只处理 Action**: 不直接处理 KeyEvent
+5. **无 no-op 实现**: 组件只实现需要的能力
+6. **完全可测试**: 纯接口，易于 mock
+7. **AI 友好**: 可以查询组件能力
