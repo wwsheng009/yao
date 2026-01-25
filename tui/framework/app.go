@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yaoapp/yao/tui/framework/component"
@@ -48,6 +49,9 @@ type App struct {
 
 	// 首次渲染标记
 	firstRender bool
+
+	// 上一帧缓冲区（用于局部刷新）
+	prevBuffer [][]paint.Cell
 
 	// 配置
 	tickInterval time.Duration
@@ -243,56 +247,92 @@ func (a *App) render() {
 	a.dirty = false
 }
 
-// outputBuffer 输出缓冲区到终端
+// outputBuffer 输出缓冲区到终端（局部刷新优化版）
 func (a *App) outputBuffer(buf *paint.Buffer) {
 	var output bytes.Buffer
 
-	// 首次渲染时清屏，后续只移动光标到左上角
+	// 首次渲染时清屏
 	if a.firstRender {
 		output.WriteString("\x1b[2J")  // 清屏
 		a.firstRender = false
 	}
-	// 移动光标到左上角，隐藏终端光标
-	output.WriteString("\x1b[H\x1b[?25l")
+	// 隐藏终端光标
+	output.WriteString("\x1b[?25l")
 
-	// 跟踪当前样式，避免重复输出
+	// 跟踪当前样式和位置
 	var currentStyle style.Style
+	var lastX, lastY int = 0, 0
 
-	// 构建输出内容
-	for y := 0; y < buf.Height; y++ {
-		for x := 0; x < buf.Width; x++ {
-			cell := buf.Cells[y][x]
-			char := cell.Char
-			if char == 0 {
-				char = ' '
-			}
-
-			// 检查样式是否改变
-			if cell.Style != currentStyle {
-				// 先重置之前的样式
-				if currentStyle != (style.Style{}) {
-					output.WriteString("\x1b[0m")
-				}
-				// 应用新样式
-				if cell.Style != (style.Style{}) {
-					output.WriteString(cell.Style.ToANSI())
-				}
-				currentStyle = cell.Style
-			}
-
-			output.WriteRune(char)
-		}
-		// 重置样式
-		if currentStyle != (style.Style{}) {
-			output.WriteString("\x1b[0m")
-			currentStyle = style.Style{}
-		}
-		if y < buf.Height-1 {
-			output.WriteString("\r\n")
+	// 调整 prevBuffer 大小（如果需要）
+	if a.prevBuffer == nil || len(a.prevBuffer) != buf.Height || len(a.prevBuffer[0]) != buf.Width {
+		a.prevBuffer = make([][]paint.Cell, buf.Height)
+		for y := 0; y < buf.Height; y++ {
+			a.prevBuffer[y] = make([]paint.Cell, buf.Width)
 		}
 	}
 
-	// 一次性输出整个内容
+	// 构建输出内容 - 只输出变化的单元格
+	for y := 0; y < buf.Height; y++ {
+		rowChanged := false
+		for x := 0; x < buf.Width; x++ {
+			newCell := buf.Cells[y][x]
+			oldCell := a.prevBuffer[y][x]
+
+			// 检查单元格是否改变
+			cellChanged := newCell.Char != oldCell.Char || newCell.Style != oldCell.Style
+
+			if cellChanged {
+				// 如果行还没变化过，先移动到这一行的开头
+				if !rowChanged {
+					// 使用 ANSI 光标定位
+					output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, 1))
+					lastX, lastY = 0, y
+					rowChanged = true
+				} else if x != lastX || y != lastY {
+					// 如果需要，移动光标
+					if y != lastY {
+						output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
+					} else if x > lastX {
+						output.WriteString(strings.Repeat("\x1b[C", x-lastX))
+					}
+					lastX, lastY = x, y
+				}
+
+				// 设置字符
+				char := newCell.Char
+				if char == 0 {
+					char = ' '
+				}
+
+				// 应用样式（如果改变）
+				if newCell.Style != currentStyle {
+					if currentStyle != (style.Style{}) {
+						output.WriteString("\x1b[0m")
+					}
+					if newCell.Style != (style.Style{}) {
+						output.WriteString(newCell.Style.ToANSI())
+					}
+					currentStyle = newCell.Style
+				}
+
+				output.WriteRune(char)
+				lastX++
+			}
+		}
+
+		// 保存当前行到 prevBuffer
+		copy(a.prevBuffer[y], buf.Cells[y])
+	}
+
+	// 重置样式
+	if currentStyle != (style.Style{}) {
+		output.WriteString("\x1b[0m")
+	}
+
+	// 移动光标到末尾（避免残留）
+	output.WriteString(fmt.Sprintf("\x1b[%d;%dH", buf.Height, 1))
+
+	// 一次性输出
 	fmt.Print(output.String())
 }
 

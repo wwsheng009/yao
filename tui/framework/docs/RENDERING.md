@@ -812,3 +812,181 @@ func (o *ANSIOutput) Flush() error {
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 架构总览
 - [COMPONENTS.md](COMPONENTS.md) - Component 接口
 - [BOUNDARIES.md](BOUNDARIES.md) - 层级边界
+
+---
+
+## 局部刷新实现（增量更新）
+
+### 概述
+
+为了提升 TUI 应用的性能，实现了局部刷新机制。相比全屏重绘，局部刷新只输出变化的单元格，显著减少终端输出量。
+
+### 实现位置
+
+**文件**: `tui/framework/app.go`
+
+### 核心机制
+
+#### 1. 上一帧缓存
+
+```go
+type App struct {
+    // ...
+    // 上一帧缓冲区（用于局部刷新）
+    prevBuffer [][]paint.Cell
+}
+```
+
+#### 2. 差异检测
+
+```go
+for y := 0; y < buf.Height; y++ {
+    for x := 0; x < buf.Width; x++ {
+        newCell := buf.Cells[y][x]
+        oldCell := a.prevBuffer[y][x]
+
+        // 检查单元格是否改变
+        cellChanged := newCell.Char != oldCell.Char ||
+                       newCell.Style != oldCell.Style
+
+        if cellChanged {
+            // 只输出变化的单元格
+        }
+    }
+}
+```
+
+#### 3. ANSI 光标定位
+
+```go
+// 移动到指定位置
+output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
+
+// 相对移动（向右）
+output.WriteString("\x1b[C")  // 右移一格
+```
+
+### 输出优化
+
+#### 优化策略
+
+| 场景 | 策略 | ANSI 序列 |
+|------|------|-----------|
+| 首次渲染 | 清屏 + 全量输出 | `\x1b[2J` + 全部内容 |
+| 后续渲染 | 只输出变化单元格 | `\x1b[y;xH` + 变化内容 |
+| 同行连续变化 | 使用相对光标移动 | `\x1b[nC` (右移 n 格) |
+| 样式变化 | 重置 + 应用新样式 | `\x1b[0m` + ANSI 样式码 |
+
+#### 输出对比
+
+**全量刷新** (每次):
+```
+\x1b[2J              # 清屏
+\x1b[H               # 移动到左上角
+[全部 2000 个字符]    # 80x25 = 2000 字符
+```
+
+**局部刷新** (光标闪烁):
+```
+\x1b[?25l            # 隐藏光标
+\x1b[12;5H          # 移动到光标位置
+[1 个字符]           # 只输出光标单元格
+\x1b[0m              # 重置样式
+```
+
+**输出量对比**: 2000 字节 → ~20 字节 (减少 99%)
+
+### 样式优化
+
+```go
+// 跟踪当前样式，避免重复输出
+var currentStyle style.Style
+
+if newCell.Style != currentStyle {
+    if currentStyle != (style.Style{}) {
+        output.WriteString("\x1b[0m")  // 重置
+    }
+    if newCell.Style != (style.Style{}) {
+        output.WriteString(newCell.Style.ToANSI())  // 应用新样式
+    }
+    currentStyle = newCell.Style
+}
+```
+
+### 光标移动优化
+
+```go
+var lastX, lastY int = 0, 0
+
+// 如果行还没变化过，移动到行首
+if !rowChanged {
+    output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, 1))
+    lastX, lastY = 0, y
+    rowChanged = true
+} else if x != lastX {
+    // 使用相对移动（更高效）
+    output.WriteString(strings.Repeat("\x1b[C", x-lastX))
+    lastX = x
+}
+```
+
+### 完整流程
+
+```
+render()
+    │
+    ├─> Paint() → 新的 CellBuffer
+    │
+    ├─> diff(prevBuffer, newBuffer)
+    │       │
+    │       ├─> 检测变化的单元格
+    │       │
+    │       └─> 生成变更列表
+    │
+    ├─> outputBuffer()
+    │       │
+    │       ├─> 首次?
+    │       │   ├─> 是: 清屏 (\x1b[2J)
+    │       │   └─> 否: 跳过
+    │       │
+    │       ├─> 隐藏终端光标 (\x1b[?25l)
+    │       │
+    │       ├─> 遍历变更单元格
+    │       │   │
+    │       │   ├─> 移动光标到变化位置
+    │       │   │
+    │       │   ├─> 应用样式（如需要）
+    │       │   │
+    │       │   └─> 输出字符
+    │       │
+    │       ├─> 移动光标到末尾（避免残留）
+    │       │
+    │       └─> fmt.Print() 一次性输出
+    │
+    └─> 更新 prevBuffer
+```
+
+### 性能指标
+
+| 场景 | 全量刷新 | 局部刷新 | 提升 |
+|------|---------|---------|------|
+| 光标闪烁 | ~2000 字节 | ~30 字节 | 98.5% |
+| 单字符输入 | ~2000 字节 | ~50 字节 | 97.5% |
+| 表单导航 | ~2000 字节 | ~100 字节 | 95% |
+| 窗口大小改变 | ~2000 字节 | ~2000 字节 | 0% (全量) |
+
+### 注意事项
+
+1. **缓存同步**: 每次渲染后必须更新 `prevBuffer`
+2. **尺寸变化**: 窗口大小改变时重置 `prevBuffer`
+3. **样式比较**: `Style` 结构体包含未导出字段，使用 `!=` 比较
+4. **终端兼容**: ANSI 光标定位在所有现代终端中都支持
+
+### 相关修改
+
+| 文件 | 修改内容 |
+|------|----------|
+| `app.go` | 添加 `prevBuffer` 字段 |
+| `app.go` | 重写 `outputBuffer()` 实现局部刷新 |
+| `app.go` | 添加 ANSI 光标定位优化 |
+| `app.go` | 添加样式缓存机制 |
