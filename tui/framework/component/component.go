@@ -2,83 +2,13 @@ package component
 
 import (
 	"github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/framework/style"
 )
 
-// Event 事件类型别名 (向后兼容)
+// Event 事件类型别名
 type Event = event.Event
 
-// EventHandler 事件处理器类型别名 (向后兼容)
+// EventHandler 事件处理器类型别名
 type EventHandler = event.EventHandler
-
-// ==============================================================================
-// 向后兼容的 Component 接口
-// ==============================================================================
-// 这是旧的统一接口，新代码应该使用 Capability Interfaces
-// 新组件应该实现组合接口 (BaseComponent, InteractiveComponent 等)
-
-// Component 组件接口 (向后兼容)
-// 新代码建议使用 capability interfaces (BaseComponent, InteractiveComponent 等)
-type Component interface {
-	// 标识
-	ID() string
-	SetID(id string)
-	GetType() string
-
-	// 生命周期
-	Mount(parent Component)
-	Unmount()
-	IsMounted() bool
-
-	// 尺寸
-	SetSize(width, height int)
-	GetSize() (width, height int)
-	GetPreferredSize() (width, height int)
-	GetMinSize() (width, height int)
-	GetMaxSize() (width, height int)
-
-	// 渲染 (旧接口，返回 string)
-	Render(ctx *RenderContext) string
-
-	// 事件
-	HandleEvent(ev event.Event) bool
-	SetEventHandler(handler event.EventHandler)
-	GetEventHandler() event.EventHandler
-
-	// 状态
-	SetVisible(visible bool)
-	IsVisible() bool
-	SetEnabled(enabled bool)
-	IsEnabled() bool
-
-	// 样式
-	SetStyle(s style.Style)
-	GetStyle() style.Style
-}
-
-// RenderContext 渲染上下文 (向后兼容)
-type RenderContext struct {
-	// 可用尺寸
-	AvailableWidth  int
-	AvailableHeight int
-
-	// 位置 (相对于父组件)
-	X int
-	Y int
-
-	// 滚动偏移
-	OffsetX int
-	OffsetY int
-
-	// 继承的样式
-	InheritStyle style.Style
-
-	// Z-index
-	ZIndex int
-
-	// 裁剪区域
-	ClipRect *Rect
-}
 
 // Rect 矩形区域
 type Rect struct {
@@ -86,48 +16,6 @@ type Rect struct {
 	Y      int
 	Width  int
 	Height int
-}
-
-// NewRenderContext 创建渲染上下文
-func NewRenderContext(width, height int) *RenderContext {
-	return &RenderContext{
-		AvailableWidth:  width,
-		AvailableHeight: height,
-	}
-}
-
-// WithOffset 创建带偏移的上下文
-func (c *RenderContext) WithOffset(dx, dy int) *RenderContext {
-	return &RenderContext{
-		AvailableWidth:  c.AvailableWidth,
-		AvailableHeight: c.AvailableHeight,
-		X:               c.X + dx,
-		Y:               c.Y + dy,
-		OffsetX:         c.OffsetX,
-		OffsetY:         c.OffsetY,
-		InheritStyle:    c.InheritStyle,
-		ZIndex:          c.ZIndex,
-		ClipRect:        c.ClipRect,
-	}
-}
-
-// WithClip 创建带裁剪的上下文
-func (c *RenderContext) WithClip(rect *Rect) *RenderContext {
-	clip := rect
-	if c.ClipRect != nil {
-		clip = c.ClipRect.Intersect(rect)
-	}
-	return &RenderContext{
-		AvailableWidth:  c.AvailableWidth,
-		AvailableHeight: c.AvailableHeight,
-		X:               c.X,
-		Y:               c.Y,
-		OffsetX:         c.OffsetX,
-		OffsetY:         c.OffsetY,
-		InheritStyle:    c.InheritStyle,
-		ZIndex:          c.ZIndex,
-		ClipRect:        clip,
-	}
 }
 
 // Contains 检查点是否在矩形内

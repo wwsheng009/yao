@@ -1,14 +1,14 @@
 package component
 
-import (
-	"github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/framework/style"
-)
+// ==============================================================================
+// Container (V3)
+// ==============================================================================
+// V3 容器接口，使用 Node 类型而非 Component
 
-// Container 容器接口 (V3: 使用 Node 而非 Component)
-// V2 兼容：也实现了 Component 接口
+// Container 容器接口 (V3)
 type Container interface {
-	Component // V2 兼容
+	Node
+	Mountable
 
 	// 子组件管理 (V3: 使用 Node 类型)
 	Add(child Node)
@@ -35,26 +35,26 @@ type Layout interface {
 	Invalidate()
 }
 
-// BaseContainer 基础容器实现 (V3: 使用 Node 类型)
+// BaseContainer 基础容器实现 (V3)
 type BaseContainer struct {
 	*BaseComponent
 	children []Node
 	layout   Layout
-
-	// V2 兼容字段
-	eventHandler event.EventHandler
-	v2Style      style.Style
 }
 
 // NewBaseContainer 创建基础容器
 func NewBaseContainer(typ string) *BaseContainer {
 	return &BaseContainer{
 		BaseComponent: NewBaseComponent(typ),
-		children:     make([]Node, 0),
+		children:      make([]Node, 0),
 	}
 }
 
-// Add 添加子组件 (V3: 使用 Node 类型)
+// ============================================================================
+// 子组件管理 (V3: 使用 Node 类型)
+// ============================================================================
+
+// Add 添加子组件
 func (c *BaseContainer) Add(child Node) {
 	c.children = append(c.children, child)
 	if mountable, ok := child.(Mountable); ok {
@@ -62,7 +62,7 @@ func (c *BaseContainer) Add(child Node) {
 	}
 }
 
-// Remove 移除子组件 (V3: 使用 Node 类型)
+// Remove 移除子组件
 func (c *BaseContainer) Remove(child Node) {
 	for i, ch := range c.children {
 		if ch == child {
@@ -86,12 +86,12 @@ func (c *BaseContainer) RemoveAt(index int) {
 	}
 }
 
-// GetChildren 获取子组件列表 (V3: 返回 Node 类型)
+// GetChildren 获取子组件列表
 func (c *BaseContainer) GetChildren() []Node {
 	return c.children
 }
 
-// GetChild 获取指定位置的子组件 (V3: 返回 Node 类型)
+// GetChild 获取指定位置的子组件
 func (c *BaseContainer) GetChild(index int) Node {
 	if index >= 0 && index < len(c.children) {
 		return c.children[index]
@@ -104,6 +104,10 @@ func (c *BaseContainer) ChildCount() int {
 	return len(c.children)
 }
 
+// ============================================================================
+// 布局管理
+// ============================================================================
+
 // SetLayout 设置布局
 func (c *BaseContainer) SetLayout(layout Layout) {
 	c.layout = layout
@@ -114,79 +118,24 @@ func (c *BaseContainer) GetLayout() Layout {
 	return c.layout
 }
 
-// Render 渲染容器 (V2 兼容)
-func (c *BaseContainer) Render(ctx *RenderContext) string {
-	// 由具体布局实现
-	return ""
-}
-
 // ============================================================================
-// V2 兼容方法
+// Measurable 接口实现
 // ============================================================================
 
-// Mount 挂载到父容器 (V2 兼容：接受 Component 参数)
-// V3 的 Mount(Container) 由 BaseComponent 提供
-func (c *BaseContainer) Mount(parent Component) {
-	// 将 Component 转换为 Container（如果可能）
-	if container, ok := parent.(Container); ok {
-		c.BaseComponent.Mount(container)
+// Measure 测量理想尺寸
+func (c *BaseContainer) Measure(maxWidth, maxHeight int) (width, height int) {
+	if c.layout != nil {
+		return c.layout.Measure(c, maxWidth, maxHeight)
 	}
-}
-
-// GetType 返回组件类型 (V2 兼容)
-func (c *BaseContainer) GetType() string {
-	return c.Type()
-}
-
-// GetPreferredSize 获取首选尺寸 (V2 兼容)
-func (c *BaseContainer) GetPreferredSize() (width, height int) {
-	return c.Measure(1000, 1000)
-}
-
-// GetMinSize 获取最小尺寸 (V2 兼容)
-func (c *BaseContainer) GetMinSize() (width, height int) {
-	return 0, 0
-}
-
-// GetMaxSize 获取最大尺寸 (V2 兼容)
-func (c *BaseContainer) GetMaxSize() (width, height int) {
-	return 1000, 1000
-}
-
-// HandleEvent 处理事件 (V2 兼容)
-func (c *BaseContainer) HandleEvent(ev event.Event) bool {
-	if c.eventHandler != nil {
-		return c.eventHandler.HandleEvent(ev)
+	// 默认：计算所有子组件的总尺寸
+	for _, child := range c.children {
+		if measurable, ok := child.(Measurable); ok {
+			w, h := measurable.Measure(maxWidth, maxHeight)
+			if w > width {
+				width = w
+			}
+			height += h
+		}
 	}
-	return false
-}
-
-// SetEventHandler 设置事件处理器 (V2 兼容)
-func (c *BaseContainer) SetEventHandler(handler event.EventHandler) {
-	c.eventHandler = handler
-}
-
-// GetEventHandler 获取事件处理器 (V2 兼容)
-func (c *BaseContainer) GetEventHandler() event.EventHandler {
-	return c.eventHandler
-}
-
-// SetEnabled 设置启用状态 (V2 兼容)
-func (c *BaseContainer) SetEnabled(enabled bool) {
-	c.SetDisabled(!enabled)
-}
-
-// IsEnabled 检查是否启用 (V2 兼容)
-func (c *BaseContainer) IsEnabled() bool {
-	return !c.IsDisabled()
-}
-
-// SetStyle 设置样式 (V2 兼容)
-func (c *BaseContainer) SetStyle(s style.Style) {
-	c.v2Style = s
-}
-
-// GetStyle 获取样式 (V2 兼容)
-func (c *BaseContainer) GetStyle() style.Style {
-	return c.v2Style
+	return width, height
 }
