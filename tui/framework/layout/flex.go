@@ -1,12 +1,11 @@
 package layout
 
 import (
-	"strings"
-
 	"github.com/yaoapp/yao/tui/framework/component"
+	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 
-// Flex Flex 布局容器
+// Flex Flex 布局容器 (V3)
 type Flex struct {
 	*component.BaseContainer
 
@@ -53,7 +52,7 @@ func (f *Flex) WithGap(gap int) *Flex {
 	return f
 }
 
-// WithChildren 设置子组件 (V3: 使用 Node 类型)
+// WithChildren 设置子组件
 func (f *Flex) WithChildren(children ...component.Node) *Flex {
 	for _, child := range children {
 		f.Add(child)
@@ -61,49 +60,122 @@ func (f *Flex) WithChildren(children ...component.Node) *Flex {
 	return f
 }
 
-// Render 渲染 Flex 容器 (V2 兼容)
-func (f *Flex) Render(ctx *component.RenderContext) string {
-	if !f.IsVisible() || f.ChildCount() == 0 {
-		return ""
+// ============================================================================
+// Measurable 接口实现
+// ============================================================================
+
+// Measure 测量理想尺寸
+func (f *Flex) Measure(maxWidth, maxHeight int) (width, height int) {
+	children := f.GetChildren()
+	if len(children) == 0 {
+		return 0, 0
 	}
 
-	width, height := ctx.AvailableWidth, ctx.AvailableHeight
-
-	// 计算子组件尺寸
-	sizes := f.calculateSizes(width, height)
-
-	// 渲染子组件
-	var result []string
-	currentPos := 0
-
-	for i, child := range f.GetChildren() {
-		childW, childH := sizes[i].width, sizes[i].height
-
-		childCtx := ctx.WithOffset(currentPos, 0)
-		childCtx.AvailableWidth = childW
-		childCtx.AvailableHeight = childH
-
-		// V2 兼容：如果 child 是 V2 Component，调用 Render()
-		if v2Comp, ok := child.(component.Component); ok {
-			content := v2Comp.Render(childCtx)
-			contentLines := strings.Split(content, "\n")
-
-			// 处理垂直布局
-			if f.direction == Column {
-				for _, line := range contentLines {
-					result = append(result, line)
-				}
-				currentPos += childH
-			} else {
-				// 水平布局 - 需要合并行
-				f.mergeHorizontal(&result, contentLines, childW, currentPos, height)
-				currentPos += childW + f.gap
+	if f.direction == Row {
+		// 水平布局：宽度累加，高度取最大
+		totalW := 0
+		maxH := 0
+		for i, child := range children {
+			w, h := f.measureChild(child, maxWidth, maxHeight)
+			totalW += w
+			if h > maxH {
+				maxH = h
+			}
+			if i < len(children)-1 {
+				totalW += f.gap
 			}
 		}
+		return totalW, maxH
 	}
 
-	return strings.Join(result, "\n")
+	// 垂直布局：宽度取最大，高度累加
+	maxW := 0
+	totalH := 0
+	for i, child := range children {
+		w, h := f.measureChild(child, maxWidth, maxHeight)
+		if w > maxW {
+			maxW = w
+		}
+		totalH += h
+		if i < len(children)-1 {
+			totalH += f.gap
+		}
+	}
+	return maxW, totalH
 }
+
+// measureChild 测量子组件尺寸
+func (f *Flex) measureChild(child component.Node, maxWidth, maxHeight int) (width, height int) {
+	if measurable, ok := child.(component.Measurable); ok {
+		return measurable.Measure(maxWidth, maxHeight)
+	}
+	return 0, 0
+}
+
+// ============================================================================
+// Paintable 接口实现
+// ============================================================================
+
+// Paint 绘制到缓冲区
+func (f *Flex) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+	if !f.IsVisible() || f.ChildCount() == 0 {
+		return
+	}
+
+	children := f.GetChildren()
+	availableWidth := ctx.AvailableWidth
+	availableHeight := ctx.AvailableHeight
+
+	// 计算子组件尺寸和位置
+	sizes := f.calculateSizes(availableWidth, availableHeight)
+
+	currentPos := 0
+	for i, child := range children {
+		childW, childH := sizes[i].width, sizes[i].height
+
+		childCtx := component.PaintContext{
+			AvailableWidth:  childW,
+			AvailableHeight: childH,
+			X:               ctx.X + currentPos,
+			Y:               ctx.Y,
+		}
+
+		// 绘制可绘制的子组件
+		if paintable, ok := child.(component.Paintable); ok {
+			paintable.Paint(childCtx, buf)
+		}
+
+		// 更新位置
+		if f.direction == Row {
+			currentPos += childW + f.gap
+		} else {
+			currentPos += childH + f.gap
+		}
+	}
+}
+
+// ============================================================================
+// Layout 接口实现
+// ============================================================================
+
+// Measure 布局测量
+func (f *Flex) LayoutMeasure(container component.Container, availableWidth, availableHeight int) (width, height int) {
+	return f.Measure(availableWidth, availableHeight)
+}
+
+// Layout 布局计算
+func (f *Flex) LayoutLayout(container component.Container, x, y, width, height int) {
+	// 布局计算在 Paint 中完成
+}
+
+// Invalidate 使布局失效
+func (f *Flex) Invalidate() {
+	// 无状态，无需失效
+}
+
+// ============================================================================
+// 内部方法
+// ============================================================================
 
 // Size 尺寸
 type Size struct {
@@ -111,7 +183,7 @@ type Size struct {
 	height int
 }
 
-// calculateSizes 计算子组件尺寸 (V2/V3 兼容)
+// calculateSizes 计算子组件尺寸
 func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 	children := f.GetChildren()
 	count := len(children)
@@ -129,19 +201,17 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 		var prefTotal int
 		prefSizes := make([]int, count)
 		for i, child := range children {
-			prefW := f.getPreferredWidth(child)
+			prefW, _ := f.measureChild(child, 1000, 1000)
 			prefSizes[i] = prefW
 			prefTotal += prefW
 		}
 
 		// 分配空间
 		if prefTotal <= availW {
-			// 按首选尺寸分配
 			for i := range children {
 				sizes[i].width = prefSizes[i]
 			}
 		} else {
-			// 平均分配
 			if count > 0 {
 				avgW := availW / count
 				for i := range sizes {
@@ -153,7 +223,6 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 			}
 		}
 
-		// 高度使用可用高度
 		for i := range sizes {
 			sizes[i].height = availableH
 		}
@@ -166,16 +235,14 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 			availH = 0
 		}
 
-		// 计算每个子组件的首选高度
 		var prefTotal int
 		prefSizes := make([]int, count)
 		for i, child := range children {
-			prefH := f.getPreferredHeight(child)
+			_, prefH := f.measureChild(child, 1000, 1000)
 			prefSizes[i] = prefH
 			prefTotal += prefH
 		}
 
-		// 分配空间
 		if prefTotal <= availH {
 			for i := range children {
 				sizes[i].height = prefSizes[i]
@@ -192,119 +259,10 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 			}
 		}
 
-		// 宽度使用可用宽度
 		for i := range sizes {
 			sizes[i].width = availableW
 		}
 	}
 
 	return sizes
-}
-
-// getPreferredWidth 获取子组件首选宽度 (V2/V3 兼容)
-func (f *Flex) getPreferredWidth(child component.Node) int {
-	// 尝试 V2 Component 接口
-	if v2Comp, ok := child.(component.Component); ok {
-		w, _ := v2Comp.GetPreferredSize()
-		return w
-	}
-	// 尝试 V3 Measurable 接口
-	if measurable, ok := child.(component.Measurable); ok {
-		w, _ := measurable.Measure(1000, 1000)
-		return w
-	}
-	return 0
-}
-
-// getPreferredHeight 获取子组件首选高度 (V2/V3 兼容)
-func (f *Flex) getPreferredHeight(child component.Node) int {
-	// 尝试 V2 Component 接口
-	if v2Comp, ok := child.(component.Component); ok {
-		_, h := v2Comp.GetPreferredSize()
-		return h
-	}
-	// 尝试 V3 Measurable 接口
-	if measurable, ok := child.(component.Measurable); ok {
-		_, h := measurable.Measure(1000, 1000)
-		return h
-	}
-	return 0
-}
-
-// mergeHorizontal 合并水平布局的内容
-func (f *Flex) mergeHorizontal(result *[]string, contentLines []string, width, offsetX, height int) {
-	// 扩展结果到足够的行数
-	for len(*result) < len(contentLines) {
-		*result = append(*result, "")
-	}
-
-	for y, line := range contentLines {
-		if y >= height {
-			break
-		}
-
-		// 确保行足够长
-		for len(*result) <= y {
-			*result = append(*result, "")
-		}
-
-		// 在指定位置插入内容
-		resultLine := (*result)[y]
-		paddedLine := line
-		lineLen := utf8RuneCount(line)
-		if lineLen < width {
-			paddedLine = line + strings.Repeat(" ", width-lineLen)
-		}
-
-		// 合并到结果行
-		if offsetX+len(paddedLine) <= len(resultLine) {
-			*result = append((*result)[:y], resultLine[:offsetX]+paddedLine+resultLine[offsetX+len(paddedLine):])
-		} else {
-			// 扩展行
-			for offsetX+len(paddedLine) > len(resultLine) {
-				resultLine += " "
-			}
-			if len(*result) > y {
-				*result = append((*result)[:y], resultLine[:offsetX]+paddedLine)
-			}
-		}
-	}
-}
-
-// GetPreferredSize 获取首选尺寸 (V2 兼容)
-func (f *Flex) GetPreferredSize() (width, height int) {
-	children := f.GetChildren()
-
-	if f.direction == Row {
-		totalW := 0
-		maxH := 0
-		for i, child := range children {
-			w := f.getPreferredWidth(child)
-			h := f.getPreferredHeight(child)
-			totalW += w
-			if h > maxH {
-				maxH = h
-			}
-			if i < len(children)-1 {
-				totalW += f.gap
-			}
-		}
-		return totalW, maxH
-	}
-
-	// Column
-	maxW := 0
-	totalH := 0
-	for i, child := range children {
-		w := f.getPreferredWidth(child)
-		h := f.getPreferredHeight(child)
-		if w > maxW {
-			maxW = w
-		}
-		totalH += h
-		if i < len(children)-1 {
-			totalH += f.gap
-		}
-	}
-	return maxW, totalH
 }
