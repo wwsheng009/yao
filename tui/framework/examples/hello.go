@@ -11,18 +11,18 @@ import (
 // main 简单示例
 func main() {
 	// 创建标题
-	title := display.NewText("TUI Framework V3")
-	title.SetStyle(style.NewStyle().Foreground(style.Blue).Bold(true))
+	title := display.NewTextV3("TUI Framework V3")
+	title.SetStyle(style.Style{}.Foreground(style.Blue))
 
 	// 创建说明文本
-	description := display.NewText(
+	description := display.NewTextV3(
 		"这是一个 TUI 框架示例\n" +
 			"按 'q' 或 ESC 退出",
 	)
 
 	// 打印渲染结果
-	fmt.Println(title.Render(nil))
-	fmt.Println(description.Render(nil))
+	fmt.Println("Title:", title.GetContent())
+	fmt.Println("Description:", description.GetContent())
 
 	// 演示事件处理
 	fmt.Println("\n--- 事件处理演示 ---")

@@ -179,7 +179,7 @@ func (t *TextV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		processedLine := t.processLine(line, width)
 
 		// 处理对齐
-		if runeCount(processedLine) < width {
+		if textRuneCount(processedLine) < width {
 			processedLine = t.alignLine(processedLine, width)
 		}
 
