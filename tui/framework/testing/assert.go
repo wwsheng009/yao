@@ -362,9 +362,9 @@ func (a *UIAssert) True(condition bool, msg ...string) *UIAssert {
 	a.t.Helper()
 	if !condition {
 		if len(msg) > 0 {
-			a.failf(msg[0])
+			a.fail(msg[0])
 		} else {
-			a.failf("condition is not true")
+			a.fail("condition is not true")
 		}
 	}
 	return a
@@ -375,9 +375,9 @@ func (a *UIAssert) False(condition bool, msg ...string) *UIAssert {
 	a.t.Helper()
 	if condition {
 		if len(msg) > 0 {
-			a.failf(msg[0])
+			a.fail(msg[0])
 		} else {
-			a.failf("condition is not false")
+			a.fail("condition is not false")
 		}
 	}
 	return a
@@ -388,9 +388,9 @@ func (a *UIAssert) Nil(value interface{}, msg ...string) *UIAssert {
 	a.t.Helper()
 	if !isNil(value) {
 		if len(msg) > 0 {
-			a.failf(msg[0])
+			a.fail(msg[0])
 		} else {
-			a.failf("value is not nil")
+			a.fail("value is not nil")
 		}
 	}
 	return a
@@ -401,9 +401,9 @@ func (a *UIAssert) NotNil(value interface{}, msg ...string) *UIAssert {
 	a.t.Helper()
 	if isNil(value) {
 		if len(msg) > 0 {
-			a.failf(msg[0])
+			a.fail(msg[0])
 		} else {
-			a.failf("value is nil")
+			a.fail("value is nil")
 		}
 	}
 	return a
@@ -414,7 +414,7 @@ func (a *UIAssert) Eq(expected, actual interface{}, msg ...string) *UIAssert {
 	a.t.Helper()
 	if !reflect.DeepEqual(expected, actual) {
 		if len(msg) > 0 {
-			a.failf(fmt.Sprintf("%s: expected %v, got %v", msg[0], expected, actual))
+			a.fail(fmt.Sprintf("%s: expected %v, got %v", msg[0], expected, actual))
 		} else {
 			a.failf("expected %v, got %v", expected, actual)
 		}

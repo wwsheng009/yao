@@ -69,6 +69,10 @@ func (m *MockFocusableComponent) IsFocused() bool {
 	return m.Focused
 }
 
+func (m *MockFocusableComponent) SetSize(width, height int) {
+	// Mock implementation - does nothing
+}
+
 // createTestTree creates a simple test component tree
 func createTestTree() *runtime.LayoutNode {
 	// Create focusable components
@@ -112,9 +116,9 @@ func createTestTree() *runtime.LayoutNode {
 
 	// Create parent
 	root := &runtime.LayoutNode{
-		ID:       "root",
-		Type:     runtime.NodeTypeFlex,
-		Children: []*runtime.LayoutNode{node1, node2, node3},
+		ID:             "root",
+		Type:           runtime.NodeTypeFlex,
+		Children:       []*runtime.LayoutNode{node1, node2, node3},
 		MeasuredWidth:  30,
 		MeasuredHeight: 15,
 	}
@@ -290,8 +294,8 @@ func TestHasFocus(t *testing.T) {
 func TestFocusTrap(t *testing.T) {
 	t.Run("FocusTrap creation", func(t *testing.T) {
 		modalNode := &runtime.LayoutNode{
-			ID:   "modal",
-			Type: runtime.NodeTypeFlex,
+			ID:             "modal",
+			Type:           runtime.NodeTypeFlex,
 			MeasuredWidth:  20,
 			MeasuredHeight: 10,
 		}
@@ -306,8 +310,8 @@ func TestFocusTrap(t *testing.T) {
 
 	t.Run("FocusTrap activation", func(t *testing.T) {
 		modalNode := &runtime.LayoutNode{
-			ID:   "modal",
-			Type: runtime.NodeTypeFlex,
+			ID:             "modal",
+			Type:           runtime.NodeTypeFlex,
 			MeasuredWidth:  20,
 			MeasuredHeight: 10,
 		}
@@ -424,9 +428,9 @@ func TestFocusManagerWithTraps(t *testing.T) {
 		}
 
 		modalRoot := &runtime.LayoutNode{
-			ID:       "modal",
-			Type:     runtime.NodeTypeFlex,
-			Children: []*runtime.LayoutNode{modalNode1, modalNode2},
+			ID:             "modal",
+			Type:           runtime.NodeTypeFlex,
+			Children:       []*runtime.LayoutNode{modalNode1, modalNode2},
 			MeasuredWidth:  20,
 			MeasuredHeight: 10,
 		}
@@ -471,8 +475,8 @@ func TestFocusManagerWithTraps(t *testing.T) {
 
 		// Create modal
 		modalRoot := &runtime.LayoutNode{
-			ID:       "modal",
-			Type:     runtime.NodeTypeFlex,
+			ID:             "modal",
+			Type:           runtime.NodeTypeFlex,
 			MeasuredWidth:  20,
 			MeasuredHeight: 10,
 		}
@@ -500,8 +504,8 @@ func TestClear(t *testing.T) {
 
 		// Add trap
 		modalRoot := &runtime.LayoutNode{
-			ID:       "modal",
-			Type:     runtime.NodeTypeFlex,
+			ID:             "modal",
+			Type:           runtime.NodeTypeFlex,
 			MeasuredWidth:  20,
 			MeasuredHeight: 10,
 		}

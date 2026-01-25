@@ -28,17 +28,22 @@ type RuntimePlatform interface {
 // DefaultPlatform 默认平台实现
 type DefaultPlatform struct {
 	*DefaultScreen
-	*DefaultInputReader
+	input  InputReader
 	*DefaultSignalHandler
 }
 
 // NewDefaultPlatform 创建默认平台
-func NewDefaultPlatform() *DefaultPlatform {
+func NewDefaultPlatform() (*DefaultPlatform, error) {
+	input, err := NewInputReader()
+	if err != nil {
+		return nil, err
+	}
+
 	return &DefaultPlatform{
 		DefaultScreen:        NewDefaultScreen(),
-		DefaultInputReader:   NewDefaultInputReader(),
+		input:                input,
 		DefaultSignalHandler: NewDefaultSignalHandler(),
-	}
+	}, nil
 }
 
 // Init 初始化平台
@@ -52,7 +57,7 @@ func (p *DefaultPlatform) Init() error {
 // Close 关闭平台
 func (p *DefaultPlatform) Close() error {
 	_ = p.DefaultScreen.Close()
-	_ = p.DefaultInputReader.Stop()
+	_ = p.input.Stop()
 	_ = p.DefaultSignalHandler.Stop()
 	return nil
 }
@@ -64,7 +69,7 @@ func (p *DefaultPlatform) Size() (width, height int) {
 
 // ReadInput 读取输入（同步方式）
 func (p *DefaultPlatform) ReadInput() *RawInput {
-	input, _ := p.DefaultInputReader.ReadEvent()
+	input, _ := p.input.ReadEvent()
 	return &input
 }
 

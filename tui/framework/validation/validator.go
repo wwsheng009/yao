@@ -42,7 +42,7 @@ func NewFuncValidator(fn ValidatorFunc, message string) *FuncValidator {
 func (v *FuncValidator) Validate(value interface{}) error {
 	if err := v.fn(value); err != nil {
 		if v.message != "" {
-			return fmt.Errorf(v.message)
+			return fmt.Errorf("%s: %w", v.message, err)
 		}
 		return err
 	}

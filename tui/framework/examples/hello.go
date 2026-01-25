@@ -1,3 +1,6 @@
+//go:build !demo
+// +build !demo
+
 package main
 
 import (
@@ -8,7 +11,7 @@ import (
 	"github.com/yaoapp/yao/tui/framework/style"
 )
 
-// main 简单示例
+// main 简单示例 (默认)
 func main() {
 	// 创建标题
 	title := display.NewText("TUI Framework V3")
