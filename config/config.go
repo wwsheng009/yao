@@ -295,6 +295,12 @@ func OpenLog() {
 
 	// Check if the log path exists
 	if _, err := os.Stat(logpath); errors.Is(err, os.ErrNotExist) {
+		// If console output is enabled, only output to console
+		if Conf.LogConsole {
+			log.SetOutput(os.Stdout)
+			gin.DefaultWriter = os.Stdout
+			return
+		}
 		LogOutput, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0666)
 		log.SetOutput(LogOutput)
 		gin.DefaultWriter = io.MultiWriter(LogOutput)
@@ -309,8 +315,14 @@ func OpenLog() {
 		LocalTime:  Conf.LogLocalTime,
 	}
 
-	log.SetOutput(LogOutput)
-	gin.DefaultWriter = io.MultiWriter(LogOutput)
+	// Support both file and console output
+	if Conf.LogConsole {
+		log.SetMultiOutput(LogOutput, os.Stdout)
+		gin.DefaultWriter = io.MultiWriter(LogOutput, os.Stdout)
+	} else {
+		log.SetOutput(LogOutput)
+		gin.DefaultWriter = io.MultiWriter(LogOutput)
+	}
 }
 
 // CloseLog 关闭日志

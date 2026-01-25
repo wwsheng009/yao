@@ -16,6 +16,7 @@ type Config struct {
 	Log           string   `json:"log,omitempty" env:"YAO_LOG" envDefault:"application.log"`        // The log file path
 	LogMode       string   `json:"log_mode,omitempty" env:"YAO_LOG_MODE" envDefault:"TEXT"`         // The log mode TEXT|JSON
 	LogLevel      string   `json:"log_level,omitempty" env:"YAO_LOG_LEVEL"`                         // The log Level
+	LogConsole    bool     `json:"log_console,omitempty" env:"YAO_LOG_CONSOLE" envDefault:"false"`  // Enable console output
 	LogMaxSize    int      `json:"log_max_size,omitempty" env:"YAO_LOG_MAX_SIZE" envDefault:"100"`  // The max log size in MB, the default is 100
 	LogMaxAage    int      `json:"log_max_age,omitempty" env:"YAO_LOG_MAX_AGE" envDefault:"7"`      // The max log age in day, the default is 7
 	LogMaxBackups int      `json:"log_max_backups" env:"YAO_LOG_MAX_BACKUPS" envDefault:"3"`        // The max log backups, the default is 3
