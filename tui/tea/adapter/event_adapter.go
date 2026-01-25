@@ -13,19 +13,19 @@ import (
 //
 // This function is the ONLY place where Bubble Tea message types are directly
 // handled in the entire TUI system. All other code uses the runtime.Event type.
-func ConvertBubbleTeaMsg(msg tea.Msg) event.Event {
+func ConvertBubbleTeaMsg(msg tea.Msg) *event.EventStruct {
 	switch m := msg.(type) {
 	case tea.MouseMsg:
 		x, y := m.X, m.Y
-		return event.Event{
-			Type: event.EventTypeMouse,
-			Mouse: &event.MouseEvent{
-				X:    x,
-				Y:    y,
-				Type: mouseActionToType(m),
-				Click: mouseButtonToType(m),
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventMousePress)
+		ev.Mouse = &event.MouseEvent{
+			X:     x,
+			Y:     y,
+			Type:  mouseActionToType(m),
+			Click: mouseButtonToType(m),
 		}
+		return ev
 	case tea.KeyMsg:
 		// KeyMsg in newer Bubble Tea versions has Type and Runes fields
 		var keyRune rune
@@ -54,27 +54,27 @@ func ConvertBubbleTeaMsg(msg tea.Msg) event.Event {
 				keyRune = 16 + 4
 			}
 		}
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  keyRune,
-				Type: event.KeyPress,
-				Mod:  keyModifierFromMsg(m),
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  keyRune,
+			Type: event.KeyPress,
+			Mod:  keyModifierFromMsg(m),
 		}
+		return ev
 	case tea.WindowSizeMsg:
-		return event.Event{
-			Type:   event.EventTypeResize,
-			Resize: &event.ResizeEvent{
-				Width:  m.Width,
-				Height: m.Height,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventResize)
+		ev.Resize = &event.ResizeEvent{
+			Width:  m.Width,
+			Height: m.Height,
 		}
+		return ev
 	default:
-		return event.Event{
-			Type:   event.EventTypeCustom,
-			Custom: msg,
-		}
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventCustom)
+		ev.Custom = msg
+		return ev
 	}
 }
 
@@ -130,25 +130,25 @@ func NewEventAdapter() *EventAdapter {
 }
 
 // Convert converts a Bubble Tea message to a runtime event.
-func (a *EventAdapter) Convert(msg tea.Msg) event.Event {
+func (a *EventAdapter) Convert(msg tea.Msg) *event.EventStruct {
 	return ConvertBubbleTeaMsg(msg)
 }
 
 // ConvertMouseMsg converts a Bubble Tea mouse message.
-func (a *EventAdapter) ConvertMouseMsg(msg tea.MouseMsg) event.Event {
-	return event.Event{
-		Type: event.EventTypeMouse,
-		Mouse: &event.MouseEvent{
-			X:    msg.X,
-			Y:    msg.Y,
-			Type: mouseActionToType(msg),
-			Click: mouseButtonToType(msg),
-		},
+func (a *EventAdapter) ConvertMouseMsg(msg tea.MouseMsg) *event.EventStruct {
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventMousePress)
+	ev.Mouse = &event.MouseEvent{
+		X:     msg.X,
+		Y:     msg.Y,
+		Type:  mouseActionToType(msg),
+		Click: mouseButtonToType(msg),
 	}
+	return ev
 }
 
 // ConvertKeyMsg converts a Bubble Tea key message.
-func (a *EventAdapter) ConvertKeyMsg(msg tea.KeyMsg) event.Event {
+func (a *EventAdapter) ConvertKeyMsg(msg tea.KeyMsg) *event.EventStruct {
 	var keyRune rune
 	if len(msg.Runes) > 0 {
 		keyRune = msg.Runes[0]
@@ -176,23 +176,23 @@ func (a *EventAdapter) ConvertKeyMsg(msg tea.KeyMsg) event.Event {
 			keyRune = 0
 		}
 	}
-	return event.Event{
-		Type: event.EventTypeKey,
-		Key: &event.KeyEvent{
-			Key:  keyRune,
-			Type: event.KeyPress,
-			Mod:  event.ModNone,
-		},
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventKeyPress)
+	ev.Key = &event.KeyEvent{
+		Key:  keyRune,
+		Type: event.KeyPress,
+		Mod:  event.ModNone,
 	}
+	return ev
 }
 
 // ConvertWindowSizeMsg converts a Bubble Tea window size message.
-func (a *EventAdapter) ConvertWindowSizeMsg(msg tea.WindowSizeMsg) event.Event {
-	return event.Event{
-		Type: event.EventTypeResize,
-		Resize: &event.ResizeEvent{
-			Width:  msg.Width,
-			Height: msg.Height,
-		},
+func (a *EventAdapter) ConvertWindowSizeMsg(msg tea.WindowSizeMsg) *event.EventStruct {
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventResize)
+	ev.Resize = &event.ResizeEvent{
+		Width:  msg.Width,
+		Height: msg.Height,
 	}
+	return ev
 }

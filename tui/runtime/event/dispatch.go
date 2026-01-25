@@ -1,6 +1,8 @@
 package event
 
 import (
+	"time"
+
 	"github.com/yaoapp/yao/tui/runtime"
 )
 
@@ -10,57 +12,155 @@ import (
 // For converting Bubble Tea messages to runtime events, use:
 //   github.com/yaoapp/yao/tui/tea/adapter.ConvertBubbleTeaMsg(msg tea.Msg)
 
-// EventPhase represents the phase of event propagation
-type EventPhase int
+// EventStruct is the concrete implementation of the Event interface.
+// This follows the V3 Event System specification with three-phase propagation.
+type EventStruct struct {
+	// TypeValue identifies the kind of event (public for adapter use)
+	TypeValue EventType
 
-const (
-	PhaseNone EventPhase = iota
-	PhaseCapturing // Event is propagating down from root to target
-	PhaseAtTarget  // Event is at the target node
-	PhaseBubbling  // Event is propagating up from target to root
-)
-
-// Event is the unified event type that can represent different input types.
-type Event struct {
-	Type   EventType
+	// Event data (only one is set depending on Type)
 	Mouse  *MouseEvent
 	Key    *KeyEvent
 	Resize *ResizeEvent
 	Custom interface{}
 
+	// Timestamp when the event was created
+	TimestampValue time.Time
+
 	// Propagation control
-	Phase          EventPhase
-	CurrentTarget  *runtime.LayoutNode
-	Target         *runtime.LayoutNode // Original target from hit test
-	StoppedPropagation bool
+	PhaseValue     EventPhase
+	CurrentTargetValue  *runtime.LayoutNode // Current node in propagation path
+	TargetValue    *runtime.LayoutNode // Original target from hit test
+	StoppedPropagation    bool
 	StoppedImmediatePropagation bool
+	PreventedDefault       bool
 }
 
-// EventType is the type of event.
-type EventType string
+// EventTypeString is a string-based event type for backwards compatibility.
+// New code should use EventType (int) from types.go.
+type EventTypeString string
 
 const (
-	EventTypeMouse  EventType = "mouse"
-	EventTypeKey    EventType = "key"
-	EventTypeResize EventType = "resize"
-	EventTypeCustom EventType = "custom"
+	EventTypeMouse  EventTypeString = "mouse"
+	EventTypeKey    EventTypeString = "key"
+	EventTypeResize EventTypeString = "resize"
+	EventTypeAction EventTypeString = "action"
+	EventTypeCustom EventTypeString = "custom"
 )
 
+// Event interface methods for EventStruct
+
+// Type returns the event type.
+func (e *EventStruct) Type() EventType {
+	return e.TypeValue
+}
+
+// SetType sets the event type (used when creating events).
+func (e *EventStruct) SetType(eventType EventType) {
+	e.TypeValue = eventType
+}
+
+// Phase returns the current event phase.
+func (e *EventStruct) Phase() EventPhase {
+	return e.PhaseValue
+}
+
+// SetPhase sets the current event phase.
+func (e *EventStruct) SetPhase(phase EventPhase) {
+	e.PhaseValue = phase
+}
+
+// Timestamp returns when the event was created.
+func (e *EventStruct) Timestamp() time.Time {
+	return e.TimestampValue
+}
+
+// SetTimestamp sets the event timestamp.
+func (e *EventStruct) SetTimestamp(ts time.Time) {
+	e.TimestampValue = ts
+}
+
+// Target returns the original target of the event.
+func (e *EventStruct) Target() Node {
+	return e.TargetValue
+}
+
+// SetTarget sets the target node for this event.
+func (e *EventStruct) SetTarget(target Node) {
+	if target == nil {
+		e.TargetValue = nil
+		return
+	}
+	if node, ok := target.(*runtime.LayoutNode); ok {
+		e.TargetValue = node
+	}
+}
+
+// CurrentTarget returns the current node in the propagation path.
+func (e *EventStruct) CurrentTarget() Node {
+	return e.CurrentTargetValue
+}
+
+// SetCurrentTarget sets the current target node during propagation.
+func (e *EventStruct) SetCurrentTarget(current Node) {
+	if current == nil {
+		e.CurrentTargetValue = nil
+		return
+	}
+	if node, ok := current.(*runtime.LayoutNode); ok {
+		e.CurrentTargetValue = node
+	}
+}
+
+// setTargetNode is an internal helper for setting LayoutNode targets directly.
+func (e *EventStruct) setTargetNode(node *runtime.LayoutNode) {
+	e.TargetValue = node
+}
+
+// setCurrentTargetNode is an internal helper for setting LayoutNode current targets directly.
+func (e *EventStruct) setCurrentTargetNode(node *runtime.LayoutNode) {
+	e.CurrentTargetValue = node
+}
+
+// getTargetNode returns the target as LayoutNode (internal use).
+func (e *EventStruct) getTargetNode() *runtime.LayoutNode {
+	return e.TargetValue
+}
+
+// getCurrentTargetNode returns the current target as LayoutNode (internal use).
+func (e *EventStruct) getCurrentTargetNode() *runtime.LayoutNode {
+	return e.CurrentTargetValue
+}
+
+// PreventDefault marks the event as having its default action prevented.
+func (e *EventStruct) PreventDefault() {
+	e.PreventedDefault = true
+}
+
+// IsDefaultPrevented returns true if the default action has been prevented.
+func (e *EventStruct) IsDefaultPrevented() bool {
+	return e.PreventedDefault
+}
+
+// IsPropagationStopped returns true if propagation has been stopped.
+func (e *EventStruct) IsPropagationStopped() bool {
+	return e.StoppedPropagation
+}
+
+// IsImmediatePropagationStopped returns true if immediate propagation is stopped.
+func (e *EventStruct) IsImmediatePropagationStopped() bool {
+	return e.StoppedImmediatePropagation
+}
+
 // StopPropagation stops the event from propagating further in the bubbling phase
-func (e *Event) StopPropagation() {
+func (e *EventStruct) StopPropagation() {
 	e.StoppedPropagation = true
 }
 
 // StopImmediatePropagation stops the event from propagating to any other listeners
-func (e *Event) StopImmediatePropagation() {
+func (e *EventStruct) StopImmediatePropagation() {
 	e.StoppedImmediatePropagation = true
 	e.StoppedPropagation = true
-}
-
-// PreventDefault marks the event as prevented (for potential default action handling)
-// In v1, this is informational only
-func (e *Event) PreventDefault() {
-	// Future: implement default action prevention
 }
 
 // ResizeEvent represents a terminal resize event.
@@ -94,7 +194,7 @@ const (
 //   3. Bubbling phase: Event propagates from target back to root
 //
 // Returns an EventResult indicating if the event was handled.
-func DispatchEvent(ev Event, boxes []runtime.LayoutBox) EventResult {
+func DispatchEvent(ev *EventStruct, boxes []runtime.LayoutBox) EventResult {
 	result := EventResult{
 		Handled:     false,
 		Updated:     false,
@@ -102,22 +202,23 @@ func DispatchEvent(ev Event, boxes []runtime.LayoutBox) EventResult {
 	}
 
 	// Initialize event propagation fields
-	ev.Target = nil
-	ev.CurrentTarget = nil
-	ev.Phase = PhaseNone
-	ev.StoppedPropagation = false
-	ev.StoppedImmediatePropagation = false
+	ev.SetTarget(nil)
+	ev.SetCurrentTarget(nil)
+	ev.SetPhase(PhaseNone)
+	e := ev
+	e.StoppedPropagation = false
+	e.StoppedImmediatePropagation = false
 
-	switch ev.Type {
-	case EventTypeMouse:
+	switch ev.Type() {
+	case EventMousePress, EventMouseRelease, EventMouseMove, EventMouseWheel:
 		if ev.Mouse != nil {
 			return dispatchMouseEventWithPropagation(ev, ev.Mouse, boxes)
 		}
-	case EventTypeKey:
+	case EventKeyPress, EventKeyRelease, EventKeyRepeat:
 		if ev.Key != nil {
 			return dispatchKeyEvent(ev.Key, boxes)
 		}
-	case EventTypeResize:
+	case EventResize:
 		if ev.Resize != nil {
 			return dispatchResizeEvent(ev.Resize, boxes)
 		}
@@ -127,7 +228,7 @@ func DispatchEvent(ev Event, boxes []runtime.LayoutBox) EventResult {
 }
 
 // dispatchMouseEventWithPropagation handles mouse events with full propagation support
-func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []runtime.LayoutBox) EventResult {
+func dispatchMouseEventWithPropagation(ev *EventStruct, mouseEv *MouseEvent, boxes []runtime.LayoutBox) EventResult {
 	result := EventResult{
 		Handled:     false,
 		Updated:     false,
@@ -141,26 +242,26 @@ func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []ru
 	}
 
 	// Set the target
-	ev.Target = hitResult.Node
-	if ev.Target == nil {
+	ev.setTargetNode(hitResult.Node)
+	if ev.TargetValue == nil {
 		return result
 	}
 
 	// Build the propagation path (from root to target)
-	path := buildPropagationPath(ev.Target)
+	path := buildPropagationPath(ev.TargetValue)
 	if len(path) == 0 {
 		return result
 	}
 
 	// Phase 1: Capturing (root -> target)
-	ev.Phase = PhaseCapturing
+	ev.SetPhase(PhaseCapture)
 	for i := 0; i < len(path)-1; i++ {
 		if ev.StoppedImmediatePropagation {
 			break
 		}
 
 		node := path[i]
-		ev.CurrentTarget = node
+		ev.setCurrentTargetNode(node)
 
 		// Try to handle event during capture phase
 		handled := dispatchToNode(ev, mouseEv, node, mouseEv.X, mouseEv.Y)
@@ -172,20 +273,20 @@ func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []ru
 
 	// Phase 2: At Target
 	if !ev.StoppedImmediatePropagation {
-		ev.Phase = PhaseAtTarget
-		ev.CurrentTarget = ev.Target
+		ev.SetPhase(PhaseTarget)
+		ev.setCurrentTargetNode(ev.TargetValue)
 
 		localX := hitResult.X
 		localY := hitResult.Y
 
-		handled := dispatchToNode(ev, mouseEv, ev.Target, localX, localY)
+		handled := dispatchToNode(ev, mouseEv, ev.TargetValue, localX, localY)
 		if handled {
 			result.Handled = true
 			result.Updated = true
 
 			// If this was a click and the component is focusable, focus it
 			if mouseEv.Type == MousePress && mouseEv.Click == MouseLeft {
-				if focusable, ok := ev.Target.Component.Instance.(runtime.FocusableComponent); ok {
+				if focusable, ok := ev.TargetValue.Component.Instance.(runtime.FocusableComponent); ok {
 					if focusable.IsFocusable() {
 						result.FocusTarget = hitResult.NodeID
 					}
@@ -196,7 +297,7 @@ func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []ru
 
 	// Phase 3: Bubbling (target -> root)
 	if !ev.StoppedPropagation && !ev.StoppedImmediatePropagation {
-		ev.Phase = PhaseBubbling
+		ev.SetPhase(PhaseBubble)
 
 		// Traverse in reverse (excluding target which we already did)
 		for i := len(path) - 2; i >= 0; i-- {
@@ -205,7 +306,7 @@ func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []ru
 			}
 
 			node := path[i]
-			ev.CurrentTarget = node
+			ev.setCurrentTargetNode(node)
 
 			// Calculate local coordinates for this ancestor
 			localX := mouseEv.X - node.AbsoluteX
@@ -220,8 +321,8 @@ func dispatchMouseEventWithPropagation(ev Event, mouseEv *MouseEvent, boxes []ru
 	}
 
 	// Clean up
-	ev.Phase = PhaseNone
-	ev.CurrentTarget = nil
+	ev.SetPhase(PhaseNone)
+	ev.setCurrentTargetNode(nil)
 
 	return result
 }
@@ -241,7 +342,7 @@ func buildPropagationPath(target *runtime.LayoutNode) []*runtime.LayoutNode {
 }
 
 // dispatchToNode attempts to dispatch an event to a specific node
-func dispatchToNode(ev Event, mouseEv *MouseEvent, node *runtime.LayoutNode, localX, localY int) bool {
+func dispatchToNode(ev *EventStruct, mouseEv *MouseEvent, node *runtime.LayoutNode, localX, localY int) bool {
 	if node == nil || node.Component == nil || node.Component.Instance == nil {
 		return false
 	}
@@ -320,7 +421,7 @@ type EventHandler interface {
 // EventTarget represents something that can receive events.
 type EventTarget interface {
 	// SendEvent sends an event to this target.
-	SendEvent(ev Event) EventResult
+	SendEvent(ev *EventStruct) EventResult
 }
 
 // EventPriority defines the priority of event handlers
@@ -333,7 +434,7 @@ const (
 )
 
 // EventHandlerFunc is a function that can handle events
-type EventHandlerFunc func(ev Event) EventResult
+type EventHandlerFunc func(ev *EventStruct) EventResult
 
 // DelegatedEventHandler represents a delegated event handler with metadata
 type DelegatedEventHandler struct {
@@ -408,7 +509,7 @@ func (ed *EventDelegator) sortHandlers(eventType EventType) {
 }
 
 // HandleEvent attempts to handle an event using delegated handlers
-func (ed *EventDelegator) HandleEvent(ev Event) EventResult {
+func (ed *EventDelegator) HandleEvent(ev *EventStruct) EventResult {
 	result := EventResult{
 		Handled:     false,
 		Updated:     false,
@@ -419,7 +520,7 @@ func (ed *EventDelegator) HandleEvent(ev Event) EventResult {
 		return result
 	}
 
-	handlers := ed.handlers[ev.Type]
+	handlers := ed.handlers[ev.Type()]
 	if len(handlers) == 0 {
 		return result
 	}
@@ -428,7 +529,7 @@ func (ed *EventDelegator) HandleEvent(ev Event) EventResult {
 	var toRemove []int
 	for i, handler := range handlers {
 		// Check phase filter
-		if handler.Phase != PhaseNone && handler.Phase != ev.Phase {
+		if handler.Phase != PhaseNone && handler.Phase != ev.Phase() {
 			continue
 		}
 
@@ -458,7 +559,7 @@ func (ed *EventDelegator) HandleEvent(ev Event) EventResult {
 	// Remove one-time handlers (in reverse order to maintain indices)
 	for i := len(toRemove) - 1; i >= 0; i-- {
 		idx := toRemove[i]
-		ed.handlers[ev.Type] = append(handlers[:idx], handlers[idx+1:]...)
+		ed.handlers[ev.Type()] = append(handlers[:idx], handlers[idx+1:]...)
 	}
 
 	return result
@@ -491,7 +592,7 @@ func NewComponentTarget(node *runtime.LayoutNode) EventTarget {
 }
 
 // SendEvent sends an event to the wrapped component.
-func (t *ComponentTarget) SendEvent(ev Event) EventResult {
+func (t *ComponentTarget) SendEvent(ev *EventStruct) EventResult {
 	result := EventResult{
 		Handled:     false,
 		Updated:     false,
@@ -526,8 +627,8 @@ func (t *ComponentTarget) SendEvent(ev Event) EventResult {
 		return result
 	}
 
-	switch ev.Type {
-	case EventTypeMouse:
+	switch ev.Type() {
+	case EventMousePress, EventMouseRelease, EventMouseMove, EventMouseWheel:
 		if ev.Mouse != nil {
 			if handler, ok := instance.(MouseEventHandler); ok {
 				// Calculate local coordinates (assuming node is at origin for this target)
@@ -537,7 +638,7 @@ func (t *ComponentTarget) SendEvent(ev Event) EventResult {
 				}
 			}
 		}
-	case EventTypeKey:
+	case EventKeyPress, EventKeyRelease, EventKeyRepeat:
 		if ev.Key != nil {
 			if handler, ok := instance.(KeyEventHandler); ok {
 				if handler.HandleKey(ev.Key) {

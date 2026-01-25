@@ -11,7 +11,7 @@ import (
 // ConvertBubbleTeaMsg converts a Bubble Tea message to a Runtime event.
 // This adapter maintains module boundary rules by sitting in the tui package
 // (which can import both Bubble Tea and runtime).
-func ConvertBubbleTeaMsg(msg tea.Msg) event.Event {
+func ConvertBubbleTeaMsg(msg tea.Msg) *event.EventStruct {
 	switch m := msg.(type) {
 	case tea.MouseMsg:
 		return convertMouseMsg(m)
@@ -21,15 +21,15 @@ func ConvertBubbleTeaMsg(msg tea.Msg) event.Event {
 		return convertWindowSizeMsg(m)
 	default:
 		// For custom messages, wrap as-is
-		return event.Event{
-			Type:   event.EventTypeCustom,
-			Custom: msg,
-		}
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventCustom)
+		ev.Custom = msg
+		return ev
 	}
 }
 
 // convertMouseMsg converts a Bubble Tea MouseMsg to a Runtime MouseEvent.
-func convertMouseMsg(msg tea.MouseMsg) event.Event {
+func convertMouseMsg(msg tea.MouseMsg) *event.EventStruct {
 	// Determine mouse event type
 	var evType event.MouseEventType
 	var click event.MouseClickType
@@ -74,19 +74,19 @@ func convertMouseMsg(msg tea.MouseMsg) event.Event {
 		}
 	}
 
-	return event.Event{
-		Type: event.EventTypeMouse,
-		Mouse: &event.MouseEvent{
-			X:     msg.X,
-			Y:     msg.Y,
-			Type:  evType,
-			Click: click,
-		},
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventMousePress)
+	ev.Mouse = &event.MouseEvent{
+		X:     msg.X,
+		Y:     msg.Y,
+		Type:  evType,
+		Click: click,
 	}
+	return ev
 }
 
 // convertKeyMsg converts a Bubble Tea KeyMsg to a Runtime KeyEvent.
-func convertKeyMsg(msg tea.KeyMsg) event.Event {
+func convertKeyMsg(msg tea.KeyMsg) *event.EventStruct {
 	// Extract rune from key
 	var key rune
 	if len(msg.Runes) > 0 {
@@ -106,25 +106,25 @@ func convertKeyMsg(msg tea.KeyMsg) event.Event {
 		mod = event.ModCtrl
 	}
 
-	return event.Event{
-		Type: event.EventTypeKey,
-		Key: &event.KeyEvent{
-			Key:  key,
-			Type: event.KeyPress,
-			Mod:  mod,
-		},
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventKeyPress)
+	ev.Key = &event.KeyEvent{
+		Key:  key,
+		Type: event.KeyPress,
+		Mod:  mod,
 	}
+	return ev
 }
 
 // convertWindowSizeMsg converts a Bubble Tea WindowSizeMsg to a Runtime ResizeEvent.
-func convertWindowSizeMsg(msg tea.WindowSizeMsg) event.Event {
-	return event.Event{
-		Type:   event.EventTypeResize,
-		Resize: &event.ResizeEvent{
-			Width:  msg.Width,
-			Height: msg.Height,
-		},
+func convertWindowSizeMsg(msg tea.WindowSizeMsg) *event.EventStruct {
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventResize)
+	ev.Resize = &event.ResizeEvent{
+		Width:  msg.Width,
+		Height: msg.Height,
 	}
+	return ev
 }
 
 // DispatchEventToRuntime dispatches a Bubble Tea message through the Runtime event system.
@@ -136,7 +136,7 @@ func (m *Model) DispatchEventToRuntime(msg tea.Msg) event.EventResult {
 
 	// ========== 新增：处理文本选择 ==========
 	// 在事件分发到组件之前，先让选择管理器处理鼠标事件
-	if ev.Type == event.EventTypeMouse && ev.Mouse != nil && m.RuntimeEngine != nil {
+	if ev.Type() == event.EventMousePress && ev.Mouse != nil && m.RuntimeEngine != nil {
 		handled := m.handleSelectionMouseEvent(ev.Mouse)
 		if handled {
 			m.forceRender = true // 选择变化需要重新渲染

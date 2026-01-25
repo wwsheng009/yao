@@ -20,9 +20,9 @@ func NewMessageConverter() *MessageConverter {
 
 // Convert converts a Bubble Tea message to a Runtime event.
 // Returns (event, ok) where ok is true if the message was converted.
-func (c *MessageConverter) Convert(msg tea.Msg) (event.Event, bool) {
+func (c *MessageConverter) Convert(msg tea.Msg) (*event.EventStruct, bool) {
 	if msg == nil {
-		return event.Event{}, false
+		return nil, false
 	}
 
 	switch m := msg.(type) {
@@ -42,54 +42,54 @@ func (c *MessageConverter) Convert(msg tea.Msg) (event.Event, bool) {
 }
 
 // convertKeyMsg converts a Bubble Tea KeyMsg to a Runtime KeyEvent.
-func (c *MessageConverter) convertKeyMsg(msg tea.KeyMsg) event.Event {
+func (c *MessageConverter) convertKeyMsg(msg tea.KeyMsg) *event.EventStruct {
 	// Check for special keys first
 	switch msg.Type {
 	case tea.KeyTab:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\t',
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\t',
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyShiftTab:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\t',
-				Type: event.KeyPress,
-				Mod:  event.ModShift,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\t',
+			Type: event.KeyPress,
+			Mod:  event.ModShift,
 		}
+		return ev
 
 	case tea.KeyEnter:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\r',
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\r',
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyBackspace:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\b',
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\b',
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyDelete:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\x7f',
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\x7f',
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight:
 		// Arrow keys - map to special runes for navigation
@@ -104,22 +104,22 @@ func (c *MessageConverter) convertKeyMsg(msg tea.KeyMsg) event.Event {
 		case tea.KeyRight:
 			key = '→'
 		}
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  key,
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  key,
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyEscape:
-		return event.Event{
-			Type: event.EventTypeKey,
-			Key: &event.KeyEvent{
-				Key:  '\x1b',
-				Type: event.KeyPress,
-			},
+		ev := &event.EventStruct{}
+		ev.SetType(event.EventKeyPress)
+		ev.Key = &event.KeyEvent{
+			Key:  '\x1b',
+			Type: event.KeyPress,
 		}
+		return ev
 
 	case tea.KeyRunes:
 		// Regular character input
@@ -132,8 +132,8 @@ func (c *MessageConverter) convertKeyMsg(msg tea.KeyMsg) event.Event {
 				mod |= event.ModAlt
 			}
 
-			return event.Event{
-				Type: event.EventTypeKey,
+			return &event.EventStruct{
+				TypeValue: event.EventKeyPress,
 				Key: &event.KeyEvent{
 					Key:  key,
 					Type: event.KeyPress,
@@ -144,17 +144,17 @@ func (c *MessageConverter) convertKeyMsg(msg tea.KeyMsg) event.Event {
 	}
 
 	// Default: return as Tab for unknown keys (safe default for navigation)
-	return event.Event{
-		Type: event.EventTypeKey,
-		Key: &event.KeyEvent{
-			Key:  '\t',
-			Type: event.KeyPress,
-		},
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventKeyPress)
+	ev.Key = &event.KeyEvent{
+		Key:  '\t',
+		Type: event.KeyPress,
 	}
+	return ev
 }
 
 // convertMouseMsg converts a Bubble Tea MouseMsg to a Runtime MouseEvent.
-func (c *MessageConverter) convertMouseMsg(msg tea.MouseMsg) event.Event {
+func (c *MessageConverter) convertMouseMsg(msg tea.MouseMsg) *event.EventStruct {
 	x, y := msg.X, msg.Y
 
 	// Determine mouse event type
@@ -208,35 +208,35 @@ func (c *MessageConverter) convertMouseMsg(msg tea.MouseMsg) event.Event {
 		eventType = event.MouseScroll
 	}
 
-	return event.Event{
-		Type: event.EventTypeMouse,
-		Mouse: &event.MouseEvent{
-			X:     x,
-			Y:     y,
-			Type:  eventType,
-			Click: click,
-		},
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventMousePress)
+	ev.Mouse = &event.MouseEvent{
+		X:     x,
+		Y:     y,
+		Type:  eventType,
+		Click: click,
 	}
+	return ev
 }
 
 // convertWindowSizeMsg converts a Bubble Tea WindowSizeMsg to a Runtime ResizeEvent.
-func (c *MessageConverter) convertWindowSizeMsg(msg tea.WindowSizeMsg) event.Event {
-	return event.Event{
-		Type: event.EventTypeResize,
-		Resize: &event.ResizeEvent{
-			Width:  msg.Width,
-			Height: msg.Height,
-		},
+func (c *MessageConverter) convertWindowSizeMsg(msg tea.WindowSizeMsg) *event.EventStruct {
+	ev := &event.EventStruct{}
+	ev.SetType(event.EventResize)
+	ev.Resize = &event.ResizeEvent{
+		Width:  msg.Width,
+		Height: msg.Height,
 	}
+	return ev
 }
 
 // convertCustomMsg attempts to convert custom message types.
-func (c *MessageConverter) convertCustomMsg(msg tea.Msg) (event.Event, bool) {
+func (c *MessageConverter) convertCustomMsg(msg tea.Msg) (*event.EventStruct, bool) {
 	// Check for focus messages
 	switch msg.(type) {
 	case interface{ FocusNext() bool }:
-		return event.Event{
-			Type: event.EventTypeKey,
+		return &event.EventStruct{
+			TypeValue: event.EventKeyPress,
 			Key: &event.KeyEvent{
 				Key: '\t',
 				Type: event.KeyPress,
@@ -244,8 +244,8 @@ func (c *MessageConverter) convertCustomMsg(msg tea.Msg) (event.Event, bool) {
 		}, true
 
 	case interface{ FocusPrev() bool }:
-		return event.Event{
-			Type: event.EventTypeKey,
+		return &event.EventStruct{
+			TypeValue: event.EventKeyPress,
 			Key: &event.KeyEvent{
 				Key: '\t',
 				Type: event.KeyPress,
@@ -254,7 +254,7 @@ func (c *MessageConverter) convertCustomMsg(msg tea.Msg) (event.Event, bool) {
 		}, true
 	}
 
-	return event.Event{}, false
+	return nil, false
 }
 
 // ToRuntimeEvent converts a Bubble Tea message to a runtime.Event for the RuntimeImpl.Dispatch method.

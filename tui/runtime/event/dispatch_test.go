@@ -109,22 +109,22 @@ func (m *MockComponent) Blur() {
 func TestEventPhase(t *testing.T) {
 	t.Run("Phase constants are defined", func(t *testing.T) {
 		assert.Equal(t, EventPhase(0), PhaseNone)
-		assert.Equal(t, EventPhase(1), PhaseCapturing)
-		assert.Equal(t, EventPhase(2), PhaseAtTarget)
-		assert.Equal(t, EventPhase(3), PhaseBubbling)
+		assert.Equal(t, EventPhase(1), PhaseCapture)
+		assert.Equal(t, EventPhase(2), PhaseTarget)
+		assert.Equal(t, EventPhase(3), PhaseBubble)
 	})
 }
 
 func TestEventStopPropagation(t *testing.T) {
 	t.Run("StopPropagation sets flag", func(t *testing.T) {
-		ev := Event{}
+		ev := EventStruct{}
 		ev.StopPropagation()
 		assert.True(t, ev.StoppedPropagation)
 		assert.False(t, ev.StoppedImmediatePropagation)
 	})
 
 	t.Run("StopImmediatePropagation sets both flags", func(t *testing.T) {
-		ev := Event{}
+		ev := EventStruct{}
 		ev.StopImmediatePropagation()
 		assert.True(t, ev.StoppedPropagation)
 		assert.True(t, ev.StoppedImmediatePropagation)
@@ -136,12 +136,13 @@ func TestEventDelegator(t *testing.T) {
 		ed := NewEventDelegator()
 		called := false
 
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			called = true
 			return EventResult{Handled: true}
 		})
 
-		ev := Event{Type: EventTypeMouse}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
 		result := ed.HandleEvent(ev)
 
 		assert.True(t, called, "Handler should be called")
@@ -152,12 +153,13 @@ func TestEventDelegator(t *testing.T) {
 		ed := NewEventDelegator()
 		callCount := 0
 
-		ed.Once(EventTypeMouse, func(ev Event) EventResult {
+		ed.Once(EventMousePress, func(ev *EventStruct) EventResult {
 			callCount++
 			return EventResult{Handled: true}
 		})
 
-		ev := Event{Type: EventTypeMouse}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
 
 		// First call
 		ed.HandleEvent(ev)
@@ -173,22 +175,23 @@ func TestEventDelegator(t *testing.T) {
 		order := []int{}
 
 		// Add handlers in reverse priority order
-		ed.OnWithPriority(EventTypeMouse, func(ev Event) EventResult {
+		ed.OnWithPriority(EventMousePress, func(ev *EventStruct) EventResult {
 			order = append(order, 1)
 			return EventResult{}
 		}, PriorityLow)
 
-		ed.OnWithPriority(EventTypeMouse, func(ev Event) EventResult {
+		ed.OnWithPriority(EventMousePress, func(ev *EventStruct) EventResult {
 			order = append(order, 3)
 			return EventResult{}
 		}, PriorityHigh)
 
-		ed.OnWithPriority(EventTypeMouse, func(ev Event) EventResult {
+		ed.OnWithPriority(EventMousePress, func(ev *EventStruct) EventResult {
 			order = append(order, 2)
 			return EventResult{}
 		}, PriorityDefault)
 
-		ev := Event{Type: EventTypeMouse}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
 		ed.HandleEvent(ev)
 
 		assert.Equal(t, []int{3, 2, 1}, order, "Handlers should execute in priority order")
@@ -199,18 +202,20 @@ func TestEventDelegator(t *testing.T) {
 		capturingCalled := false
 		bubblingCalled := false
 
-		ed.OnDuringPhase(EventTypeMouse, func(ev Event) EventResult {
+		ed.OnDuringPhase(EventMousePress, func(ev *EventStruct) EventResult {
 			capturingCalled = true
 			return EventResult{}
-		}, PhaseCapturing)
+		}, PhaseCapture)
 
-		ed.OnDuringPhase(EventTypeMouse, func(ev Event) EventResult {
+		ed.OnDuringPhase(EventMousePress, func(ev *EventStruct) EventResult {
 			bubblingCalled = true
 			return EventResult{}
-		}, PhaseBubbling)
+		}, PhaseBubble)
 
 		// Test capturing phase
-		ev := Event{Type: EventTypeMouse, Phase: PhaseCapturing}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.SetPhase(PhaseCapture)
 		ed.HandleEvent(ev)
 		assert.True(t, capturingCalled)
 		assert.False(t, bubblingCalled)
@@ -219,7 +224,7 @@ func TestEventDelegator(t *testing.T) {
 		capturingCalled = false
 
 		// Test bubbling phase
-		ev.Phase = PhaseBubbling
+		ev.SetPhase(PhaseBubble)
 		ed.HandleEvent(ev)
 		assert.False(t, capturingCalled)
 		assert.True(t, bubblingCalled)
@@ -230,44 +235,44 @@ func TestEventDelegator(t *testing.T) {
 		callCount := 0
 
 		// Add handlers that stop propagation on first call
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			callCount++
 			ev.StopImmediatePropagation()
 			return EventResult{Handled: true}
 		})
 
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			callCount++
 			return EventResult{Handled: true}
 		})
 
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			callCount++
 			return EventResult{Handled: true}
 		})
 
-		ev := Event{Type: EventTypeMouse}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
 		ed.HandleEvent(ev)
 
-		// Note: Since Event is passed by value to handlers,
-		// StopImmediatePropagation in the handler doesn't affect the loop.
-		// This test verifies the behavior as currently implemented.
-		// In a real scenario, handlers would need to communicate through other means.
-		assert.Equal(t, 3, callCount, "All handlers execute (Event is passed by value)")
+		// Note: Since EventStruct is passed by pointer to handlers,
+		// StopImmediatePropagation should stop execution after first handler
+		assert.Equal(t, 1, callCount, "Only first handler should execute")
 	})
 
 	t.Run("RemoveAll removes handlers for event type", func(t *testing.T) {
 		ed := NewEventDelegator()
 		called := false
 
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			called = true
 			return EventResult{}
 		})
 
-		ed.RemoveAll(EventTypeMouse)
+		ed.RemoveAll(EventMousePress)
 
-		ev := Event{Type: EventTypeMouse}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
 		ed.HandleEvent(ev)
 
 		assert.False(t, called, "Handler should be removed")
@@ -278,23 +283,25 @@ func TestEventDelegator(t *testing.T) {
 		mouseCalled := false
 		keyCalled := false
 
-		ed.On(EventTypeMouse, func(ev Event) EventResult {
+		ed.On(EventMousePress, func(ev *EventStruct) EventResult {
 			mouseCalled = true
 			return EventResult{}
 		})
 
-		ed.On(EventTypeKey, func(ev Event) EventResult {
+		ed.On(EventKeyPress, func(ev *EventStruct) EventResult {
 			keyCalled = true
 			return EventResult{}
 		})
 
 		ed.Clear()
 
-		evMouse := Event{Type: EventTypeMouse}
+		evMouse := &EventStruct{}
+		evMouse.SetType(EventMousePress)
 		ed.HandleEvent(evMouse)
 		assert.False(t, mouseCalled)
 
-		evKey := Event{Type: EventTypeKey}
+		evKey := &EventStruct{}
+		evKey.SetType(EventKeyPress)
 		ed.HandleEvent(evKey)
 		assert.False(t, keyCalled)
 	})
@@ -391,7 +398,9 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 			Click: MouseLeft,
 		}
 
-		ev := Event{Type: EventTypeMouse, Mouse: mouseEv}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.Mouse = mouseEv
 		result := dispatchMouseEventWithPropagation(ev, mouseEv, boxes)
 
 		assert.True(t, result.Handled)
@@ -446,7 +455,9 @@ func TestDispatchMouseEventWithPropagation(t *testing.T) {
 			Click: MouseLeft,
 		}
 
-		ev := Event{Type: EventTypeMouse, Mouse: mouseEv}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.Mouse = mouseEv
 		result := dispatchMouseEventWithPropagation(ev, mouseEv, boxes)
 
 		assert.True(t, result.Handled)
@@ -492,7 +503,9 @@ func TestComponentTarget(t *testing.T) {
 		target := NewComponentTarget(node)
 
 		mouseEv := &MouseEvent{X: 10, Y: 10, Type: MousePress}
-		ev := Event{Type: EventTypeMouse, Mouse: mouseEv}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.Mouse = mouseEv
 
 		result := target.SendEvent(ev)
 
@@ -514,13 +527,15 @@ func TestComponentTarget(t *testing.T) {
 
 		called := false
 
-		componentTarget.On(EventTypeMouse, func(ev Event) EventResult {
+		componentTarget.On(EventMousePress, func(ev *EventStruct) EventResult {
 			called = true
 			return EventResult{Handled: true}
 		})
 
 		mouseEv := &MouseEvent{X: 10, Y: 10, Type: MousePress}
-		ev := Event{Type: EventTypeMouse, Mouse: mouseEv}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.Mouse = mouseEv
 
 		result := target.SendEvent(ev)
 
@@ -542,13 +557,15 @@ func TestComponentTarget(t *testing.T) {
 
 		callCount := 0
 
-		componentTarget.Once(EventTypeMouse, func(ev Event) EventResult {
+		componentTarget.Once(EventMousePress, func(ev *EventStruct) EventResult {
 			callCount++
 			return EventResult{Handled: true}
 		})
 
 		mouseEv := &MouseEvent{X: 10, Y: 10, Type: MousePress}
-		ev := Event{Type: EventTypeMouse, Mouse: mouseEv}
+		ev := &EventStruct{}
+		ev.SetType(EventMousePress)
+		ev.Mouse = mouseEv
 
 		// First call
 		target.SendEvent(ev)
