@@ -103,36 +103,6 @@ func (k *KeyMap) Lookup(ev *KeyEvent) (EventHandler, bool) {
 	return nil, false
 }
 
-// Pump 事件泵
-type Pump struct {
-	events chan Event
-	quit   chan struct{}
-}
-
-// NewPump 创建事件泵
-func NewPump(reader interface{}) *Pump {
-	return &Pump{
-		events: make(chan Event, 100),
-		quit:   make(chan struct{}),
-	}
-}
-
-// Start 启动事件泵
-func (p *Pump) Start() {
-	go func() {
-		// TODO: 实现输入循环
-	}()
-}
-
-// Stop 停止事件泵
-func (p *Pump) Stop() {
-	close(p.quit)
-}
-
-// Events 返回事件通道
-func (p *Pump) Events() <-chan Event {
-	return p.events
-}
 
 // MousePressEvent 鼠标按下事件
 type MousePressEvent struct {
