@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yaoapp/yao/tui/framework/component"
+	"github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/input"
 	"github.com/yaoapp/yao/tui/framework/style"
 	"github.com/yaoapp/yao/tui/framework/validation"
@@ -82,18 +83,26 @@ func (f *FormField) GetValue() interface{} {
 
 // Validate 验证字段
 func (f *FormField) Validate() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
+	// 先获取值（使用读锁）
+	f.mu.RLock()
 	value := f.GetValue()
-	for _, validator := range f.Validators {
+	validators := f.Validators
+	f.mu.RUnlock()
+
+	// 然后验证
+	for _, validator := range validators {
 		if err := validator.Validate(value); err != nil {
+			f.mu.Lock()
 			f.Error = err
+			f.mu.Unlock()
 			return err
 		}
 	}
 
+	// 清除错误
+	f.mu.Lock()
 	f.Error = nil
+	f.mu.Unlock()
 	return nil
 }
 
@@ -245,8 +254,8 @@ func (f *Form) SetFocusLabelStyle(s style.Style) *Form {
 
 // Validate 验证表单
 func (f *Form) Validate() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	// 不加锁，因为可能从已持有锁的方法调用
+	// 调用者需要确保线程安全
 
 	for _, field := range f.fields {
 		if field.Visible && !field.Disabled {
@@ -327,19 +336,25 @@ func (f *Form) Submit() error {
 	}
 
 	// 标记所有字段为已触摸
+	f.mu.Lock()
 	for _, field := range f.fields {
 		field.Touched = true
 	}
+	onSubmit := f.onSubmit
+	f.mu.Unlock()
 
 	// 调用提交回调
-	if f.onSubmit != nil {
+	if onSubmit != nil {
 		values := f.GetValues()
-		if err := f.onSubmit(values); err != nil {
+		if err := onSubmit(values); err != nil {
 			return err
 		}
 	}
 
+	f.mu.Lock()
 	f.submitted = true
+	f.mu.Unlock()
+
 	return nil
 }
 
@@ -443,16 +458,14 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		y++
 
 		// 绘制输入组件
-		if paintable, ok := field.Input.(interface {
-			Paint(component.PaintContext, *paint.Buffer)
-		}); ok {
+		if txt, ok := field.Input.(*input.TextInput); ok {
 			inputCtx := component.PaintContext{
 				AvailableWidth:  width - 2,
 				AvailableHeight: 1,
 				X:                x + 2,
 				Y:                y,
 			}
-			paintable.Paint(inputCtx, buf)
+			txt.Paint(inputCtx, buf)
 		}
 		y++
 
@@ -483,33 +496,40 @@ func (f *Form) drawText(buf *paint.Buffer, x, y int, text string, s style.Style)
 
 // HandleAction 处理语义化 Action
 func (f *Form) HandleAction(a action.Action) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	switch a.Type {
 	case action.ActionNavigateDown:
+		f.mu.Lock()
 		f.navigateField(1)
+		f.mu.Unlock()
 		return true
 
 	case action.ActionNavigateUp:
+		f.mu.Lock()
 		f.navigateField(-1)
+		f.mu.Unlock()
 		return true
 
 	case action.ActionSubmit:
-		// 提交表单
-		if err := f.Submit(); err != nil {
-			// 保留错误显示
-			return true
-		}
-		return f.onSubmit != nil
+		// 提交表单 - 不持有锁，避免死锁
+		return f.handleSubmit()
 
 	case action.ActionCancel:
-		f.Cancel()
+		// 取消表单
+		f.mu.Lock()
+	 onCancel := f.onCancel
+		f.mu.Unlock()
+
+		if onCancel != nil {
+			onCancel()
+		}
 		return true
 
 	default:
 		// 转发给当前焦点字段
+		f.mu.Lock()
 		currentField := f.getCurrentField()
+		f.mu.Unlock()
+
 		if currentField != nil {
 			if actionTarget, ok := currentField.Input.(interface {
 				HandleAction(action.Action) bool
@@ -519,6 +539,37 @@ func (f *Form) HandleAction(a action.Action) bool {
 		}
 		return false
 	}
+}
+
+// handleSubmit 内部提交方法（不加锁）
+func (f *Form) handleSubmit() bool {
+	// 验证所有字段
+	if err := f.Validate(); err != nil {
+		// 验证失败，标记需要重绘以显示错误
+		return true
+	}
+
+	// 标记所有字段为已触摸
+	f.mu.Lock()
+	for _, field := range f.fields {
+		field.Touched = true
+	}
+	onSubmit := f.onSubmit
+	f.mu.Unlock()
+
+	// 调用提交回调
+	if onSubmit != nil {
+		values := f.GetValues()
+		if err := onSubmit(values); err != nil {
+			return true
+		}
+	}
+
+	f.mu.Lock()
+	f.submitted = true
+	f.mu.Unlock()
+
+	return true
 }
 
 // ============================================================================
@@ -532,12 +583,42 @@ func (f *Form) FocusID() string {
 
 // OnFocus 获得焦点时调用
 func (f *Form) OnFocus() {
-	// 可以在这里添加获得焦点时的逻辑
+	// 焦点第一个可见字段
+	visibleFields := f.getVisibleFieldIndices()
+	if len(visibleFields) > 0 {
+		// 如果当前字段不是可见字段，重置到第一个可见字段
+		isCurrentVisible := false
+		for _, idx := range visibleFields {
+			if idx == f.currentField {
+				isCurrentVisible = true
+				break
+			}
+		}
+		if !isCurrentVisible {
+			f.currentField = visibleFields[0]
+		}
+
+		// 让当前字段获得焦点
+		fieldName := f.fieldOrder[f.currentField]
+		if field := f.fields[fieldName]; field != nil {
+			// 直接调用具体类型的方法
+			if input, ok := field.Input.(*input.TextInput); ok {
+				input.OnFocus()
+			}
+		}
+	}
 }
 
 // OnBlur 失去焦点时调用
 func (f *Form) OnBlur() {
-	// 可以在这里添加失去焦点时的逻辑
+	// 让当前字段失去焦点
+	fieldName := f.fieldOrder[f.currentField]
+	if field := f.fields[fieldName]; field != nil {
+		// 直接调用具体类型的方法
+		if input, ok := field.Input.(*input.TextInput); ok {
+			input.OnBlur()
+		}
+	}
 }
 
 // ============================================================================
@@ -568,7 +649,27 @@ func (f *Form) navigateField(delta int) {
 		newIdx = 0
 	}
 
+	// 先让当前字段失去焦点
+	if currentIdx >= 0 && currentIdx < len(visibleFields) {
+		oldFieldIdx := visibleFields[currentIdx]
+		oldFieldName := f.fieldOrder[oldFieldIdx]
+		if oldField := f.fields[oldFieldName]; oldField != nil {
+			if input, ok := oldField.Input.(*input.TextInput); ok {
+				input.OnBlur()
+			}
+		}
+	}
+
+	// 更新当前字段索引
 	f.currentField = visibleFields[newIdx]
+
+	// 让新字段获得焦点
+	newFieldName := f.fieldOrder[f.currentField]
+	if newField := f.fields[newFieldName]; newField != nil {
+		if input, ok := newField.Input.(*input.TextInput); ok {
+			input.OnFocus()
+		}
+	}
 }
 
 // getCurrentField 获取当前焦点字段
@@ -590,4 +691,62 @@ func (f *Form) getVisibleFieldIndices() []int {
 		}
 	}
 	return indices
+}
+
+// ============================================================================
+// Event Handling (V3)
+// ============================================================================
+
+// HandleEvent 处理原始事件 (V3: 将事件转换为 Action)
+// 这是 bridge 方法，将旧的事件系统连接到 V3 的 Action 系统
+func (f *Form) HandleEvent(ev component.Event) bool {
+	if keyEv, ok := ev.(*event.KeyEvent); ok {
+		// 处理特殊键
+		if keyEv.Special == event.KeyEscape {
+			return f.HandleAction(*action.NewAction(action.ActionCancel))
+		}
+		if keyEv.Special == event.KeyEnter {
+			return f.HandleAction(*action.NewAction(action.ActionSubmit))
+		}
+		if keyEv.Special == event.KeyUp || (keyEv.Special == event.KeyTab && keyEv.Modifiers.Has(event.ModShift)) {
+			return f.HandleAction(*action.NewAction(action.ActionNavigateUp))
+		}
+		if keyEv.Special == event.KeyDown || keyEv.Special == event.KeyTab {
+			return f.HandleAction(*action.NewAction(action.ActionNavigateDown))
+		}
+
+		// 处理普通字符输入 - 转发给当前焦点字段
+		if keyEv.Key != 0 && keyEv.Special == event.KeyUnknown {
+			currentField := f.getCurrentField()
+			if currentField != nil {
+				// 检查 Input 是否有 HandleEvent 方法
+				if handler, ok := currentField.Input.(interface{ HandleEvent(component.Event) bool }); ok {
+					if handler.HandleEvent(ev) {
+						f.markDirty()
+						return true
+					}
+				}
+			}
+		}
+
+		// 处理退格键
+		if keyEv.Special == event.KeyBackspace {
+			currentField := f.getCurrentField()
+			if currentField != nil {
+				if handler, ok := currentField.Input.(interface{ HandleEvent(component.Event) bool }); ok {
+					if handler.HandleEvent(ev) {
+						f.markDirty()
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// markDirty 标记表单为需要重绘
+func (f *Form) markDirty() {
+	// 在实际应用中，这会触发重绘
+	// 这里暂时留空，因为渲染由 App 控制
 }

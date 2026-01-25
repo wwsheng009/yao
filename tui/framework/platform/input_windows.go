@@ -1,0 +1,299 @@
+//go:build windows
+// +build windows
+
+package platform
+
+import (
+	"sync"
+	"syscall"
+	"time"
+	"unsafe"
+)
+
+type windowsInputReader struct {
+	events       chan<- RawInput
+	quit         chan struct{}
+	quitOnce     sync.Once
+	originalMode uint32
+}
+
+func newInputReaderImpl() inputReaderImpl {
+	return newWindowsInputReader()
+}
+
+func newWindowsInputReader() inputReaderImpl {
+	return &windowsInputReader{
+		quit: make(chan struct{}),
+	}
+}
+
+func (r *windowsInputReader) Start(events chan<- RawInput) error {
+	r.events = events
+
+	handle, _, err := procGetStdHandle.Call(STD_INPUT_HANDLE)
+	if handle == 0 {
+		return err
+	}
+
+	r.originalMode = r.getConsoleMode(handle)
+
+	mode := r.originalMode | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS
+	mode &^= ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_MOUSE_INPUT
+	r.setConsoleMode(handle, mode)
+
+	go r.readLoop(handle)
+
+	return nil
+}
+
+func (r *windowsInputReader) Stop() error {
+	r.quitOnce.Do(func() {
+		close(r.quit)
+	})
+
+	handle, _, _ := procGetStdHandle.Call(STD_INPUT_HANDLE)
+	if handle != 0 {
+		r.setConsoleMode(handle, r.originalMode)
+	}
+
+	return nil
+}
+
+func (r *windowsInputReader) ReadEvent() (RawInput, error) {
+	handle, _, err := procGetStdHandle.Call(STD_INPUT_HANDLE)
+	if handle == 0 {
+		return RawInput{}, err
+	}
+
+	record, err := r.readSingleRecord(handle)
+	if err != nil {
+		return RawInput{}, err
+	}
+
+	return r.parseRecord(record), nil
+}
+
+func (r *windowsInputReader) readLoop(handle uintptr) {
+	for {
+		select {
+		case <-r.quit:
+			return
+		default:
+			var count uint32
+			procGetNumberOfConsoleInputEvents.Call(handle, uintptr(unsafe.Pointer(&count)))
+
+			if count == 0 {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+
+			record, err := r.readSingleRecord(handle)
+			if err != nil {
+				continue
+			}
+
+			input := r.parseRecord(record)
+			if input.Type != InputKeyPress || input.Key != 0 || input.Special != KeyUnknown {
+				select {
+				case r.events <- input:
+				case <-r.quit:
+					return
+				}
+			}
+		}
+	}
+}
+
+func (r *windowsInputReader) readSingleRecord(handle uintptr) (*INPUT_RECORD, error) {
+	var record INPUT_RECORD
+	var count uint32
+
+	ret, _, err := procReadConsoleInput.Call(
+		handle,
+		uintptr(unsafe.Pointer(&record)),
+		1,
+		uintptr(unsafe.Pointer(&count)),
+	)
+
+	if ret == 0 {
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+func (r *windowsInputReader) parseRecord(record *INPUT_RECORD) RawInput {
+	now := time.Now()
+
+	switch record.EventType {
+	case KEY_EVENT:
+		return r.parseKeyEvent(record, now)
+
+	case WINDOW_BUFFER_SIZE_EVENT:
+		return RawInput{
+			Type:      InputResize,
+			Timestamp: now,
+		}
+
+	default:
+		return RawInput{Timestamp: now}
+	}
+}
+
+func (r *windowsInputReader) parseKeyEvent(record *INPUT_RECORD, now time.Time) RawInput {
+	keyEvent := (*KEY_EVENT_RECORD)(unsafe.Pointer(&record.Event[0]))
+
+	if keyEvent.KeyDown == 0 {
+		return RawInput{Timestamp: now}
+	}
+
+	input := RawInput{
+		Type:      InputKeyPress,
+		Timestamp: now,
+	}
+
+	input.Special = SpecialKey(r.virtualKeyToSpecial(keyEvent.VirtualKeyCode))
+
+	if keyEvent.ControlKeyState&0x0008 != 0 {
+		input.Modifiers |= ModShift
+	}
+	if keyEvent.ControlKeyState&0x0004 != 0 {
+		input.Modifiers |= ModCtrl
+	}
+	if keyEvent.ControlKeyState&0x0002 != 0 {
+		input.Modifiers |= ModAlt
+	}
+
+	if input.Special == KeyUnknown && keyEvent.UChar > 0 {
+		input.Key = rune(keyEvent.UChar)
+	}
+
+	return input
+}
+
+func (r *windowsInputReader) virtualKeyToSpecial(vk uint16) int {
+	switch vk {
+	case 0x08:
+		return int(KeyBackspace)
+	case 0x09:
+		return int(KeyTab)
+	case 0x0D:
+		return int(KeyEnter)
+	case 0x1B:
+		return int(KeyEscape)
+	case 0x21:
+		return int(KeyPageUp)
+	case 0x22:
+		return int(KeyPageDown)
+	case 0x23:
+		return int(KeyEnd)
+	case 0x24:
+		return int(KeyHome)
+	case 0x25:
+		return int(KeyLeft)
+	case 0x26:
+		return int(KeyUp)
+	case 0x27:
+		return int(KeyRight)
+	case 0x28:
+		return int(KeyDown)
+	case 0x2D:
+		return int(KeyInsert)
+	case 0x2E:
+		return int(KeyDelete)
+	case 0x70:
+		return int(KeyF1)
+	case 0x71:
+		return int(KeyF2)
+	case 0x72:
+		return int(KeyF3)
+	case 0x73:
+		return int(KeyF4)
+	case 0x74:
+		return int(KeyF5)
+	case 0x75:
+		return int(KeyF6)
+	case 0x76:
+		return int(KeyF7)
+	case 0x77:
+		return int(KeyF8)
+	case 0x78:
+		return int(KeyF9)
+	case 0x79:
+		return int(KeyF10)
+	case 0x7A:
+		return int(KeyF11)
+	case 0x7B:
+		return int(KeyF12)
+	default:
+		return int(KeyUnknown)
+	}
+}
+
+func (r *windowsInputReader) getConsoleMode(handle uintptr) uint32 {
+	var mode uint32
+	procGetConsoleMode.Call(handle, uintptr(unsafe.Pointer(&mode)))
+	return mode
+}
+
+func (r *windowsInputReader) setConsoleMode(handle uintptr, mode uint32) {
+	procSetConsoleMode.Call(handle, uintptr(mode))
+}
+
+const (
+	ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
+	ENABLE_WINDOW_INPUT            = 0x0008
+	ENABLE_MOUSE_INPUT             = 0x0010
+	ENABLE_EXTENDED_FLAGS          = 0x0080
+
+	STD_INPUT_HANDLE  = ^uintptr(10 - 1) // -10 as unsigned
+	STD_OUTPUT_HANDLE = ^uintptr(11 - 1) // -11 as unsigned
+
+	KEY_EVENT                  = 0x0001
+	WINDOW_BUFFER_SIZE_EVENT   = 0x0004
+)
+
+type INPUT_RECORD struct {
+	EventType uint16
+	Padding   uint16
+	Event     [16]byte
+}
+
+type KEY_EVENT_RECORD struct {
+	KeyDown         int32
+	RepeatCount     uint16
+	VirtualKeyCode  uint16
+	VirtualScanCode uint16
+	UChar           uint16
+	ControlKeyState uint32
+}
+
+var (
+	kernel32                         = syscall.NewLazyDLL("kernel32.dll")
+	procGetConsoleMode               = kernel32.NewProc("GetConsoleMode")
+	procSetConsoleMode               = kernel32.NewProc("SetConsoleMode")
+	procGetStdHandle                 = kernel32.NewProc("GetStdHandle")
+	procReadConsoleInput             = kernel32.NewProc("ReadConsoleInputW")
+	procGetNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
+)
+
+// restoreTerminalImpl Windows 终端恢复实现
+func restoreTerminalImpl() {
+	handle, _, _ := procGetStdHandle.Call(STD_INPUT_HANDLE)
+	if handle != 0 {
+		// 恢复到默认控制台模式
+		defaultMode := uint32(ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT)
+		procSetConsoleMode.Call(handle, uintptr(defaultMode))
+	}
+
+	// 同时恢复输出模式
+	outHandle, _, _ := procGetStdHandle.Call(STD_OUTPUT_HANDLE)
+	if outHandle != 0 {
+		// 启用虚拟终端处理
+		procSetConsoleMode.Call(outHandle, uintptr(ENABLE_VIRTUAL_TERMINAL_PROCESSING))
+	}
+}
+
+const (
+	ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+)

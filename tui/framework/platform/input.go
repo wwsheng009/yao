@@ -1,6 +1,9 @@
 package platform
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // InputReader 输入读取抽象 (V3: 从 Terminal 拆分)
 // Platform 只产生 RawInput，不产生语义化的 Action
@@ -127,35 +130,49 @@ const (
 	MouseWheelDown
 )
 
-// DefaultInputReader 默认输入读取器实现
-// 实际实现将根据平台 (Unix/Windows) 不同
-type DefaultInputReader struct {
-	events chan<- RawInput
-	quit   chan struct{}
+// NewInputReader 创建平台特定的输入读取器
+func NewInputReader() (InputReader, error) {
+	return newPlatformInputReader()
 }
 
-// NewDefaultInputReader 创建默认输入读取器
-func NewDefaultInputReader() *DefaultInputReader {
-	return &DefaultInputReader{
-		quit: make(chan struct{}),
-	}
+// newPlatformInputReader 根据平台创建输入读取器
+func newPlatformInputReader() (InputReader, error) {
+	// 使用 build tags 来选择正确的实现
+	return &defaultInputReaderWrapper{}, nil
+}
+
+// defaultInputReaderWrapper 默认包装器，使用平台特定实现
+type defaultInputReaderWrapper struct {
+	impl inputReaderImpl
 }
 
 // Start 启动读取循环
-func (r *DefaultInputReader) Start(events chan<- RawInput) error {
-	r.events = events
-	// TODO: 实现平台特定的输入读取
-	return nil
+func (w *defaultInputReaderWrapper) Start(events chan<- RawInput) error {
+	if w.impl == nil {
+		w.impl = newInputReaderImpl()
+	}
+	return w.impl.Start(events)
 }
 
 // Stop 停止读取
-func (r *DefaultInputReader) Stop() error {
-	close(r.quit)
+func (w *defaultInputReaderWrapper) Stop() error {
+	if w.impl != nil {
+		return w.impl.Stop()
+	}
 	return nil
 }
 
-// ReadEvent 读取单个事件 (同步方式)
-func (r *DefaultInputReader) ReadEvent() (RawInput, error) {
-	// TODO: 实现平台特定的输入读取
-	return RawInput{}, nil
+// ReadEvent 读取单个事件
+func (w *defaultInputReaderWrapper) ReadEvent() (RawInput, error) {
+	if w.impl == nil {
+		return RawInput{}, fmt.Errorf("input reader not started")
+	}
+	return w.impl.ReadEvent()
+}
+
+// inputReaderImpl 平台特定实现接口
+type inputReaderImpl interface {
+	Start(events chan<- RawInput) error
+	Stop() error
+	ReadEvent() (RawInput, error)
 }

@@ -3,8 +3,10 @@ package input
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yaoapp/yao/tui/framework/component"
+	"github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/style"
 	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/paint"
@@ -30,10 +32,15 @@ type TextInput struct {
 	normalStyle style.Style
 	focusStyle  style.Style
 	placeholderStyle style.Style
+
+	// 光标闪烁
+	cursorVisible bool
+	lastBlinkTime time.Time
 }
 
 // NewTextInput 创建 V3 文本输入组件
 func NewTextInput() *TextInput {
+	now := time.Now()
 	return &TextInput{
 		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:      component.NewStateHolder(),
@@ -46,11 +53,14 @@ func NewTextInput() *TextInput {
 		normalStyle:      style.Style{},
 		focusStyle:       style.Style{}.Foreground(style.Cyan),
 		placeholderStyle: style.Style{}.Foreground(style.BrightBlack),
+		cursorVisible:    true,
+		lastBlinkTime:    now,
 	}
 }
 
 // NewTextInputPlaceholder 创建带占位符的 V3 输入框
 func NewTextInputPlaceholder(placeholder string) *TextInput {
+	now := time.Now()
 	return &TextInput{
 		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:      component.NewStateHolder(),
@@ -63,6 +73,8 @@ func NewTextInputPlaceholder(placeholder string) *TextInput {
 		normalStyle:      style.Style{},
 		focusStyle:       style.Style{}.Foreground(style.Cyan),
 		placeholderStyle: style.Style{}.Foreground(style.BrightBlack),
+		cursorVisible:    true,
+		lastBlinkTime:    now,
 	}
 }
 
@@ -170,6 +182,24 @@ func (t *TextInput) SetPlaceholderStyle(s style.Style) *TextInput {
 	return t
 }
 
+// UpdateCursorBlink 更新光标闪烁状态，返回是否需要重新渲染
+func (t *TextInput) UpdateCursorBlink() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if !t.IsFocused() {
+		return false
+	}
+
+	now := time.Now()
+	if now.Sub(t.lastBlinkTime) >= 500*time.Millisecond {
+		t.cursorVisible = !t.cursorVisible  // 切换可见性
+		t.lastBlinkTime = now
+		return true  // 状态改变，需要重绘
+	}
+	return false
+}
+
 // ============================================================================
 // Measurable 接口实现
 // ============================================================================
@@ -245,6 +275,9 @@ func (t *TextInput) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 	// 限制长度
 	contentWidth := width - 2 // 减去左右边框
+	if contentWidth < 1 {
+		contentWidth = 1 // 至少显示1个字符
+	}
 	if t.maxLength > 0 && contentWidth > t.maxLength {
 		contentWidth = t.maxLength
 	}
@@ -271,14 +304,14 @@ func (t *TextInput) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	for i := 0; i < contentWidth; i++ {
 		if i < len(runes) {
 			// 检查是否在光标位置
-			if t.IsFocused() && i == t.cursor && t.value != "" {
-				// 绘制光标
+			if t.IsFocused() && i == t.cursor && t.cursorVisible {
+				// 绘制光标（闪烁时高亮显示）
 				buf.SetCell(x+i, y, runes[i], drawStyle.Reverse(true))
 			} else {
 				buf.SetCell(x+i, y, runes[i], drawStyle)
 			}
-		} else if t.IsFocused() && i == t.cursor && t.value != "" {
-			// 光标在末尾
+		} else if t.IsFocused() && i == t.cursor && t.cursorVisible {
+			// 光标在内容末尾
 			buf.SetCell(x+i, y, ' ', drawStyle.Reverse(true))
 		} else {
 			buf.SetCell(x+i, y, ' ', drawStyle)
@@ -367,12 +400,69 @@ func (t *TextInput) FocusID() string {
 
 // OnFocus 获得焦点时调用
 func (t *TextInput) OnFocus() {
-	// 可以在这里添加获得焦点时的逻辑
+	t.mu.Lock()
+	t.cursorVisible = true
+	t.lastBlinkTime = time.Now()
+	t.mu.Unlock()
+
+	// 调用 BaseComponent 的 OnFocus (设置 focused = true)
+	t.BaseComponent.OnFocus()
+
+	// 注册到全局光标管理器
+	RegisterCursor(t)
 }
 
 // OnBlur 失去焦点时调用
 func (t *TextInput) OnBlur() {
-	// 可以在这里添加失去焦点时的逻辑
+	t.mu.Lock()
+	t.cursorVisible = false
+	t.mu.Unlock()
+
+	// 调用 BaseComponent 的 OnBlur (设置 focused = false)
+	t.BaseComponent.OnBlur()
+
+	// 从全局光标管理器注销
+	UnregisterCursor(t)
+}
+
+// ============================================================================
+// V2 Component 接口兼容
+// ============================================================================
+
+// HandleEvent 处理事件 (Component接口)
+func (t *TextInput) HandleEvent(ev component.Event) bool {
+	if keyEv, ok := ev.(*event.KeyEvent); ok {
+		// 处理退格键
+		if keyEv.Special == event.KeyBackspace {
+			return t.HandleAction(*action.NewAction(action.ActionBackspace))
+		}
+
+		// 处理删除键
+		if keyEv.Special == event.KeyDelete {
+			return t.HandleAction(*action.NewAction(action.ActionDeleteChar))
+		}
+
+		// 处理光标键
+		if keyEv.Special == event.KeyLeft {
+			return t.HandleAction(*action.NewAction(action.ActionCursorLeft))
+		}
+		if keyEv.Special == event.KeyRight {
+			return t.HandleAction(*action.NewAction(action.ActionCursorRight))
+		}
+		if keyEv.Special == event.KeyHome {
+			return t.HandleAction(*action.NewAction(action.ActionCursorHome))
+		}
+		if keyEv.Special == event.KeyEnd {
+			return t.HandleAction(*action.NewAction(action.ActionCursorEnd))
+		}
+
+		// 处理普通字符输入
+		if keyEv.Key != 0 && keyEv.Special == event.KeyUnknown {
+			a := action.NewAction(action.ActionInputChar).WithPayload(keyEv.Key)
+			return t.HandleAction(*a)
+		}
+	}
+	return false
 }
 
 // ============================================================================
