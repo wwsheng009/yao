@@ -17,8 +17,8 @@ import (
 // ==============================================================================
 // V3 表单组件，支持验证、字段导航、提交/取消
 
-// FormFieldV3 表单字段
-type FormFieldV3 struct {
+// FormField 表单字段
+type FormField struct {
 	// 基本信息
 	Name        string
 	Label       string
@@ -40,9 +40,9 @@ type FormFieldV3 struct {
 	mu sync.RWMutex
 }
 
-// NewFormFieldV3 创建表单字段
-func NewFormFieldV3(name string) *FormFieldV3 {
-	return &FormFieldV3{
+// NewFormField 创建表单字段
+func NewFormField(name string) *FormField {
+	return &FormField{
 		Name:        name,
 		Visible:     true,
 		Disabled:    false,
@@ -51,13 +51,13 @@ func NewFormFieldV3(name string) *FormFieldV3 {
 }
 
 // SetValue 设置值
-func (f *FormFieldV3) SetValue(value interface{}) error {
+func (f *FormField) SetValue(value interface{}) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// 根据输入组件类型设置值
 	switch input := f.Input.(type) {
-	case *input.TextInputV3:
+	case *input.TextInput:
 		if str, ok := value.(string); ok {
 			input.SetValue(str)
 		}
@@ -68,12 +68,12 @@ func (f *FormFieldV3) SetValue(value interface{}) error {
 }
 
 // GetValue 获取值
-func (f *FormFieldV3) GetValue() interface{} {
+func (f *FormField) GetValue() interface{} {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
 	switch input := f.Input.(type) {
-	case *input.TextInputV3:
+	case *input.TextInput:
 		return input.GetValue()
 	default:
 		return nil
@@ -81,7 +81,7 @@ func (f *FormFieldV3) GetValue() interface{} {
 }
 
 // Validate 验证字段
-func (f *FormFieldV3) Validate() error {
+func (f *FormField) Validate() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -97,15 +97,15 @@ func (f *FormFieldV3) Validate() error {
 	return nil
 }
 
-// FormV3 V3 表单组件
-type FormV3 struct {
-	*component.BaseComponentV3
+// Form V3 表单组件
+type Form struct {
+	*component.BaseComponent
 	*component.StateHolder
 
 	mu sync.RWMutex
 
 	// 字段
-	fields      map[string]*FormFieldV3
+	fields      map[string]*FormField
 	fieldOrder  []string
 
 	// 当前焦点字段索引
@@ -126,12 +126,12 @@ type FormV3 struct {
 	focusLabelStyle  style.Style
 }
 
-// NewFormV3 创建 V3 表单组件
-func NewFormV3() *FormV3 {
-	return &FormV3{
-		BaseComponentV3: component.NewBaseComponentV3("form"),
+// NewForm 创建 V3 表单组件
+func NewForm() *Form {
+	return &Form{
+		BaseComponent: component.NewBaseComponent("form"),
 		StateHolder:     component.NewStateHolder(),
-		fields:          make(map[string]*FormFieldV3),
+		fields:          make(map[string]*FormField),
 		fieldOrder:      make([]string, 0),
 		currentField:    0,
 		labelStyle:      style.Style{}.Foreground(style.Cyan),
@@ -146,7 +146,7 @@ func NewFormV3() *FormV3 {
 // ============================================================================
 
 // AddField 添加字段
-func (f *FormV3) AddField(field *FormFieldV3) *FormV3 {
+func (f *Form) AddField(field *FormField) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -156,7 +156,7 @@ func (f *FormV3) AddField(field *FormFieldV3) *FormV3 {
 }
 
 // RemoveField 移除字段
-func (f *FormV3) RemoveField(name string) *FormV3 {
+func (f *Form) RemoveField(name string) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -171,7 +171,7 @@ func (f *FormV3) RemoveField(name string) *FormV3 {
 }
 
 // GetField 获取字段
-func (f *FormV3) GetField(name string) (*FormFieldV3, bool) {
+func (f *Form) GetField(name string) (*FormField, bool) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -180,7 +180,7 @@ func (f *FormV3) GetField(name string) (*FormFieldV3, bool) {
 }
 
 // GetFields 获取所有字段
-func (f *FormV3) GetFields() map[string]*FormFieldV3 {
+func (f *Form) GetFields() map[string]*FormField {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -192,7 +192,7 @@ func (f *FormV3) GetFields() map[string]*FormFieldV3 {
 // ============================================================================
 
 // SetOnSubmit 设置提交回调
-func (f *FormV3) SetOnSubmit(fn func(data map[string]interface{}) error) *FormV3 {
+func (f *Form) SetOnSubmit(fn func(data map[string]interface{}) error) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.onSubmit = fn
@@ -200,7 +200,7 @@ func (f *FormV3) SetOnSubmit(fn func(data map[string]interface{}) error) *FormV3
 }
 
 // SetOnCancel 设置取消回调
-func (f *FormV3) SetOnCancel(fn func()) *FormV3 {
+func (f *Form) SetOnCancel(fn func()) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.onCancel = fn
@@ -208,7 +208,7 @@ func (f *FormV3) SetOnCancel(fn func()) *FormV3 {
 }
 
 // SetLabelStyle 设置标签样式
-func (f *FormV3) SetLabelStyle(s style.Style) *FormV3 {
+func (f *Form) SetLabelStyle(s style.Style) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.labelStyle = s
@@ -216,7 +216,7 @@ func (f *FormV3) SetLabelStyle(s style.Style) *FormV3 {
 }
 
 // SetErrorStyle 设置错误样式
-func (f *FormV3) SetErrorStyle(s style.Style) *FormV3 {
+func (f *Form) SetErrorStyle(s style.Style) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.errorStyle = s
@@ -224,7 +224,7 @@ func (f *FormV3) SetErrorStyle(s style.Style) *FormV3 {
 }
 
 // SetHelpStyle 设置帮助文本样式
-func (f *FormV3) SetHelpStyle(s style.Style) *FormV3 {
+func (f *Form) SetHelpStyle(s style.Style) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.helpStyle = s
@@ -232,7 +232,7 @@ func (f *FormV3) SetHelpStyle(s style.Style) *FormV3 {
 }
 
 // SetFocusLabelStyle 设置焦点标签样式
-func (f *FormV3) SetFocusLabelStyle(s style.Style) *FormV3 {
+func (f *Form) SetFocusLabelStyle(s style.Style) *Form {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.focusLabelStyle = s
@@ -244,7 +244,7 @@ func (f *FormV3) SetFocusLabelStyle(s style.Style) *FormV3 {
 // ============================================================================
 
 // Validate 验证表单
-func (f *FormV3) Validate() error {
+func (f *Form) Validate() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -259,7 +259,7 @@ func (f *FormV3) Validate() error {
 }
 
 // ValidateField 验证单个字段
-func (f *FormV3) ValidateField(name string) error {
+func (f *Form) ValidateField(name string) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -275,12 +275,12 @@ func (f *FormV3) ValidateField(name string) error {
 }
 
 // IsValid 检查表单是否有效
-func (f *FormV3) IsValid() bool {
+func (f *Form) IsValid() bool {
 	return f.Validate() == nil
 }
 
 // GetValues 获取所有字段的值
-func (f *FormV3) GetValues() map[string]interface{} {
+func (f *Form) GetValues() map[string]interface{} {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -294,7 +294,7 @@ func (f *FormV3) GetValues() map[string]interface{} {
 }
 
 // SetValue 设置字段值
-func (f *FormV3) SetValue(name string, value interface{}) error {
+func (f *Form) SetValue(name string, value interface{}) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -307,7 +307,7 @@ func (f *FormV3) SetValue(name string, value interface{}) error {
 }
 
 // Reset 重置表单
-func (f *FormV3) Reset() {
+func (f *Form) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -320,7 +320,7 @@ func (f *FormV3) Reset() {
 }
 
 // Submit 提交表单
-func (f *FormV3) Submit() error {
+func (f *Form) Submit() error {
 	// 验证所有字段
 	if err := f.Validate(); err != nil {
 		return err
@@ -344,7 +344,7 @@ func (f *FormV3) Submit() error {
 }
 
 // Cancel 取消表单
-func (f *FormV3) Cancel() {
+func (f *Form) Cancel() {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -358,7 +358,7 @@ func (f *FormV3) Cancel() {
 // ============================================================================
 
 // Measure 测量理想尺寸
-func (f *FormV3) Measure(maxWidth, maxHeight int) (width, height int) {
+func (f *Form) Measure(maxWidth, maxHeight int) (width, height int) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -396,7 +396,7 @@ func (f *FormV3) Measure(maxWidth, maxHeight int) (width, height int) {
 // ============================================================================
 
 // Paint 绘制组件到 CellBuffer
-func (f *FormV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	if !f.IsVisible() {
 		return
 	}
@@ -470,7 +470,7 @@ func (f *FormV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 }
 
 // drawText 绘制文本
-func (f *FormV3) drawText(buf *paint.Buffer, x, y int, text string, s style.Style) {
+func (f *Form) drawText(buf *paint.Buffer, x, y int, text string, s style.Style) {
 	runes := []rune(text)
 	for i, r := range runes {
 		buf.SetCell(x+i, y, r, s)
@@ -482,7 +482,7 @@ func (f *FormV3) drawText(buf *paint.Buffer, x, y int, text string, s style.Styl
 // ============================================================================
 
 // HandleAction 处理语义化 Action
-func (f *FormV3) HandleAction(a action.Action) bool {
+func (f *Form) HandleAction(a action.Action) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -526,17 +526,17 @@ func (f *FormV3) HandleAction(a action.Action) bool {
 // ============================================================================
 
 // FocusID 返回焦点标识符
-func (f *FormV3) FocusID() string {
+func (f *Form) FocusID() string {
 	return f.ID()
 }
 
 // OnFocus 获得焦点时调用
-func (f *FormV3) OnFocus() {
+func (f *Form) OnFocus() {
 	// 可以在这里添加获得焦点时的逻辑
 }
 
 // OnBlur 失去焦点时调用
-func (f *FormV3) OnBlur() {
+func (f *Form) OnBlur() {
 	// 可以在这里添加失去焦点时的逻辑
 }
 
@@ -545,7 +545,7 @@ func (f *FormV3) OnBlur() {
 // ============================================================================
 
 // navigateField 导航到下一个/上一个字段
-func (f *FormV3) navigateField(delta int) {
+func (f *Form) navigateField(delta int) {
 	visibleFields := f.getVisibleFieldIndices()
 	if len(visibleFields) == 0 {
 		return
@@ -572,7 +572,7 @@ func (f *FormV3) navigateField(delta int) {
 }
 
 // getCurrentField 获取当前焦点字段
-func (f *FormV3) getCurrentField() *FormFieldV3 {
+func (f *Form) getCurrentField() *FormField {
 	if f.currentField < 0 || f.currentField >= len(f.fieldOrder) {
 		return nil
 	}
@@ -581,7 +581,7 @@ func (f *FormV3) getCurrentField() *FormFieldV3 {
 }
 
 // getVisibleFieldIndices 获取可见字段索引
-func (f *FormV3) getVisibleFieldIndices() []int {
+func (f *Form) getVisibleFieldIndices() []int {
 	indices := make([]int, 0)
 	for i, name := range f.fieldOrder {
 		field := f.fields[name]

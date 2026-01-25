@@ -11,20 +11,20 @@ import (
 // ==============================================================================
 // V3 盒子容器，使用 CellBuffer 绘制
 
-// BoxV3 V3 盒子容器
-type BoxV3 struct {
-	*component.BaseComponentV3
+// Box V3 盒子容器
+type Box struct {
+	*component.BaseComponent
 	*component.StateHolder
 
-	border     *BorderStyleV3
-	padding    BoxPaddingV3
-	margin     BoxPaddingV3
+	border     *BorderStyle
+	padding    BoxPadding
+	margin     BoxPadding
 	background style.Color
 	children   []component.Node
 }
 
-// BorderStyleV3 边框样式 V3（避免与 box.go 冲突）
-type BorderStyleV3 struct {
+// BorderStyle 边框样式 V3（避免与 box.go 冲突）
+type BorderStyle struct {
 	Enabled bool
 	Top     bool
 	Bottom  bool
@@ -34,22 +34,22 @@ type BorderStyleV3 struct {
 	FgColor style.Color
 }
 
-// BoxPaddingV3 内边距 V3
-type BoxPaddingV3 struct {
+// BoxPadding 内边距 V3
+type BoxPadding struct {
 	Top    int
 	Right  int
 	Bottom int
 	Left   int
 }
 
-// NewBoxV3 创建 V3 盒子容器
-func NewBoxV3() *BoxV3 {
-	return &BoxV3{
-		BaseComponentV3: component.NewBaseComponentV3("box"),
+// NewBox 创建 V3 盒子容器
+func NewBox() *Box {
+	return &Box{
+		BaseComponent: component.NewBaseComponent("box"),
 		StateHolder:     component.NewStateHolder(),
 		border:         nil,
-		padding:        BoxPaddingV3{Top: 0, Right: 0, Bottom: 0, Left: 0},
-		margin:         BoxPaddingV3{Top: 0, Right: 0, Bottom: 0, Left: 0},
+		padding:        BoxPadding{Top: 0, Right: 0, Bottom: 0, Left: 0},
+		margin:         BoxPadding{Top: 0, Right: 0, Bottom: 0, Left: 0},
 		background:     "",
 		children:       make([]component.Node, 0),
 	}
@@ -60,22 +60,22 @@ func NewBoxV3() *BoxV3 {
 // ============================================================================
 
 // Children 返回子节点
-func (b *BoxV3) Children() []component.Node {
+func (b *Box) Children() []component.Node {
 	return b.children
 }
 
 // AddNode 添加子节点
-func (b *BoxV3) AddNode(child component.Node) {
+func (b *Box) AddNode(child component.Node) {
 	b.children = append(b.children, child)
 }
 
 // ClearChildren 清空所有子节点
-func (b *BoxV3) ClearChildren() {
+func (b *Box) ClearChildren() {
 	b.children = make([]component.Node, 0)
 }
 
 // ChildCount 子节点数量
-func (b *BoxV3) ChildCount() int {
+func (b *Box) ChildCount() int {
 	return len(b.children)
 }
 
@@ -84,9 +84,9 @@ func (b *BoxV3) ChildCount() int {
 // ============================================================================
 
 // WithBorder 设置边框
-func (b *BoxV3) WithBorder(enabled bool) *BoxV3 {
+func (b *Box) WithBorder(enabled bool) *Box {
 	if enabled && b.border == nil {
-		b.border = &BorderStyleV3{
+		b.border = &BorderStyle{
 			Enabled: true,
 			Top:     true,
 			Bottom:  true,
@@ -102,7 +102,7 @@ func (b *BoxV3) WithBorder(enabled bool) *BoxV3 {
 }
 
 // WithBorderType 设置边框类型 ("normal", "rounded", "double", "thick")
-func (b *BoxV3) WithBorderType(borderType string) *BoxV3 {
+func (b *Box) WithBorderType(borderType string) *Box {
 	if b.border == nil {
 		b.WithBorder(true)
 	}
@@ -111,7 +111,7 @@ func (b *BoxV3) WithBorderType(borderType string) *BoxV3 {
 }
 
 // WithBorderColor 设置边框颜色
-func (b *BoxV3) WithBorderColor(color style.Color) *BoxV3 {
+func (b *Box) WithBorderColor(color style.Color) *Box {
 	if b.border == nil {
 		b.WithBorder(true)
 	}
@@ -120,8 +120,8 @@ func (b *BoxV3) WithBorderColor(color style.Color) *BoxV3 {
 }
 
 // WithPadding 设置内边距（全部）
-func (b *BoxV3) WithPadding(all int) *BoxV3 {
-	b.padding = BoxPaddingV3{
+func (b *Box) WithPadding(all int) *Box {
+	b.padding = BoxPadding{
 		Top:    all,
 		Right:  all,
 		Bottom: all,
@@ -131,33 +131,33 @@ func (b *BoxV3) WithPadding(all int) *BoxV3 {
 }
 
 // WithPaddingV 设置垂直内边距
-func (b *BoxV3) WithPaddingV(vertical int) *BoxV3 {
+func (b *Box) WithPaddingV(vertical int) *Box {
 	b.padding.Top = vertical
 	b.padding.Bottom = vertical
 	return b
 }
 
 // WithPaddingH 设置水平内边距
-func (b *BoxV3) WithPaddingH(horizontal int) *BoxV3 {
+func (b *Box) WithPaddingH(horizontal int) *Box {
 	b.padding.Left = horizontal
 	b.padding.Right = horizontal
 	return b
 }
 
 // WithBackground 设置背景色
-func (b *BoxV3) WithBackground(color style.Color) *BoxV3 {
+func (b *Box) WithBackground(color style.Color) *Box {
 	b.background = color
 	return b
 }
 
 // WithChild 添加子组件
-func (b *BoxV3) WithChild(child component.Node) *BoxV3 {
+func (b *Box) WithChild(child component.Node) *Box {
 	b.AddNode(child)
 	return b
 }
 
 // WithChildren 添加多个子组件
-func (b *BoxV3) WithChildren(children ...component.Node) *BoxV3 {
+func (b *Box) WithChildren(children ...component.Node) *Box {
 	for _, child := range children {
 		b.AddNode(child)
 	}
@@ -165,22 +165,22 @@ func (b *BoxV3) WithChildren(children ...component.Node) *BoxV3 {
 }
 
 // GetBorder 获取边框样式
-func (b *BoxV3) GetBorder() *BorderStyleV3 {
+func (b *Box) GetBorder() *BorderStyle {
 	return b.border
 }
 
 // GetPadding 获取内边距
-func (b *BoxV3) GetPadding() BoxPaddingV3 {
+func (b *Box) GetPadding() BoxPadding {
 	return b.padding
 }
 
 // GetMargin 获取外边距
-func (b *BoxV3) GetMargin() BoxPaddingV3 {
+func (b *Box) GetMargin() BoxPadding {
 	return b.margin
 }
 
 // GetBackground 获取背景色
-func (b *BoxV3) GetBackground() style.Color {
+func (b *Box) GetBackground() style.Color {
 	return b.background
 }
 
@@ -189,7 +189,7 @@ func (b *BoxV3) GetBackground() style.Color {
 // ============================================================================
 
 // Measure 测量理想尺寸
-func (b *BoxV3) Measure(maxWidth, maxHeight int) (width, height int) {
+func (b *Box) Measure(maxWidth, maxHeight int) (width, height int) {
 	// 基础尺寸：边框 + 内边距 + 内容
 	width = b.padding.Left + b.padding.Right
 	height = b.padding.Top + b.padding.Bottom
@@ -235,7 +235,7 @@ func (b *BoxV3) Measure(maxWidth, maxHeight int) (width, height int) {
 // ============================================================================
 
 // Paint 绘制组件到 CellBuffer
-func (b *BoxV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+func (b *Box) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	if !b.IsVisible() {
 		return
 	}
@@ -302,7 +302,7 @@ func (b *BoxV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 }
 
 // paintBorder 绘制边框
-func (b *BoxV3) paintBorder(ctx component.PaintContext, buf *paint.Buffer, width, height int) {
+func (b *Box) paintBorder(ctx component.PaintContext, buf *paint.Buffer, width, height int) {
 	if b.border == nil || !b.border.Enabled {
 		return
 	}
@@ -346,7 +346,7 @@ func (b *BoxV3) paintBorder(ctx component.PaintContext, buf *paint.Buffer, width
 }
 
 // getBorderEdges 获取边框字符
-func (b *BoxV3) getBorderEdges() BorderEdgesV3 {
+func (b *Box) getBorderEdges() BorderEdgesV3 {
 	switch b.border.Type {
 	case "rounded":
 		return BorderEdgesV3{

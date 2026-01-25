@@ -93,9 +93,8 @@ func (f *Factory) CreateFromSpec(spec *Spec) (Node, error) {
 				if err != nil {
 					return nil, err
 				}
-				if childComp, ok := childNode.(Component); ok {
-					container.Add(childComp)
-				}
+				// childNode 已经是 Node 类型，直接添加
+				container.Add(childNode)
 			}
 		}
 	}
@@ -151,13 +150,13 @@ func (f *Factory) Clear() {
 
 var globalFactory = NewFactory()
 
-// RegisterV3 注册组件到全局工厂
-func RegisterV3(typ string, creator Creator) {
+// Register 注册组件到全局工厂
+func Register(typ string, creator Creator) {
 	globalFactory.Register(typ, creator)
 }
 
-// UnregisterV3 从全局工厂注销组件
-func UnregisterV3(typ string) {
+// Unregister 从全局工厂注销组件
+func Unregister(typ string) {
 	globalFactory.Unregister(typ)
 }
 
@@ -166,13 +165,13 @@ func CreateFromSpec(spec *Spec) (Node, error) {
 	return globalFactory.CreateFromSpec(spec)
 }
 
-// CreateV3 从类型和属性创建组件（使用全局工厂）
-func CreateV3(typ string, props map[string]interface{}) (Node, error) {
+// Create 从类型和属性创建组件（使用全局工厂）
+func Create(typ string, props map[string]interface{}) (Node, error) {
 	return globalFactory.Create(typ, props)
 }
 
-// HasTypeV3 检查类型是否已注册（使用全局工厂）
-func HasTypeV3(typ string) bool {
+// HasType 检查类型是否已注册（使用全局工厂）
+func HasType(typ string) bool {
 	return globalFactory.HasType(typ)
 }
 

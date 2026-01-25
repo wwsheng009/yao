@@ -15,9 +15,9 @@ import (
 // ==============================================================================
 // V3 文本输入组件，使用 CellBuffer 绘制，处理语义化 Action
 
-// TextInputV3 V3 文本输入组件
-type TextInputV3 struct {
-	*component.BaseComponentV3
+// TextInput V3 文本输入组件
+type TextInput struct {
+	*component.BaseComponent
 	*component.StateHolder
 
 	mu    sync.RWMutex
@@ -32,10 +32,10 @@ type TextInputV3 struct {
 	placeholderStyle style.Style
 }
 
-// NewTextInputV3 创建 V3 文本输入组件
-func NewTextInputV3() *TextInputV3 {
-	return &TextInputV3{
-		BaseComponentV3:  component.NewBaseComponentV3("input"),
+// NewTextInput 创建 V3 文本输入组件
+func NewTextInput() *TextInput {
+	return &TextInput{
+		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:      component.NewStateHolder(),
 		value:            "",
 		cursor:           0,
@@ -49,10 +49,10 @@ func NewTextInputV3() *TextInputV3 {
 	}
 }
 
-// NewTextInputV3Placeholder 创建带占位符的 V3 输入框
-func NewTextInputV3Placeholder(placeholder string) *TextInputV3 {
-	return &TextInputV3{
-		BaseComponentV3:  component.NewBaseComponentV3("input"),
+// NewTextInputPlaceholder 创建带占位符的 V3 输入框
+func NewTextInputPlaceholder(placeholder string) *TextInput {
+	return &TextInput{
+		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:      component.NewStateHolder(),
 		value:            "",
 		cursor:           0,
@@ -71,7 +71,7 @@ func NewTextInputV3Placeholder(placeholder string) *TextInputV3 {
 // ============================================================================
 
 // SetValue 设置值
-func (t *TextInputV3) SetValue(value string) *TextInputV3 {
+func (t *TextInput) SetValue(value string) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.value = value
@@ -82,14 +82,14 @@ func (t *TextInputV3) SetValue(value string) *TextInputV3 {
 }
 
 // GetValue 获取值
-func (t *TextInputV3) GetValue() string {
+func (t *TextInput) GetValue() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.value
 }
 
 // SetCursor 设置光标位置
-func (t *TextInputV3) SetCursor(pos int) *TextInputV3 {
+func (t *TextInput) SetCursor(pos int) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if pos >= 0 && pos <= len([]rune(t.value)) {
@@ -99,14 +99,14 @@ func (t *TextInputV3) SetCursor(pos int) *TextInputV3 {
 }
 
 // GetCursor 获取光标位置
-func (t *TextInputV3) GetCursor() int {
+func (t *TextInput) GetCursor() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.cursor
 }
 
 // SetPlaceholder 设置占位符
-func (t *TextInputV3) SetPlaceholder(text string) *TextInputV3 {
+func (t *TextInput) SetPlaceholder(text string) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.placeholder = text
@@ -114,7 +114,7 @@ func (t *TextInputV3) SetPlaceholder(text string) *TextInputV3 {
 }
 
 // SetPassword 设置密码模式
-func (t *TextInputV3) SetPassword(enabled bool) *TextInputV3 {
+func (t *TextInput) SetPassword(enabled bool) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.password = enabled
@@ -122,7 +122,7 @@ func (t *TextInputV3) SetPassword(enabled bool) *TextInputV3 {
 }
 
 // SetEcho 设置密码遮罩字符
-func (t *TextInputV3) SetEcho(echo rune) *TextInputV3 {
+func (t *TextInput) SetEcho(echo rune) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.echo = echo
@@ -130,7 +130,7 @@ func (t *TextInputV3) SetEcho(echo rune) *TextInputV3 {
 }
 
 // SetMaxLength 设置最大长度
-func (t *TextInputV3) SetMaxLength(max int) *TextInputV3 {
+func (t *TextInput) SetMaxLength(max int) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.maxLength = max
@@ -138,7 +138,7 @@ func (t *TextInputV3) SetMaxLength(max int) *TextInputV3 {
 }
 
 // Clear 清空输入
-func (t *TextInputV3) Clear() *TextInputV3 {
+func (t *TextInput) Clear() *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.value = ""
@@ -147,7 +147,7 @@ func (t *TextInputV3) Clear() *TextInputV3 {
 }
 
 // SetNormalStyle 设置普通状态样式
-func (t *TextInputV3) SetNormalStyle(s style.Style) *TextInputV3 {
+func (t *TextInput) SetNormalStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.normalStyle = s
@@ -155,7 +155,7 @@ func (t *TextInputV3) SetNormalStyle(s style.Style) *TextInputV3 {
 }
 
 // SetFocusStyle 设置焦点状态样式
-func (t *TextInputV3) SetFocusStyle(s style.Style) *TextInputV3 {
+func (t *TextInput) SetFocusStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.focusStyle = s
@@ -163,7 +163,7 @@ func (t *TextInputV3) SetFocusStyle(s style.Style) *TextInputV3 {
 }
 
 // SetPlaceholderStyle 设置占位符样式
-func (t *TextInputV3) SetPlaceholderStyle(s style.Style) *TextInputV3 {
+func (t *TextInput) SetPlaceholderStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.placeholderStyle = s
@@ -175,7 +175,7 @@ func (t *TextInputV3) SetPlaceholderStyle(s style.Style) *TextInputV3 {
 // ============================================================================
 
 // Measure 测量理想尺寸
-func (t *TextInputV3) Measure(maxWidth, maxHeight int) (width, height int) {
+func (t *TextInput) Measure(maxWidth, maxHeight int) (width, height int) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -210,7 +210,7 @@ func (t *TextInputV3) Measure(maxWidth, maxHeight int) (width, height int) {
 // ============================================================================
 
 // Paint 绘制组件到 CellBuffer
-func (t *TextInputV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+func (t *TextInput) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	if !t.IsVisible() {
 		return
 	}
@@ -296,7 +296,7 @@ func (t *TextInputV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 // ============================================================================
 
 // HandleAction 处理语义化 Action
-func (t *TextInputV3) HandleAction(a action.Action) bool {
+func (t *TextInput) HandleAction(a action.Action) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -361,17 +361,17 @@ func (t *TextInputV3) HandleAction(a action.Action) bool {
 // ============================================================================
 
 // FocusID 返回焦点标识符
-func (t *TextInputV3) FocusID() string {
+func (t *TextInput) FocusID() string {
 	return t.ID()
 }
 
 // OnFocus 获得焦点时调用
-func (t *TextInputV3) OnFocus() {
+func (t *TextInput) OnFocus() {
 	// 可以在这里添加获得焦点时的逻辑
 }
 
 // OnBlur 失去焦点时调用
-func (t *TextInputV3) OnBlur() {
+func (t *TextInput) OnBlur() {
 	// 可以在这里添加失去焦点时的逻辑
 }
 
@@ -380,7 +380,7 @@ func (t *TextInputV3) OnBlur() {
 // ============================================================================
 
 // Validate 验证组件状态
-func (t *TextInputV3) Validate() error {
+func (t *TextInput) Validate() error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -410,7 +410,7 @@ func (t *TextInputV3) Validate() error {
 }
 
 // IsValid 检查是否有效
-func (t *TextInputV3) IsValid() bool {
+func (t *TextInput) IsValid() bool {
 	return t.Validate() == nil
 }
 
@@ -419,7 +419,7 @@ func (t *TextInputV3) IsValid() bool {
 // ============================================================================
 
 // handleInputChar 处理字符输入
-func (t *TextInputV3) handleInputChar(char rune) bool {
+func (t *TextInput) handleInputChar(char rune) bool {
 	if t.maxLength > 0 && len([]rune(t.value)) >= t.maxLength {
 		return true
 	}
@@ -431,7 +431,7 @@ func (t *TextInputV3) handleInputChar(char rune) bool {
 }
 
 // handleInputText 处理文本输入
-func (t *TextInputV3) handleInputText(text string) bool {
+func (t *TextInput) handleInputText(text string) bool {
 	runes := []rune(t.value)
 	inputRunes := []rune(text)
 
@@ -448,7 +448,7 @@ func (t *TextInputV3) handleInputText(text string) bool {
 }
 
 // handleBackspace 处理退格
-func (t *TextInputV3) handleBackspace() bool {
+func (t *TextInput) handleBackspace() bool {
 	if t.cursor > 0 {
 		runes := []rune(t.value)
 		t.value = string(append(runes[:t.cursor-1], runes[t.cursor:]...))
@@ -459,7 +459,7 @@ func (t *TextInputV3) handleBackspace() bool {
 }
 
 // handleDelete 处理删除
-func (t *TextInputV3) handleDelete() bool {
+func (t *TextInput) handleDelete() bool {
 	runes := []rune(t.value)
 	if t.cursor < len(runes) {
 		t.value = string(append(runes[:t.cursor], runes[t.cursor+1:]...))
@@ -469,7 +469,7 @@ func (t *TextInputV3) handleDelete() bool {
 }
 
 // handleDeleteWord 删除单词
-func (t *TextInputV3) handleDeleteWord() bool {
+func (t *TextInput) handleDeleteWord() bool {
 	runes := []rune(t.value)
 	if t.cursor < len(runes) {
 		// 找到下一个单词的起始位置
@@ -487,14 +487,14 @@ func (t *TextInputV3) handleDeleteWord() bool {
 }
 
 // handleDeleteLine 删除整行
-func (t *TextInputV3) handleDeleteLine() bool {
+func (t *TextInput) handleDeleteLine() bool {
 	t.value = ""
 	t.cursor = 0
 	return true
 }
 
 // handleCursorLeft 光标左移
-func (t *TextInputV3) handleCursorLeft() bool {
+func (t *TextInput) handleCursorLeft() bool {
 	if t.cursor > 0 {
 		t.cursor--
 		return true
@@ -503,7 +503,7 @@ func (t *TextInputV3) handleCursorLeft() bool {
 }
 
 // handleCursorRight 光标右移
-func (t *TextInputV3) handleCursorRight() bool {
+func (t *TextInput) handleCursorRight() bool {
 	runes := []rune(t.value)
 	if t.cursor < len(runes) {
 		t.cursor++
@@ -513,20 +513,20 @@ func (t *TextInputV3) handleCursorRight() bool {
 }
 
 // handleCursorHome 光标到行首
-func (t *TextInputV3) handleCursorHome() bool {
+func (t *TextInput) handleCursorHome() bool {
 	t.cursor = 0
 	return true
 }
 
 // handleCursorEnd 光标到行尾
-func (t *TextInputV3) handleCursorEnd() bool {
+func (t *TextInput) handleCursorEnd() bool {
 	runes := []rune(t.value)
 	t.cursor = len(runes)
 	return true
 }
 
 // handleCursorWordLeft 光标左移一词
-func (t *TextInputV3) handleCursorWordLeft() bool {
+func (t *TextInput) handleCursorWordLeft() bool {
 	if t.cursor > 0 {
 		// 跳过当前词的空格
 		for t.cursor > 0 && t.value[t.cursor-1] == ' ' {
@@ -542,7 +542,7 @@ func (t *TextInputV3) handleCursorWordLeft() bool {
 }
 
 // handleCursorWordRight 光标右移一词
-func (t *TextInputV3) handleCursorWordRight() bool {
+func (t *TextInput) handleCursorWordRight() bool {
 	runes := []rune(t.value)
 	if t.cursor < len(runes) {
 		// 跳过当前词

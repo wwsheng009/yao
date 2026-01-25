@@ -53,15 +53,15 @@ func (f *Flex) WithGap(gap int) *Flex {
 	return f
 }
 
-// WithChildren 设置子组件
-func (f *Flex) WithChildren(children ...component.Component) *Flex {
+// WithChildren 设置子组件 (V3: 使用 Node 类型)
+func (f *Flex) WithChildren(children ...component.Node) *Flex {
 	for _, child := range children {
 		f.Add(child)
 	}
 	return f
 }
 
-// Render 渲染 Flex 容器
+// Render 渲染 Flex 容器 (V2 兼容)
 func (f *Flex) Render(ctx *component.RenderContext) string {
 	if !f.IsVisible() || f.ChildCount() == 0 {
 		return ""
@@ -83,19 +83,22 @@ func (f *Flex) Render(ctx *component.RenderContext) string {
 		childCtx.AvailableWidth = childW
 		childCtx.AvailableHeight = childH
 
-		content := child.Render(childCtx)
-		contentLines := strings.Split(content, "\n")
+		// V2 兼容：如果 child 是 V2 Component，调用 Render()
+		if v2Comp, ok := child.(component.Component); ok {
+			content := v2Comp.Render(childCtx)
+			contentLines := strings.Split(content, "\n")
 
-		// 处理垂直布局
-		if f.direction == Column {
-			for _, line := range contentLines {
-				result = append(result, line)
+			// 处理垂直布局
+			if f.direction == Column {
+				for _, line := range contentLines {
+					result = append(result, line)
+				}
+				currentPos += childH
+			} else {
+				// 水平布局 - 需要合并行
+				f.mergeHorizontal(&result, contentLines, childW, currentPos, height)
+				currentPos += childW + f.gap
 			}
-			currentPos += childH
-		} else {
-			// 水平布局 - 需要合并行
-			f.mergeHorizontal(&result, contentLines, childW, currentPos, height)
-			currentPos += childW + f.gap
 		}
 	}
 
@@ -108,7 +111,7 @@ type Size struct {
 	height int
 }
 
-// calculateSizes 计算子组件尺寸
+// calculateSizes 计算子组件尺寸 (V2/V3 兼容)
 func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 	children := f.GetChildren()
 	count := len(children)
@@ -126,7 +129,7 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 		var prefTotal int
 		prefSizes := make([]int, count)
 		for i, child := range children {
-			prefW, _ := child.GetPreferredSize()
+			prefW := f.getPreferredWidth(child)
 			prefSizes[i] = prefW
 			prefTotal += prefW
 		}
@@ -167,7 +170,7 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 		var prefTotal int
 		prefSizes := make([]int, count)
 		for i, child := range children {
-			_, prefH := child.GetPreferredSize()
+			prefH := f.getPreferredHeight(child)
 			prefSizes[i] = prefH
 			prefTotal += prefH
 		}
@@ -196,6 +199,36 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 	}
 
 	return sizes
+}
+
+// getPreferredWidth 获取子组件首选宽度 (V2/V3 兼容)
+func (f *Flex) getPreferredWidth(child component.Node) int {
+	// 尝试 V2 Component 接口
+	if v2Comp, ok := child.(component.Component); ok {
+		w, _ := v2Comp.GetPreferredSize()
+		return w
+	}
+	// 尝试 V3 Measurable 接口
+	if measurable, ok := child.(component.Measurable); ok {
+		w, _ := measurable.Measure(1000, 1000)
+		return w
+	}
+	return 0
+}
+
+// getPreferredHeight 获取子组件首选高度 (V2/V3 兼容)
+func (f *Flex) getPreferredHeight(child component.Node) int {
+	// 尝试 V2 Component 接口
+	if v2Comp, ok := child.(component.Component); ok {
+		_, h := v2Comp.GetPreferredSize()
+		return h
+	}
+	// 尝试 V3 Measurable 接口
+	if measurable, ok := child.(component.Measurable); ok {
+		_, h := measurable.Measure(1000, 1000)
+		return h
+	}
+	return 0
 }
 
 // mergeHorizontal 合并水平布局的内容
@@ -238,7 +271,7 @@ func (f *Flex) mergeHorizontal(result *[]string, contentLines []string, width, o
 	}
 }
 
-// GetPreferredSize 获取首选尺寸
+// GetPreferredSize 获取首选尺寸 (V2 兼容)
 func (f *Flex) GetPreferredSize() (width, height int) {
 	children := f.GetChildren()
 
@@ -246,7 +279,8 @@ func (f *Flex) GetPreferredSize() (width, height int) {
 		totalW := 0
 		maxH := 0
 		for i, child := range children {
-			w, h := child.GetPreferredSize()
+			w := f.getPreferredWidth(child)
+			h := f.getPreferredHeight(child)
 			totalW += w
 			if h > maxH {
 				maxH = h
@@ -262,7 +296,8 @@ func (f *Flex) GetPreferredSize() (width, height int) {
 	maxW := 0
 	totalH := 0
 	for i, child := range children {
-		w, h := child.GetPreferredSize()
+		w := f.getPreferredWidth(child)
+		h := f.getPreferredHeight(child)
 		if w > maxW {
 			maxW = w
 		}

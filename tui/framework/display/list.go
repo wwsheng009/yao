@@ -15,17 +15,17 @@ import (
 // ==============================================================================
 // V3 列表组件，支持虚拟滚动、多选、键盘导航
 
-// ListItemV3 列表项
-type ListItemV3 struct {
+// ListItem 列表项
+type ListItem struct {
 	Index    int
 	Data     interface{}
 	Selected bool
 	Focused  bool
 }
 
-// ListV3 V3 列表组件
-type ListV3 struct {
-	*component.BaseComponentV3
+// List V3 列表组件
+type List struct {
+	*component.BaseComponent
 	*component.StateHolder
 
 	mu sync.RWMutex
@@ -55,10 +55,10 @@ type ListV3 struct {
 	showCursor bool
 }
 
-// NewListV3 创建 V3 列表组件
-func NewListV3(dataSource component.DataSource) *ListV3 {
-	return &ListV3{
-		BaseComponentV3: component.NewBaseComponentV3("list"),
+// NewList 创建 V3 列表组件
+func NewList(dataSource component.DataSource) *List {
+	return &List{
+		BaseComponent: component.NewBaseComponent("list"),
 		StateHolder:     component.NewStateHolder(),
 		dataSource:      dataSource,
 		offset:          0,
@@ -73,14 +73,14 @@ func NewListV3(dataSource component.DataSource) *ListV3 {
 	}
 }
 
-// NewListV3Items 从切片创建列表
-func NewListV3Items(items []interface{}) *ListV3 {
-	return NewListV3(component.NewSimpleDataSource(items))
+// NewListItems 从切片创建列表
+func NewListItems(items []interface{}) *List {
+	return NewList(component.NewSimpleDataSource(items))
 }
 
-// NewListV3Strings 从字符串切片创建列表
-func NewListV3Strings(items []string) *ListV3 {
-	return NewListV3(component.NewStringDataSource(items))
+// NewListStrings 从字符串切片创建列表
+func NewListStrings(items []string) *List {
+	return NewList(component.NewStringDataSource(items))
 }
 
 // ============================================================================
@@ -88,7 +88,7 @@ func NewListV3Strings(items []string) *ListV3 {
 // ============================================================================
 
 // SetDataSource 设置数据源
-func (l *ListV3) SetDataSource(ds component.DataSource) *ListV3 {
+func (l *List) SetDataSource(ds component.DataSource) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.dataSource = ds
@@ -97,7 +97,7 @@ func (l *ListV3) SetDataSource(ds component.DataSource) *ListV3 {
 }
 
 // SetHeight 设置可见高度
-func (l *ListV3) SetHeight(h int) *ListV3 {
+func (l *List) SetHeight(h int) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.height = h
@@ -105,7 +105,7 @@ func (l *ListV3) SetHeight(h int) *ListV3 {
 }
 
 // SetShowCursor 设置是否显示光标
-func (l *ListV3) SetShowCursor(show bool) *ListV3 {
+func (l *List) SetShowCursor(show bool) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.showCursor = show
@@ -113,7 +113,7 @@ func (l *ListV3) SetShowCursor(show bool) *ListV3 {
 }
 
 // SetNormalStyle 设置普通样式
-func (l *ListV3) SetNormalStyle(s style.Style) *ListV3 {
+func (l *List) SetNormalStyle(s style.Style) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.normalStyle = s
@@ -121,7 +121,7 @@ func (l *ListV3) SetNormalStyle(s style.Style) *ListV3 {
 }
 
 // SetSelectedStyle 设置选中样式
-func (l *ListV3) SetSelectedStyle(s style.Style) *ListV3 {
+func (l *List) SetSelectedStyle(s style.Style) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.selectedStyle = s
@@ -129,7 +129,7 @@ func (l *ListV3) SetSelectedStyle(s style.Style) *ListV3 {
 }
 
 // SetFocusedStyle 设置焦点样式
-func (l *ListV3) SetFocusedStyle(s style.Style) *ListV3 {
+func (l *List) SetFocusedStyle(s style.Style) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.focusedStyle = s
@@ -137,7 +137,7 @@ func (l *ListV3) SetFocusedStyle(s style.Style) *ListV3 {
 }
 
 // SetCursorStyle 设置光标样式
-func (l *ListV3) SetCursorStyle(s style.Style) *ListV3 {
+func (l *List) SetCursorStyle(s style.Style) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.cursorStyle = s
@@ -145,7 +145,7 @@ func (l *ListV3) SetCursorStyle(s style.Style) *ListV3 {
 }
 
 // SetOnSelect 设置选中回调
-func (l *ListV3) SetOnSelect(fn func(interface{})) *ListV3 {
+func (l *List) SetOnSelect(fn func(interface{})) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.onSelect = fn
@@ -153,7 +153,7 @@ func (l *ListV3) SetOnSelect(fn func(interface{})) *ListV3 {
 }
 
 // SetOnChange 设置变化回调
-func (l *ListV3) SetOnChange(fn func()) *ListV3 {
+func (l *List) SetOnChange(fn func()) *List {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.onChange = fn
@@ -165,7 +165,7 @@ func (l *ListV3) SetOnChange(fn func()) *ListV3 {
 // ============================================================================
 
 // Measure 测量理想尺寸
-func (l *ListV3) Measure(maxWidth, maxHeight int) (width, height int) {
+func (l *List) Measure(maxWidth, maxHeight int) (width, height int) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -197,7 +197,7 @@ func (l *ListV3) Measure(maxWidth, maxHeight int) (width, height int) {
 // ============================================================================
 
 // Paint 绘制组件到 CellBuffer
-func (l *ListV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+func (l *List) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	if !l.IsVisible() {
 		return
 	}
@@ -257,7 +257,7 @@ func (l *ListV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 }
 
 // paintLine 绘制单行文本
-func (l *ListV3) paintLine(buf *paint.Buffer, x, y int, text string, width int, s style.Style) {
+func (l *List) paintLine(buf *paint.Buffer, x, y int, text string, width int, s style.Style) {
 	runes := []rune(text)
 	for i := 0; i < width; i++ {
 		if i < len(runes) {
@@ -269,7 +269,7 @@ func (l *ListV3) paintLine(buf *paint.Buffer, x, y int, text string, width int, 
 }
 
 // paintScrollbar 绘制滚动条
-func (l *ListV3) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer, width int) {
+func (l *List) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer, width int) {
 	total := l.dataSource.Count()
 	if total <= l.height {
 		return
@@ -296,7 +296,7 @@ func (l *ListV3) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer, w
 // ============================================================================
 
 // HandleAction 处理语义化 Action
-func (l *ListV3) HandleAction(a action.Action) bool {
+func (l *List) HandleAction(a action.Action) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -349,17 +349,17 @@ func (l *ListV3) HandleAction(a action.Action) bool {
 // ============================================================================
 
 // FocusID 返回焦点标识符
-func (l *ListV3) FocusID() string {
+func (l *List) FocusID() string {
 	return l.ID()
 }
 
 // OnFocus 获得焦点时调用
-func (l *ListV3) OnFocus() {
+func (l *List) OnFocus() {
 	// 可以在这里添加获得焦点时的逻辑
 }
 
 // OnBlur 失去焦点时调用
-func (l *ListV3) OnBlur() {
+func (l *List) OnBlur() {
 	// 可以在这里添加失去焦点时的逻辑
 }
 
@@ -368,7 +368,7 @@ func (l *ListV3) OnBlur() {
 // ============================================================================
 
 // Select 选中指定项
-func (l *ListV3) Select(index int) {
+func (l *List) Select(index int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -379,7 +379,7 @@ func (l *ListV3) Select(index int) {
 }
 
 // Deselect 取消选中指定项
-func (l *ListV3) Deselect(index int) {
+func (l *List) Deselect(index int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -388,7 +388,7 @@ func (l *ListV3) Deselect(index int) {
 }
 
 // ToggleSelect 切换选中状态
-func (l *ListV3) ToggleSelect(index int) {
+func (l *List) ToggleSelect(index int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -396,7 +396,7 @@ func (l *ListV3) ToggleSelect(index int) {
 }
 
 // IsSelected 检查是否选中
-func (l *ListV3) IsSelected(index int) bool {
+func (l *List) IsSelected(index int) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -404,7 +404,7 @@ func (l *ListV3) IsSelected(index int) bool {
 }
 
 // GetSelected 获取所有选中项的索引
-func (l *ListV3) GetSelected() []int {
+func (l *List) GetSelected() []int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -416,7 +416,7 @@ func (l *ListV3) GetSelected() []int {
 }
 
 // GetSelectedItems 获取所有选中项
-func (l *ListV3) GetSelectedItems() []interface{} {
+func (l *List) GetSelectedItems() []interface{} {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -428,7 +428,7 @@ func (l *ListV3) GetSelectedItems() []interface{} {
 }
 
 // ClearSelection 清空所有选中
-func (l *ListV3) ClearSelection() {
+func (l *List) ClearSelection() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -437,7 +437,7 @@ func (l *ListV3) ClearSelection() {
 }
 
 // SetCursor 设置光标位置
-func (l *ListV3) SetCursor(index int) {
+func (l *List) SetCursor(index int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -445,7 +445,7 @@ func (l *ListV3) SetCursor(index int) {
 }
 
 // GetCursor 获取光标位置
-func (l *ListV3) GetCursor() int {
+func (l *List) GetCursor() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -453,7 +453,7 @@ func (l *ListV3) GetCursor() int {
 }
 
 // ScrollTo 滚动到指定项
-func (l *ListV3) ScrollTo(index int) {
+func (l *List) ScrollTo(index int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -464,7 +464,7 @@ func (l *ListV3) ScrollTo(index int) {
 }
 
 // GetOffset 获取滚动偏移
-func (l *ListV3) GetOffset() int {
+func (l *List) GetOffset() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -472,7 +472,7 @@ func (l *ListV3) GetOffset() int {
 }
 
 // GetItemCount 获取项目总数
-func (l *ListV3) GetItemCount() int {
+func (l *List) GetItemCount() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -484,14 +484,14 @@ func (l *ListV3) GetItemCount() int {
 // ============================================================================
 
 // getVisibleRange 获取可见范围
-func (l *ListV3) getVisibleRange() (start, end int) {
+func (l *List) getVisibleRange() (start, end int) {
 	start = l.offset
 	end = min(l.offset+l.height, l.dataSource.Count())
 	return
 }
 
 // moveCursor 移动光标
-func (l *ListV3) moveCursor(delta int) {
+func (l *List) moveCursor(delta int) {
 	newCursor := l.cursor + delta
 
 	// 限制范围
@@ -507,7 +507,7 @@ func (l *ListV3) moveCursor(delta int) {
 }
 
 // setCursor 设置光标位置
-func (l *ListV3) setCursor(index int) {
+func (l *List) setCursor(index int) {
 	if index < 0 {
 		index = 0
 	}
@@ -521,7 +521,7 @@ func (l *ListV3) setCursor(index int) {
 }
 
 // ensureVisible 确保指定项可见
-func (l *ListV3) ensureVisible(index int) {
+func (l *List) ensureVisible(index int) {
 	if index < l.offset {
 		l.offset = index
 	} else if index >= l.offset+l.height {
@@ -539,7 +539,7 @@ func (l *ListV3) ensureVisible(index int) {
 }
 
 // toggleSelect 切换选中状态
-func (l *ListV3) toggleSelect(index int) {
+func (l *List) toggleSelect(index int) {
 	if index < 0 || index >= l.dataSource.Count() {
 		return
 	}
@@ -553,21 +553,21 @@ func (l *ListV3) toggleSelect(index int) {
 }
 
 // resetCursor 重置光标
-func (l *ListV3) resetCursor() {
+func (l *List) resetCursor() {
 	l.cursor = 0
 	l.offset = 0
 	l.selected = make(map[int]bool)
 }
 
 // fireChange 触发变化事件
-func (l *ListV3) fireChange() {
+func (l *List) fireChange() {
 	if l.onChange != nil {
 		l.onChange()
 	}
 }
 
 // formatItem 格式化项为文本
-func (l *ListV3) formatItem(item interface{}) string {
+func (l *List) formatItem(item interface{}) string {
 	if item == nil {
 		return ""
 	}

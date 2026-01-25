@@ -77,15 +77,15 @@ func (r *Registry) List() []string {
 	return names
 }
 
-// 全局默认注册表
+// 全局默认注册表 (V2 兼容层)
 var defaultRegistry = NewRegistry()
 
-// Register 注册组件到默认注册表
-func Register(name string, factory FactoryFunc) {
+// RegisterV2 注册组件到默认注册表 (V2 兼容函数)
+func RegisterV2(name string, factory FactoryFunc) {
 	defaultRegistry.Register(name, factory)
 }
 
-// Create 从默认注册表创建组件
-func Create(name string) (Component, error) {
+// CreateV2 从默认注册表创建组件 (V2 兼容函数)
+func CreateV2(name string) (Component, error) {
 	return defaultRegistry.Create(name)
 }

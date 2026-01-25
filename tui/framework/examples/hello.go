@@ -11,11 +11,11 @@ import (
 // main 简单示例
 func main() {
 	// 创建标题
-	title := display.NewTextV3("TUI Framework V3")
+	title := display.NewText("TUI Framework V3")
 	title.SetStyle(style.Style{}.Foreground(style.Blue))
 
 	// 创建说明文本
-	description := display.NewTextV3(
+	description := display.NewText(
 		"这是一个 TUI 框架示例\n" +
 			"按 'q' 或 ESC 退出",
 	)

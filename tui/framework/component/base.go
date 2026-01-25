@@ -1,184 +1,255 @@
 package component
 
 import (
-	"github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"sync"
+
+	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 
-// BaseComponent 组件基础实现
+// ==============================================================================
+// Base Component V3
+// ==============================================================================
+// V3 基础组件实现，遵循 Capability Interfaces 模式
+
+// BaseComponent V3 基础组件
+// 提供所有能力的默认实现，组件可以按需组合
 type BaseComponent struct {
-	id       string
-	comptype string
+	mu sync.RWMutex
 
-	// 尺寸
-	width    int
-	height   int
-	minW     int
-	minH     int
-	maxW     int
-	maxH     int
+	// 基础属性
+	id   string
+	typ  string
 
-	// 状态
-	mounted  bool
-	visible  bool
-	enabled  bool
+	// 布局位置和尺寸
+	x      int
+	y      int
+	width  int
+	height int
 
-	// 样式
-	style    style.Style
+	// 可见性
+	visible bool
 
-	// 事件
-	handler  event.EventHandler
+	// 禁用状态
+	disabled bool
 
-	// 父组件
-	parent   Component
+	// 焦点
+	focusID string
+	focused bool
+
+	// 父容器
+	parent Container
 }
 
-// NewBaseComponent 创建基础组件
+// NewBaseComponent 创建 V3 基础组件
 func NewBaseComponent(typ string) *BaseComponent {
 	return &BaseComponent{
-		comptype: typ,
+		typ:      typ,
 		visible:  true,
-		enabled:  true,
-		minW:     0,
-		minH:     0,
-		maxW:     -1, // 无限制
-		maxH:     -1,
+		disabled: false,
+		focused:  false,
 	}
 }
 
-// ID 获取组件 ID
+// ============================================================================
+// Node 接口实现
+// ============================================================================
+
+// ID 返回组件 ID
 func (c *BaseComponent) ID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.id == "" {
+		return c.typ
+	}
 	return c.id
 }
 
 // SetID 设置组件 ID
 func (c *BaseComponent) SetID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.id = id
 }
 
-// GetType 获取组件类型
-func (c *BaseComponent) GetType() string {
-	return c.comptype
+// Type 返回组件类型
+func (c *BaseComponent) Type() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.typ
 }
 
-// Mount 挂载组件
-func (c *BaseComponent) Mount(parent Component) {
-	c.parent = parent
-	c.mounted = true
+// Children 返回子节点（基础组件无子节点）
+func (c *BaseComponent) Children() []Node {
+	return nil
 }
 
-// Unmount 卸载组件
-func (c *BaseComponent) Unmount() {
-	c.mounted = false
+// GetPosition 获取位置
+func (c *BaseComponent) GetPosition() (x, y int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.x, c.y
 }
 
-// IsMounted 检查是否已挂载
-func (c *BaseComponent) IsMounted() bool {
-	return c.mounted
-}
-
-// SetSize 设置尺寸
-func (c *BaseComponent) SetSize(width, height int) {
-	c.width = width
-	c.height = height
+// SetPosition 设置位置
+func (c *BaseComponent) SetPosition(x, y int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.x = x
+	c.y = y
 }
 
 // GetSize 获取尺寸
 func (c *BaseComponent) GetSize() (width, height int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.width, c.height
 }
 
-// GetPreferredSize 获取首选尺寸
-func (c *BaseComponent) GetPreferredSize() (width, height int) {
-	return c.width, c.height
+// SetSize 设置尺寸
+func (c *BaseComponent) SetSize(width, height int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.width = width
+	c.height = height
 }
 
-// GetMinSize 获取最小尺寸
-func (c *BaseComponent) GetMinSize() (width, height int) {
-	return c.minW, c.minH
+// GetWidth 获取宽度
+func (c *BaseComponent) GetWidth() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.width
 }
 
-// SetMinSize 设置最小尺寸
-func (c *BaseComponent) SetMinSize(width, height int) {
-	c.minW = width
-	c.minH = height
+// GetHeight 获取高度
+func (c *BaseComponent) GetHeight() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.height
 }
 
-// GetMaxSize 获取最大尺寸
-func (c *BaseComponent) GetMaxSize() (width, height int) {
-	if c.maxW < 0 {
-		width = -1
-	} else {
-		width = c.maxW
+// ============================================================================
+// Mountable 接口实现
+// ============================================================================
+
+// Mount 挂载到父容器
+func (c *BaseComponent) Mount(parent Container) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.parent = parent
+}
+
+// Unmount 从父容器卸载
+func (c *BaseComponent) Unmount() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.parent = nil
+}
+
+// IsMounted 检查是否已挂载
+func (c *BaseComponent) IsMounted() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.parent != nil
+}
+
+// ============================================================================
+// Measurable 接口实现
+// ============================================================================
+
+// Measure 测量理想尺寸
+func (c *BaseComponent) Measure(maxWidth, maxHeight int) (width, height int) {
+	// 默认实现：返回最小尺寸
+	return 0, 0
+}
+
+// ============================================================================
+// Paintable 接口实现
+// ============================================================================
+
+// Paint 绘制组件
+// 默认实现：什么都不绘制
+func (c *BaseComponent) Paint(ctx PaintContext, buf *paint.Buffer) {
+	// 默认不绘制任何内容
+	// 子类可以覆盖此方法
+}
+
+// ============================================================================
+// Focusable 接口实现
+// ============================================================================
+
+// FocusID 返回焦点标识符
+func (c *BaseComponent) FocusID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.focusID == "" {
+		return c.id
 	}
-	if c.maxH < 0 {
-		height = -1
-	} else {
-		height = c.maxH
-	}
-	return
+	return c.focusID
 }
 
-// SetMaxSize 设置最大尺寸
-func (c *BaseComponent) SetMaxSize(width, height int) {
-	c.maxW = width
-	c.maxH = height
+// SetFocusID 设置焦点标识符
+func (c *BaseComponent) SetFocusID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.focusID = id
 }
 
-// Render 渲染组件 (子类实现)
-func (c *BaseComponent) Render(ctx *RenderContext) string {
-	return ""
+// OnFocus 获得焦点时调用
+func (c *BaseComponent) OnFocus() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.focused = true
 }
 
-// HandleEvent 处理事件
-func (c *BaseComponent) HandleEvent(ev event.Event) bool {
-	if c.handler != nil {
-		return c.handler.HandleEvent(ev)
-	}
-	return false
+// OnBlur 失去焦点时调用
+func (c *BaseComponent) OnBlur() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.focused = false
 }
 
-// SetEventHandler 设置事件处理器
-func (c *BaseComponent) SetEventHandler(handler event.EventHandler) {
-	c.handler = handler
+// IsFocused 检查是否有焦点
+func (c *BaseComponent) IsFocused() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.focused
 }
 
-// GetEventHandler 获取事件处理器
-func (c *BaseComponent) GetEventHandler() event.EventHandler {
-	return c.handler
-}
+// ============================================================================
+// 状态管理
+// ============================================================================
 
 // SetVisible 设置可见性
 func (c *BaseComponent) SetVisible(visible bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.visible = visible
 }
 
 // IsVisible 检查是否可见
 func (c *BaseComponent) IsVisible() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.visible
 }
 
-// SetEnabled 设置启用状态
-func (c *BaseComponent) SetEnabled(enabled bool) {
-	c.enabled = enabled
+// SetDisabled 设置禁用状态
+func (c *BaseComponent) SetDisabled(disabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.disabled = disabled
 }
 
-// IsEnabled 检查是否启用
-func (c *BaseComponent) IsEnabled() bool {
-	return c.enabled
+// IsDisabled 检查是否禁用
+func (c *BaseComponent) IsDisabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.disabled
 }
 
-// SetStyle 设置样式
-func (c *BaseComponent) SetStyle(s style.Style) {
-	c.style = s
-}
-
-// GetStyle 获取样式
-func (c *BaseComponent) GetStyle() style.Style {
-	return c.style
-}
-
-// GetParent 获取父组件
-func (c *BaseComponent) GetParent() Component {
+// GetParent 获取父容器
+func (c *BaseComponent) GetParent() Container {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.parent
 }

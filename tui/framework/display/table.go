@@ -15,8 +15,8 @@ import (
 // ==============================================================================
 // V3 表格组件，支持子焦点、单元格导航、选择、虚拟滚动
 
-// TableColumnV3 表格列定义
-type TableColumnV3 struct {
+// TableColumn 表格列定义
+type TableColumn struct {
 	Title    string
 	Width    int
 	MinWidth int
@@ -32,8 +32,8 @@ type TableCellPosition struct {
 	Col int
 }
 
-// TableSelectionV3 表格选择区域
-type TableSelectionV3 struct {
+// TableSelection 表格选择区域
+type TableSelection struct {
 	fromRow int
 	fromCol int
 	toRow   int
@@ -42,13 +42,13 @@ type TableSelectionV3 struct {
 	mu      sync.RWMutex
 }
 
-// NewTableSelectionV3 创建选择区域
-func NewTableSelectionV3() *TableSelectionV3 {
-	return &TableSelectionV3{}
+// NewTableSelection 创建选择区域
+func NewTableSelection() *TableSelection {
+	return &TableSelection{}
 }
 
 // Set 设置选择区域
-func (s *TableSelectionV3) Set(fromRow, fromCol, toRow, toCol int) {
+func (s *TableSelection) Set(fromRow, fromCol, toRow, toCol int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -66,21 +66,21 @@ func (s *TableSelectionV3) Set(fromRow, fromCol, toRow, toCol int) {
 }
 
 // Clear 清除选择
-func (s *TableSelectionV3) Clear() {
+func (s *TableSelection) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active = false
 }
 
 // IsEmpty 是否为空
-func (s *TableSelectionV3) IsEmpty() bool {
+func (s *TableSelection) IsEmpty() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return !s.active
 }
 
 // Contains 检查是否包含指定单元格
-func (s *TableSelectionV3) Contains(row, col int) bool {
+func (s *TableSelection) Contains(row, col int) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.active {
@@ -91,14 +91,14 @@ func (s *TableSelectionV3) Contains(row, col int) bool {
 }
 
 // Range 返回选择范围
-func (s *TableSelectionV3) Range() (fromRow, fromCol, toRow, toCol int) {
+func (s *TableSelection) Range() (fromRow, fromCol, toRow, toCol int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.fromRow, s.fromCol, s.toRow, s.toCol
 }
 
-// TableSubFocusV3 表格子焦点
-type TableSubFocusV3 struct {
+// TableSubFocus 表格子焦点
+type TableSubFocus struct {
 	mu sync.RWMutex
 
 	// 当前焦点位置
@@ -106,7 +106,7 @@ type TableSubFocusV3 struct {
 	col int
 
 	// 选择状态
-	selection *TableSelectionV3
+	selection *TableSelection
 
 	// 约束
 	maxRow int
@@ -116,19 +116,19 @@ type TableSubFocusV3 struct {
 	onCellChange func(row, col int)
 }
 
-// NewTableSubFocusV3 创建子焦点
-func NewTableSubFocusV3(rows, cols int) *TableSubFocusV3 {
-	return &TableSubFocusV3{
+// NewTableSubFocus 创建子焦点
+func NewTableSubFocus(rows, cols int) *TableSubFocus {
+	return &TableSubFocus{
 		row:       0,
 		col:       0,
-		selection: NewTableSelectionV3(),
+		selection: NewTableSelection(),
 		maxRow:    maxInt(0, rows-1),
 		maxCol:    maxInt(0, cols-1),
 	}
 }
 
 // SetPosition 设置焦点位置
-func (f *TableSubFocusV3) SetPosition(row, col int) bool {
+func (f *TableSubFocus) SetPosition(row, col int) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -149,14 +149,14 @@ func (f *TableSubFocusV3) SetPosition(row, col int) bool {
 }
 
 // Position 获取焦点位置
-func (f *TableSubFocusV3) Position() (row, col int) {
+func (f *TableSubFocus) Position() (row, col int) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.row, f.col
 }
 
 // Move 移动焦点
-func (f *TableSubFocusV3) Move(deltaRow, deltaCol int) bool {
+func (f *TableSubFocus) Move(deltaRow, deltaCol int) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -192,63 +192,63 @@ func (f *TableSubFocusV3) Move(deltaRow, deltaCol int) bool {
 }
 
 // SetSelection 设置选择区域
-func (f *TableSubFocusV3) SetSelection(fromRow, fromCol, toRow, toCol int) {
+func (f *TableSubFocus) SetSelection(fromRow, fromCol, toRow, toCol int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.selection.Set(fromRow, fromCol, toRow, toCol)
 }
 
 // GetSelection 获取选择区域
-func (f *TableSubFocusV3) GetSelection() *TableSelectionV3 {
+func (f *TableSubFocus) GetSelection() *TableSelection {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.selection
 }
 
 // ClearSelection 清除选择
-func (f *TableSubFocusV3) ClearSelection() {
+func (f *TableSubFocus) ClearSelection() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.selection.Clear()
 }
 
 // HasSelection 是否有选择
-func (f *TableSubFocusV3) HasSelection() bool {
+func (f *TableSubFocus) HasSelection() bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return !f.selection.IsEmpty()
 }
 
 // IsSelected 检查单元格是否被选中
-func (f *TableSubFocusV3) IsSelected(row, col int) bool {
+func (f *TableSubFocus) IsSelected(row, col int) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.selection.Contains(row, col)
 }
 
 // SelectAll 全选
-func (f *TableSubFocusV3) SelectAll() {
+func (f *TableSubFocus) SelectAll() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.selection.Set(0, 0, f.maxRow, f.maxCol)
 }
 
 // SelectRow 选择当前行
-func (f *TableSubFocusV3) SelectRow() {
+func (f *TableSubFocus) SelectRow() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.selection.Set(f.row, 0, f.row, f.maxCol)
 }
 
 // SelectCol 选择当前列
-func (f *TableSubFocusV3) SelectCol() {
+func (f *TableSubFocus) SelectCol() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.selection.Set(0, f.col, f.maxRow, f.col)
 }
 
 // Resize 调整大小
-func (f *TableSubFocusV3) Resize(rows, cols int) {
+func (f *TableSubFocus) Resize(rows, cols int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -265,33 +265,33 @@ func (f *TableSubFocusV3) Resize(rows, cols int) {
 }
 
 // SetOnCellChange 设置单元格变化回调
-func (f *TableSubFocusV3) SetOnCellChange(fn func(row, col int)) {
+func (f *TableSubFocus) SetOnCellChange(fn func(row, col int)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.onCellChange = fn
 }
 
 // isValidPositionUnsafe 检查位置是否有效（未加锁）
-func (f *TableSubFocusV3) isValidPositionUnsafe(row, col int) bool {
+func (f *TableSubFocus) isValidPositionUnsafe(row, col int) bool {
 	return row >= 0 && row <= f.maxRow && col >= 0 && col <= f.maxCol
 }
 
-// TableV3 V3 表格组件
-type TableV3 struct {
-	*component.BaseComponentV3
+// Table V3 表格组件
+type Table struct {
+	*component.BaseComponent
 	*component.StateHolder
 
 	mu sync.RWMutex
 
 	// 列定义
-	columns []TableColumnV3
+	columns []TableColumn
 
 	// 数据
 	rows    [][]string
 	rowCount int
 
 	// 子焦点
-	subFocus *TableSubFocusV3
+	subFocus *TableSubFocus
 
 	// 视口状态（虚拟滚动）
 	offset   int // 滚动偏移（行索引）
@@ -323,15 +323,15 @@ type TableV3 struct {
 	onCellChange func(row, col int)
 }
 
-// NewTableV3 创建 V3 表格组件
-func NewTableV3(columns []TableColumnV3) *TableV3 {
-	return &TableV3{
-		BaseComponentV3:  component.NewBaseComponentV3("table"),
+// NewTable 创建 V3 表格组件
+func NewTable(columns []TableColumn) *Table {
+	return &Table{
+		BaseComponent:  component.NewBaseComponent("table"),
 		StateHolder:      component.NewStateHolder(),
 		columns:          columns,
 		rows:             make([][]string, 0),
 		rowCount:         0,
-		subFocus:         NewTableSubFocusV3(0, len(columns)),
+		subFocus:         NewTableSubFocus(0, len(columns)),
 		offset:           0,
 		height:           10,
 		showHeader:       true,
@@ -355,7 +355,7 @@ func NewTableV3(columns []TableColumnV3) *TableV3 {
 // ============================================================================
 
 // SetRows 设置行数据
-func (t *TableV3) SetRows(rows [][]string) *TableV3 {
+func (t *Table) SetRows(rows [][]string) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -366,7 +366,7 @@ func (t *TableV3) SetRows(rows [][]string) *TableV3 {
 }
 
 // AddRow 添加行
-func (t *TableV3) AddRow(row []string) *TableV3 {
+func (t *Table) AddRow(row []string) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -377,7 +377,7 @@ func (t *TableV3) AddRow(row []string) *TableV3 {
 }
 
 // ClearRows 清空所有行
-func (t *TableV3) ClearRows() *TableV3 {
+func (t *Table) ClearRows() *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -389,7 +389,7 @@ func (t *TableV3) ClearRows() *TableV3 {
 }
 
 // SetCell 设置单元格
-func (t *TableV3) SetCell(row, col int, value string) *TableV3 {
+func (t *Table) SetCell(row, col int, value string) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -413,7 +413,7 @@ func (t *TableV3) SetCell(row, col int, value string) *TableV3 {
 }
 
 // SetHeight 设置可见高度
-func (t *TableV3) SetHeight(h int) *TableV3 {
+func (t *Table) SetHeight(h int) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.height = h
@@ -421,7 +421,7 @@ func (t *TableV3) SetHeight(h int) *TableV3 {
 }
 
 // SetShowHeader 设置是否显示表头
-func (t *TableV3) SetShowHeader(show bool) *TableV3 {
+func (t *Table) SetShowHeader(show bool) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.showHeader = show
@@ -429,7 +429,7 @@ func (t *TableV3) SetShowHeader(show bool) *TableV3 {
 }
 
 // SetGridLines 设置是否显示网格线
-func (t *TableV3) SetGridLines(show bool) *TableV3 {
+func (t *Table) SetGridLines(show bool) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.gridLines = show
@@ -437,7 +437,7 @@ func (t *TableV3) SetGridLines(show bool) *TableV3 {
 }
 
 // SetAlternateRows 设置是否交替行颜色
-func (t *TableV3) SetAlternateRows(enable bool) *TableV3 {
+func (t *Table) SetAlternateRows(enable bool) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.alternateRows = enable
@@ -445,7 +445,7 @@ func (t *TableV3) SetAlternateRows(enable bool) *TableV3 {
 }
 
 // SetOnSelect 设置选中回调
-func (t *TableV3) SetOnSelect(fn func(row, col int)) *TableV3 {
+func (t *Table) SetOnSelect(fn func(row, col int)) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.onSelect = fn
@@ -453,7 +453,7 @@ func (t *TableV3) SetOnSelect(fn func(row, col int)) *TableV3 {
 }
 
 // SetOnCellChange 设置单元格变化回调
-func (t *TableV3) SetOnCellChange(fn func(row, col int)) *TableV3 {
+func (t *Table) SetOnCellChange(fn func(row, col int)) *Table {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.onCellChange = fn
@@ -462,21 +462,21 @@ func (t *TableV3) SetOnCellChange(fn func(row, col int)) *TableV3 {
 }
 
 // GetSubFocus 获取子焦点
-func (t *TableV3) GetSubFocus() *TableSubFocusV3 {
+func (t *Table) GetSubFocus() *TableSubFocus {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.subFocus
 }
 
 // GetRowCount 获取行数
-func (t *TableV3) GetRowCount() int {
+func (t *Table) GetRowCount() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.rowCount
 }
 
 // GetColumnCount 获取列数
-func (t *TableV3) GetColumnCount() int {
+func (t *Table) GetColumnCount() int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return len(t.columns)
@@ -487,7 +487,7 @@ func (t *TableV3) GetColumnCount() int {
 // ============================================================================
 
 // Measure 测量理想尺寸
-func (t *TableV3) Measure(maxWidth, maxHeight int) (width, height int) {
+func (t *Table) Measure(maxWidth, maxHeight int) (width, height int) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -526,7 +526,7 @@ func (t *TableV3) Measure(maxWidth, maxHeight int) (width, height int) {
 // ============================================================================
 
 // Paint 绘制组件到 CellBuffer
-func (t *TableV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
+func (t *Table) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	if !t.IsVisible() {
 		return
 	}
@@ -575,7 +575,7 @@ func (t *TableV3) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 }
 
 // paintHeader 绘制表头
-func (t *TableV3) paintHeader(ctx component.PaintContext, buf *paint.Buffer, y int) {
+func (t *Table) paintHeader(ctx component.PaintContext, buf *paint.Buffer, y int) {
 	x := ctx.X
 
 	// 行号列
@@ -614,7 +614,7 @@ func (t *TableV3) paintHeader(ctx component.PaintContext, buf *paint.Buffer, y i
 }
 
 // paintSeparator 绘制分隔线
-func (t *TableV3) paintSeparator(ctx component.PaintContext, buf *paint.Buffer, y int) {
+func (t *Table) paintSeparator(ctx component.PaintContext, buf *paint.Buffer, y int) {
 	x := ctx.X
 	width := ctx.AvailableWidth
 
@@ -624,7 +624,7 @@ func (t *TableV3) paintSeparator(ctx component.PaintContext, buf *paint.Buffer, 
 }
 
 // paintRow 绘制数据行
-func (t *TableV3) paintRow(ctx component.PaintContext, buf *paint.Buffer, row int, y int) {
+func (t *Table) paintRow(ctx component.PaintContext, buf *paint.Buffer, row int, y int) {
 	x := ctx.X
 
 	// 确定行样式
@@ -683,7 +683,7 @@ func (t *TableV3) paintRow(ctx component.PaintContext, buf *paint.Buffer, row in
 }
 
 // paintEmptyRow 绘制空行
-func (t *TableV3) paintEmptyRow(ctx component.PaintContext, buf *paint.Buffer, y int) {
+func (t *Table) paintEmptyRow(ctx component.PaintContext, buf *paint.Buffer, y int) {
 	x := ctx.X
 	width := ctx.AvailableWidth
 
@@ -693,7 +693,7 @@ func (t *TableV3) paintEmptyRow(ctx component.PaintContext, buf *paint.Buffer, y
 }
 
 // paintCell 绘制单元格
-func (t *TableV3) paintCell(buf *paint.Buffer, x, y int, text string, width int, s style.Style, align component.TextAlign) {
+func (t *Table) paintCell(buf *paint.Buffer, x, y int, text string, width int, s style.Style, align component.TextAlign) {
 	runes := []rune(text)
 	textLen := len(runes)
 
@@ -736,7 +736,7 @@ func (t *TableV3) paintCell(buf *paint.Buffer, x, y int, text string, width int,
 }
 
 // paintScrollbar 绘制滚动条
-func (t *TableV3) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer) {
+func (t *Table) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer) {
 	dataHeight := t.height
 	if t.showHeader {
 		dataHeight -= t.headerHeight + 1
@@ -773,7 +773,7 @@ func (t *TableV3) paintScrollbar(ctx component.PaintContext, buf *paint.Buffer) 
 // ============================================================================
 
 // HandleAction 处理语义化 Action
-func (t *TableV3) HandleAction(a action.Action) bool {
+func (t *Table) HandleAction(a action.Action) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -843,17 +843,17 @@ func (t *TableV3) HandleAction(a action.Action) bool {
 // ============================================================================
 
 // FocusID 返回焦点标识符
-func (t *TableV3) FocusID() string {
+func (t *Table) FocusID() string {
 	return t.ID()
 }
 
 // OnFocus 获得焦点时调用
-func (t *TableV3) OnFocus() {
+func (t *Table) OnFocus() {
 	// 可以在这里添加获得焦点时的逻辑
 }
 
 // OnBlur 失去焦点时调用
-func (t *TableV3) OnBlur() {
+func (t *Table) OnBlur() {
 	// 可以在这里添加失去焦点时的逻辑
 }
 
@@ -862,14 +862,14 @@ func (t *TableV3) OnBlur() {
 // ============================================================================
 
 // getVisibleRange 获取可见行范围
-func (t *TableV3) getVisibleRange(dataHeight int) (start, end int) {
+func (t *Table) getVisibleRange(dataHeight int) (start, end int) {
 	start = t.offset
 	end = minInt(t.offset+dataHeight, t.rowCount)
 	return
 }
 
 // navigateAndFocus 导航并设置焦点
-func (t *TableV3) navigateAndFocus(deltaCol, deltaRow int) {
+func (t *Table) navigateAndFocus(deltaCol, deltaRow int) {
 	row, col := t.subFocus.Position()
 	newRow := row + deltaRow
 	newCol := col + deltaCol
@@ -896,7 +896,7 @@ func (t *TableV3) navigateAndFocus(deltaCol, deltaRow int) {
 }
 
 // ensureVisible 确保指定行可见
-func (t *TableV3) ensureVisible(row int) {
+func (t *Table) ensureVisible(row int) {
 	dataHeight := t.height
 	if t.showHeader {
 		dataHeight -= t.headerHeight + 1
