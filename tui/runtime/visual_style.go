@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yaoapp/yao/tui/framework/theme"
 )
 
 // VisualStyle extends the base Style with visual properties (colors, borders, etc.)
@@ -347,3 +348,163 @@ func GetColorPalette(name string) (colors struct {
 	}
 	return CommonColorPalettes["default"]
 }
+
+// =============================================================================
+// 与 theme 系统的集成
+// =============================================================================
+
+// FromTheme 从 theme.Theme 创建 VisualStyle
+func FromTheme(t *theme.Theme) VisualStyle {
+	if t == nil {
+		return NewVisualStyle()
+	}
+
+	vs := NewVisualStyle()
+
+	// 从主题获取颜色
+	vs.Foreground = t.Colors.Foreground.String()
+	vs.Background = t.Colors.Background.String()
+	vs.BorderForeground = t.Colors.Border.String()
+
+	return vs
+}
+
+// FromThemeWithStyle 从 theme.StyleConfig 创建 VisualStyle
+func FromThemeWithStyle(config theme.StyleConfig) VisualStyle {
+	vs := NewVisualStyle()
+
+	if config.Foreground != nil {
+		vs.Foreground = config.Foreground.String()
+	}
+	if config.Background != nil {
+		vs.Background = config.Background.String()
+	}
+	if config.Bold {
+		vs.Bold = true
+	}
+	if config.Italic {
+		vs.Italic = true
+	}
+	if config.Underline {
+		vs.Underline = true
+	}
+	if config.Strikethrough {
+		vs.Strikethrough = true
+	}
+	if config.Border != nil {
+		vs.HasBorder = config.Border.Enabled
+		vs.BorderForeground = config.Border.FG.String()
+		vs.BorderBackground = config.Border.BG.String()
+	}
+
+	return vs
+}
+
+// WithThemeColor 使用主题颜色设置前景色
+func (vs VisualStyle) WithThemeColor(color theme.Color) VisualStyle {
+	vs.Foreground = color.String()
+	return vs
+}
+
+// WithThemeBackground 使用主题颜色设置背景色
+func (vs VisualStyle) WithThemeBackground(color theme.Color) VisualStyle {
+	vs.Background = color.String()
+	return vs
+}
+
+// WithThemePalette 使用主题调色板设置颜色
+func (vs VisualStyle) WithThemePalette(palette theme.ColorPalette, colorName string) VisualStyle {
+	var color theme.Color
+	switch colorName {
+	case "primary":
+		color = palette.Primary
+	case "secondary":
+		color = palette.Secondary
+	case "accent":
+		color = palette.Accent
+	case "success":
+		color = palette.Success
+	case "warning":
+		color = palette.Warning
+	case "error":
+		color = palette.Error
+	case "info":
+		color = palette.Info
+	case "foreground", "fg":
+		color = palette.Foreground
+	case "background", "bg":
+		color = palette.Background
+	case "muted":
+		color = palette.Muted
+	case "border":
+		color = palette.Border
+	case "focus":
+		color = palette.Focus
+	default:
+		return vs
+	}
+	vs.Foreground = color.String()
+	return vs
+}
+
+// WithBuiltinTheme 使用内置主题创建 VisualStyle
+func WithBuiltinTheme(themeName string) VisualStyle {
+	t := theme.GetBuiltinTheme(themeName)
+	return FromTheme(t)
+}
+
+// ThemeVisualStyle 主题驱动的 VisualStyle
+// 当主题改变时自动更新
+type ThemeVisualStyle struct {
+	themeMgr *theme.Manager
+	styleKey string
+	componentID string
+	state string
+}
+
+// NewThemeVisualStyle 创建主题驱动的 VisualStyle
+func NewThemeVisualStyle(manager *theme.Manager, componentID, styleKey, state string) *ThemeVisualStyle {
+	return &ThemeVisualStyle{
+		themeMgr:    manager,
+		componentID: componentID,
+		styleKey:    styleKey,
+		state:       state,
+	}
+}
+
+// ToVisualStyle 转换为 VisualStyle
+func (tvs *ThemeVisualStyle) ToVisualStyle() VisualStyle {
+	if tvs.themeMgr == nil {
+		return NewVisualStyle()
+	}
+
+	var config theme.StyleConfig
+	if tvs.componentID != "" {
+		config = tvs.themeMgr.GetComponentStyle(tvs.componentID, tvs.state)
+	} else if tvs.styleKey != "" {
+		config = tvs.themeMgr.GetStyle("", tvs.styleKey)
+	}
+
+	vs := FromThemeWithStyle(config)
+
+	// 如果没有配置样式，使用当前主题的基础颜色
+	if vs.Foreground == "" {
+		vs.Foreground = tvs.themeMgr.GetColor("foreground").String()
+	}
+	if vs.Background == "" {
+		vs.Background = tvs.themeMgr.GetColor("background").String()
+	}
+
+	return vs
+}
+
+// SetManager 设置主题管理器
+func (tvs *ThemeVisualStyle) SetManager(manager *theme.Manager) {
+	tvs.themeMgr = manager
+}
+
+// UpdateState 更新状态
+func (tvs *ThemeVisualStyle) UpdateState(state string) {
+	tvs.state = state
+}
+

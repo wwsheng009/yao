@@ -3,9 +3,12 @@ package style
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yaoapp/yao/tui/framework/theme"
 )
 
-// Color 颜色表示
+// Color 颜色表示（简化版，与 theme.Color 兼容）
+// 建议新代码使用 theme.Color
 type Color string
 
 const (
@@ -31,6 +34,8 @@ const (
 )
 
 // Style 样式定义
+// 注意：此 Style 结构体与 theme.StyleConfig 不同
+// 这是 framework 层的基础样式，theme.StyleConfig 是更高级的主题样式
 type Style struct {
 	FG            Color
 	BG            Color
@@ -98,6 +103,11 @@ func (s Style) Strikethrough(on bool) Style {
 	return s
 }
 
+// IsStrikethrough 获取删除线状态
+func (s Style) IsStrikethrough() bool {
+	return s.isStrikethrough
+}
+
 // Reverse 设置反白
 func (s Style) Reverse(on bool) Style {
 	s.isReverse = on
@@ -113,6 +123,11 @@ func (s Style) IsReverse() bool {
 func (s Style) Blink(on bool) Style {
 	s.isBlink = on
 	return s
+}
+
+// IsBlink 获取闪烁状态
+func (s Style) IsBlink() bool {
+	return s.isBlink
 }
 
 // Merge 合并样式
@@ -132,6 +147,9 @@ func (s Style) Merge(other Style) Style {
 	}
 	if other.isUnderline {
 		result.isUnderline = true
+	}
+	if other.isStrikethrough {
+		result.isStrikethrough = true
 	}
 	if other.isReverse {
 		result.isReverse = true
@@ -201,7 +219,7 @@ var colorCodes = map[string]int{
 	"bright-green":  10,
 	"bright-yellow": 11,
 	"bright-blue":   12,
-	"bright-magenta":13,
+	"bright-magenta": 13,
 	"bright-cyan":   14,
 	"bright-white":  15,
 }
@@ -272,84 +290,80 @@ func ParseHex(hex string) Color {
 	return Color(hex)
 }
 
-// Theme 主题
-type Theme struct {
-	Name string
+// =============================================================================
+// 与 theme 系统的集成
+// =============================================================================
 
-	Primary   Color
-	Secondary Color
-
-	Success   Color
-	Warning   Color
-	Error     Color
-	Info      Color
-
-	Foreground Color
-	Background Color
+// FromThemeColor 将 theme.Color 转换为 style.Color
+func FromThemeColor(c theme.Color) Color {
+	return Color(c.String())
 }
+
+// ToThemeColor 将 style.Color 转换为 theme.Color
+func ToThemeColor(c Color) theme.Color {
+	return theme.ParseColor(string(c))
+}
+
+// Theme 主题（兼容旧代码）
+// 建议：新代码使用 theme.Theme
+type Theme = theme.Theme
 
 // DefaultTheme 默认主题
-var DefaultTheme = &Theme{
-	Name:       "default",
-	Primary:    Blue,
-	Secondary:  Cyan,
-	Success:    Green,
-	Warning:    Yellow,
-	Error:      Red,
-	Info:       Blue,
-	Foreground: White,
-	Background: Black,
-}
+var DefaultTheme = theme.DarkTheme
 
 // LightTheme 亮色主题
-var LightTheme = &Theme{
-	Name:       "light",
-	Primary:    Blue,
-	Secondary:  Cyan,
-	Success:    Green,
-	Warning:    Yellow,
-	Error:      Red,
-	Info:       Blue,
-	Foreground: Black,
-	Background: White,
-}
+var LightTheme = theme.LightTheme
 
 // DraculaTheme Dracula 主题
-var DraculaTheme = &Theme{
-	Name:       "dracula",
-	Primary:    ParseColor("#bd93f9"),
-	Secondary:  ParseColor("#ff79c6"),
-	Success:    ParseColor("#50fa7b"),
-	Warning:    ParseColor("#f1fa8c"),
-	Error:      ParseColor("#ff5555"),
-	Info:       ParseColor("#8be9fd"),
-	Foreground: ParseColor("#f8f8f2"),
-	Background: ParseColor("#282a36"),
-}
+var DraculaTheme = theme.DraculaTheme
 
 // NordTheme Nord 主题
-var NordTheme = &Theme{
-	Name:       "nord",
-	Primary:    ParseColor("#88c0d0"),
-	Secondary:  ParseColor("#81a1c1"),
-	Success:    ParseColor("#a3be8c"),
-	Warning:    ParseColor("#ebcb8b"),
-	Error:      ParseColor("#bf616a"),
-	Info:       ParseColor("#5e81ac"),
-	Foreground: ParseColor("#eceff4"),
-	Background: ParseColor("#2e3440"),
-}
+var NordTheme = theme.NordTheme
 
 // GetTheme 获取主题
-func GetTheme(name string) *Theme {
-	switch name {
-	case "light":
-		return LightTheme
-	case "dracula":
-		return DraculaTheme
-	case "nord":
-		return NordTheme
-	default:
-		return DefaultTheme
+func GetTheme(name string) *theme.Theme {
+	return theme.GetBuiltinTheme(name)
+}
+
+// =============================================================================
+// 便捷函数
+// =============================================================================
+
+// WithForeground 返回带前景色的样式
+func WithForeground(c Color) Style {
+	return NewStyle().Foreground(c)
+}
+
+// WithBackground 返回带背景色的样式
+func WithBackground(c Color) Style {
+	return NewStyle().Background(c)
+}
+
+// WithBold 返回带粗体的样式
+func WithBold() Style {
+	return NewStyle().Bold(true)
+}
+
+// WithItalic 返回带斜体的样式
+func WithItalic() Style {
+	return NewStyle().Italic(true)
+}
+
+// WithUnderline 返回带下划线的样式
+func WithUnderline() Style {
+	return NewStyle().Underline(true)
+}
+
+// WithReverse 返回带反白的样式
+func WithReverse() Style {
+	return NewStyle().Reverse(true)
+}
+
+// Combine 组合多个样式
+func Combine(styles ...Style) Style {
+	result := NewStyle()
+	for _, s := range styles {
+		result = result.Merge(s)
 	}
+	return result
 }
