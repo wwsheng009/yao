@@ -2,7 +2,9 @@ package form
 
 import (
 	"fmt"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework/event"
@@ -12,6 +14,18 @@ import (
 	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )
+
+var (
+	debugForm = os.Getenv("TUI_FORM_DEBUG") == "1"
+)
+
+func formDebugLog(format string, args ...interface{}) {
+	if debugForm {
+		timestamp := time.Now().Format("15:04:05.000")
+		fullFormat := fmt.Sprintf("[%s] [Form] %s\n", timestamp, format)
+		fmt.Fprintf(os.Stderr, fullFormat, args...)
+	}
+}
 
 // ==============================================================================
 // Form Component V3
@@ -133,6 +147,9 @@ type Form struct {
 	errorStyle      style.Style
 	helpStyle        style.Style
 	focusLabelStyle  style.Style
+
+	// 脏标记回调
+	dirtyCallback func()
 }
 
 // NewForm 创建 V3 表单组件
@@ -246,6 +263,47 @@ func (f *Form) SetFocusLabelStyle(s style.Style) *Form {
 	defer f.mu.Unlock()
 	f.focusLabelStyle = s
 	return f
+}
+
+// SetDirtyCallback 设置脏标记回调
+func (f *Form) SetDirtyCallback(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dirtyCallback = fn
+}
+
+// MountWithContext 使用组件上下文挂载
+// 实现 component.MountableWithContext 接口，避免 App 直接依赖 Form 类型
+func (f *Form) MountWithContext(parent component.Container, ctx *component.ComponentContext) {
+	// 调用基础挂载
+	f.Mount(parent)
+
+	// 从上下文设置 dirty callback
+	if fn := ctx.GetDirtyCallback(); fn != nil {
+		f.SetDirtyCallback(fn)
+	}
+
+	// 递归为所有子组件注入上下文
+	f.injectContextToFields(ctx)
+}
+
+// injectContextToFields 递归为所有字段中的组件注入上下文
+func (f *Form) injectContextToFields(ctx *component.ComponentContext) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	for _, field := range f.fields {
+		if field.Input == nil {
+			continue
+		}
+
+		// 如果输入组件实现了 MountableWithContext，调用它
+		if mountable, ok := field.Input.(interface {
+			MountWithContext(component.Container, *component.ComponentContext)
+		}); ok {
+			mountable.MountWithContext(nil, ctx)
+		}
+	}
 }
 
 // ============================================================================
@@ -419,6 +477,9 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
+	formDebugLog("PAINT: ctx.X=%d ctx.Y=%d, focused=%v, currentField=%d",
+		ctx.X, ctx.Y, f.IsFocused(), f.currentField)
+
 	width := ctx.AvailableWidth
 	height := ctx.AvailableHeight
 
@@ -428,6 +489,8 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 	x := ctx.X
 	y := ctx.Y
+
+	formDebugLog("PAINT: starting at (x=%d, y=%d)", x, y)
 
 	// 绘制每个字段
 	for i, name := range f.fieldOrder {
@@ -454,6 +517,7 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		if len(field.Validators) > 0 {
 			label += " *"
 		}
+		formDebugLog("FIELD[%d]: drawing label '%s' at (x=%d, y=%d)", i, label, x, y)
 		f.drawText(buf, x, y, label, labelStyle)
 		y++
 
@@ -465,6 +529,8 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 				X:                x + 2,
 				Y:                y,
 			}
+			formDebugLog("FIELD[%d]: calling TextInput.Paint with ctx.X=%d ctx.Y=%d",
+				i, inputCtx.X, inputCtx.Y)
 			txt.Paint(inputCtx, buf)
 		}
 		y++
@@ -583,6 +649,9 @@ func (f *Form) FocusID() string {
 
 // OnFocus 获得焦点时调用
 func (f *Form) OnFocus() {
+	// 首先调用 BaseComponent 的 OnFocus，设置 focused = true
+	f.BaseComponent.OnFocus()
+
 	// 焦点第一个可见字段
 	visibleFields := f.getVisibleFieldIndices()
 	if len(visibleFields) > 0 {
@@ -611,6 +680,9 @@ func (f *Form) OnFocus() {
 
 // OnBlur 失去焦点时调用
 func (f *Form) OnBlur() {
+	// 首先调用 BaseComponent 的 OnBlur，设置 focused = false
+	f.BaseComponent.OnBlur()
+
 	// 让当前字段失去焦点
 	fieldName := f.fieldOrder[f.currentField]
 	if field := f.fields[fieldName]; field != nil {
@@ -725,6 +797,15 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 						f.markDirty()
 						return true
 					}
+				} else {
+					// Type assertion failed - try direct dispatch
+					// This shouldn't happen if TextInput is properly set up
+					if txt, ok := currentField.Input.(*input.TextInput); ok {
+						if txt.HandleEvent(ev) {
+							f.markDirty()
+							return true
+						}
+					}
 				}
 			}
 		}
@@ -733,10 +814,19 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 		if keyEv.Special == event.KeyBackspace {
 			currentField := f.getCurrentField()
 			if currentField != nil {
+				// 优先使用接口类型断言
 				if handler, ok := currentField.Input.(interface{ HandleEvent(component.Event) bool }); ok {
 					if handler.HandleEvent(ev) {
 						f.markDirty()
 						return true
+					}
+				} else {
+					// 回退到具体类型
+					if txt, ok := currentField.Input.(*input.TextInput); ok {
+						if txt.HandleEvent(ev) {
+							f.markDirty()
+							return true
+						}
 					}
 				}
 			}
@@ -747,6 +837,11 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 
 // markDirty 标记表单为需要重绘
 func (f *Form) markDirty() {
-	// 在实际应用中，这会触发重绘
-	// 这里暂时留空，因为渲染由 App 控制
+	f.mu.RLock()
+	callback := f.dirtyCallback
+	f.mu.RUnlock()
+
+	if callback != nil {
+		callback()
+	}
 }
