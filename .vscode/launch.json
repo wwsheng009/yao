@@ -304,6 +304,21 @@
         "eyJhbGciOiJSUzI1NiIsImtpZCI6IjQwMTM5NDczOTU1NTE2MjQyNTEyNzYxOTA4NjA1OTcyMTcxNDQ4ODU3NDIyNzY0OSIsInR5cCI6IkpXVCJ9.eyJfX2lucHV0IjoiMTIzNDU2IiwiYXVkIjoiMTIzNDEyMzQxMjM0MTIzNDEyMzQxMjM0MTIzNDEyMzQiLCJjbGllbnRfaWQiOiIxMjM0MTIzNDEyMzQxMjM0MTIzNDEyMzQxMjM0MTIzNCIsImV4cCI6MTc2Nzg1NTQ0MCwiaWF0IjoxNzY3ODUxODQwLCJpc3MiOiJodHRwczovL2xvY2FsaG9zdDo1MDk5IiwianRpIjoiWDloT1pGZmhYSEVoTUVlYUxvLWFzUSIsIm5iZiI6MTc2Nzg1MTg0MCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCIsInN1YiI6IjI2NzgwNzQ5MDUxMDk1NzkiLCJ0b2tlbl90eXBlIjoiYWNjZXNzX3Rva2VuIn0.R84l5LVvrMJVA9iXd72mDDYXYwaLj79TpojRKKKrM_JwvSoQPJ7xoHWn-rWt_17oJbMoRV6bI1_vUxsBME7T9y3AmVE9ama6F-ITSapq99DImY3p9LLoR3Gjz5wt8yaIsGbcswLwTAMHxFbf61K7ungYfYpapiBW77hG28-i1T6GYlv1GruGtyP0UwJ65RnR0yGkPptvy8I_JQFzj-7k9T5b32yhU3DugIeVIfx58BkUn4otJwFMquqdYZycOkT5MOHq8vLV5J-dGOdPJ5mx0b2nZ4gHz2tjaFhlEJVt614pHX-hhiBMChWE34fVj1jZ2JqfYjv4dpf5WvutL5bBOA"
       ],
       "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
+    },
+    {
+      "name": "test tui login",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/tui/framework/examples/login/interactive.go",
+      "args": [],
+      "cwd": "${workspaceFolder}/tui/framework/examples/login",
+      "env": {
+        "TUI_DEBUG": "true",
+        "TUI_CURSOR_DEBUG": "1",
+        "TUI_OUTPUT_MODE": "direct"
+      }
     }
   ]
 }

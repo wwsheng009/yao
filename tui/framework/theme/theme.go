@@ -294,16 +294,18 @@ func (t *Theme) WithColor(colorName string, color Color) *Theme {
 }
 
 // Clone 克隆主题
+// 注意：不是线程安全的，调用者应确保没有并发写入
 func (t *Theme) Clone() *Theme {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
 	clone := NewTheme(t.Name + "_clone")
 	clone.Version = t.Version
+	clone.Parent = t.Parent // 父主题共享引用，不深拷贝
+
+	// 复制值类型
 	clone.Colors = t.Colors
 	clone.Spacing = t.Spacing
 
 	// 深拷贝 Styles
+	t.mu.RLock()
 	if t.Styles != nil {
 		clone.Styles = make(map[string]StyleConfig, len(t.Styles))
 		for k, v := range t.Styles {
@@ -318,6 +320,7 @@ func (t *Theme) Clone() *Theme {
 			clone.Components[k] = v
 		}
 	}
+	t.mu.RUnlock()
 
 	// 深拷贝 Metadata
 	if t.Metadata != nil {
@@ -327,8 +330,6 @@ func (t *Theme) Clone() *Theme {
 		}
 	}
 
-	clone.Parent = t.Parent
-
 	return clone
 }
 
@@ -337,7 +338,36 @@ func (t *Theme) Merge(other *Theme) *Theme {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	result := t.Clone()
+	// 创建新主题而不调用 Clone()，避免死锁
+	result := NewTheme(t.Name + "_merged")
+	result.Version = t.Version
+	result.Parent = t.Parent
+	result.Colors = t.Colors
+	result.Spacing = t.Spacing
+
+	// 深拷贝 Styles
+	if t.Styles != nil {
+		result.Styles = make(map[string]StyleConfig, len(t.Styles))
+		for k, v := range t.Styles {
+			result.Styles[k] = v
+		}
+	}
+
+	// 深拷贝 Components
+	if t.Components != nil {
+		result.Components = make(map[string]ComponentStyle, len(t.Components))
+		for k, v := range t.Components {
+			result.Components[k] = v
+		}
+	}
+
+	// 深拷贝 Metadata
+	if t.Metadata != nil {
+		result.Metadata = make(map[string]interface{}, len(t.Metadata))
+		for k, v := range t.Metadata {
+			result.Metadata[k] = v
+		}
+	}
 
 	// 合并颜色（other 优先）
 	if other != nil {
@@ -351,7 +381,42 @@ func (t *Theme) Merge(other *Theme) *Theme {
 		if !other.Colors.Accent.IsNone() {
 			result.Colors.Accent = other.Colors.Accent
 		}
-		// ... 其他颜色
+		if !other.Colors.Success.IsNone() {
+			result.Colors.Success = other.Colors.Success
+		}
+		if !other.Colors.Warning.IsNone() {
+			result.Colors.Warning = other.Colors.Warning
+		}
+		if !other.Colors.Error.IsNone() {
+			result.Colors.Error = other.Colors.Error
+		}
+		if !other.Colors.Info.IsNone() {
+			result.Colors.Info = other.Colors.Info
+		}
+		if !other.Colors.Background.IsNone() {
+			result.Colors.Background = other.Colors.Background
+		}
+		if !other.Colors.Foreground.IsNone() {
+			result.Colors.Foreground = other.Colors.Foreground
+		}
+		if !other.Colors.Muted.IsNone() {
+			result.Colors.Muted = other.Colors.Muted
+		}
+		if !other.Colors.Border.IsNone() {
+			result.Colors.Border = other.Colors.Border
+		}
+		if !other.Colors.Focus.IsNone() {
+			result.Colors.Focus = other.Colors.Focus
+		}
+		if !other.Colors.Disabled.IsNone() {
+			result.Colors.Disabled = other.Colors.Disabled
+		}
+		if !other.Colors.Hover.IsNone() {
+			result.Colors.Hover = other.Colors.Hover
+		}
+		if !other.Colors.Active.IsNone() {
+			result.Colors.Active = other.Colors.Active
+		}
 
 		// 合并样式
 		for k, v := range other.Styles {
