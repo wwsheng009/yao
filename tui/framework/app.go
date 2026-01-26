@@ -2,6 +2,7 @@ package framework
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,10 +11,12 @@ import (
 
 	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework/debug"
-	"github.com/yaoapp/yao/tui/framework/event"
+	frameworkevent "github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/platform"
 	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/core"
 	"github.com/yaoapp/yao/tui/runtime/paint"
+	"github.com/yaoapp/yao/tui/runtime/render"
 )
 
 // AppState 应用状态
@@ -35,9 +38,10 @@ type App struct {
 	root component.Node
 
 	// 事件
-	router *event.Router
-	keyMap *event.KeyMap
-	pump   *event.Pump
+	router       *frameworkevent.Router
+	keyMap       *frameworkevent.KeyMap
+	pump         *frameworkevent.Pump
+	eventFilter  func(frameworkevent.Event) bool // 事件过滤器回调，返回 false 表示拦截
 
 	// 生命周期
 	state AppState
@@ -62,21 +66,33 @@ type App struct {
 	tickInterval time.Duration
 
 	// 调试模式
-	debugMode      bool
-	debugRecorder  *debug.Recorder
-	debugLogFile   string
+	debugMode     bool
+	debugRecorder *debug.Recorder
+	debugLogFile  string
+
+	// Panic 恢复管理器
+	recovery *core.Recovery
+
+	// 渲染节流器
+	throttler *render.Throttler
+
+	// 上下文管理器
+	contextMgr *core.ContextManager
 }
 
 // NewApp 创建新应用
 func NewApp() *App {
 	return &App{
-		router:       event.NewRouter(),
-		keyMap:       event.NewKeyMap(),
+		router:       frameworkevent.NewRouter(),
+		keyMap:       frameworkevent.NewKeyMap(),
+		eventFilter:  func(ev frameworkevent.Event) bool { return true }, // 默认放行所有事件
 		quit:         make(chan struct{}),
 		tickInterval: 16 * time.Millisecond, // ~60fps
 		firstRender:  true,
 		debugMode:    os.Getenv("TUI_DEBUG") == "true",
 		debugLogFile: os.Getenv("TUI_DEBUG_LOG"),
+		throttler:    render.NewThrottler(60), // 默认 60 FPS
+		contextMgr:   core.NewContextManager(context.Background()),
 	}
 }
 
@@ -101,6 +117,94 @@ func (a *App) SetDebugMode(enabled bool) {
 // IsDebugMode 检查是否在调试模式
 func (a *App) IsDebugMode() bool {
 	return a.debugMode
+}
+
+// ============================================================================
+// 事件过滤器配置
+// ============================================================================
+
+// SetEventFilter 设置事件过滤器回调
+// 返回 false 表示拦截该事件，不再继续处理
+func (a *App) SetEventFilter(filter func(frameworkevent.Event) bool) {
+	a.eventFilter = filter
+}
+
+// ClearEventFilter 清除事件过滤器
+func (a *App) ClearEventFilter() {
+	a.eventFilter = func(ev frameworkevent.Event) bool { return true }
+}
+
+// ============================================================================
+// Panic 恢复配置
+// ============================================================================
+
+// EnableRecovery 启用 panic 恢复
+func (a *App) EnableRecovery() {
+	if a.recovery == nil {
+		a.recovery = core.NewRecovery(a)
+	}
+}
+
+// SetPanicLog 设置 panic 日志文件
+func (a *App) SetPanicLog(filename string) error {
+	a.EnableRecovery()
+	return a.recovery.EnablePanicLog(filename)
+}
+
+// AddPanicHandler 添加 panic 处理器
+func (a *App) AddPanicHandler(handler core.PanicHandler) {
+	a.EnableRecovery()
+	a.recovery.AddHandler(handler)
+}
+
+// ============================================================================
+// 渲染节流配置
+// ============================================================================
+
+// SetFPS 设置目标帧率
+func (a *App) SetFPS(fps int) {
+	a.throttler.SetFPS(fps)
+}
+
+// FPS 获取当前帧率
+func (a *App) FPS() int {
+	return a.throttler.FPS()
+}
+
+// ActualFPS 获取实际帧率
+func (a *App) ActualFPS() float64 {
+	return a.throttler.ActualFPS()
+}
+
+// EnableAdaptiveFPS 启用自适应帧率
+func (a *App) EnableAdaptiveFPS(enable bool) {
+	a.throttler.EnableAdaptive(enable)
+}
+
+// GetRenderStats 获取渲染统计信息
+func (a *App) GetRenderStats() render.Stats {
+	return a.throttler.Stats()
+}
+
+// ForceRender 强制下次渲染（跳过节流限制）
+func (a *App) ForceRender() {
+	a.throttler.ForceRender()
+	a.dirty = true
+}
+
+// ============================================================================
+// 上下文管理
+// ============================================================================
+
+// Context 获取应用上下文
+func (a *App) Context() context.Context {
+	return a.contextMgr.Context()
+}
+
+// Shutdown 优雅关闭
+func (a *App) Shutdown(timeout time.Duration) error {
+	a.state = StateStopping
+	return a.contextMgr.Shutdown(timeout)
 }
 
 // SetRoot 设置根组件
@@ -180,20 +284,20 @@ func (a *App) GetRoot() component.Node {
 
 // OnKey 注册键盘事件处理
 func (a *App) OnKey(key rune, handler func()) {
-	a.keyMap.BindFunc(string(key), func(ev *event.KeyEvent) {
+	a.keyMap.BindFunc(string(key), func(ev *frameworkevent.KeyEvent) {
 		handler()
 	})
 }
 
 // OnKeyCombo 注册快捷键处理
 func (a *App) OnKeyCombo(combo string, handler func()) {
-	a.keyMap.BindFunc(combo, func(ev *event.KeyEvent) {
+	a.keyMap.BindFunc(combo, func(ev *frameworkevent.KeyEvent) {
 		handler()
 	})
 }
 
 // OnEvent 注册事件处理
-func (a *App) OnEvent(eventType event.EventType, handler event.EventHandler) func() {
+func (a *App) OnEvent(eventType frameworkevent.EventType, handler frameworkevent.EventHandler) func() {
 	return a.router.Subscribe(eventType, handler)
 }
 
@@ -218,7 +322,7 @@ func (a *App) Init() error {
 		return err
 	}
 
-	a.pump = event.NewPump(inputReader)
+	a.pump = frameworkevent.NewPump(inputReader)
 	if err := a.pump.Start(); err != nil {
 		return err
 	}
@@ -239,7 +343,7 @@ func (a *App) Init() error {
 // setupRouter 设置事件路由
 func (a *App) setupRouter() {
 	// 订阅退出事件
-	a.router.Subscribe(event.EventClose, event.EventHandlerFunc(func(ev event.Event) bool {
+	a.router.Subscribe(frameworkevent.EventClose, frameworkevent.EventHandlerFunc(func(ev frameworkevent.Event) bool {
 		a.Quit()
 		return true
 	}))
@@ -247,6 +351,15 @@ func (a *App) setupRouter() {
 
 // Run 运行应用
 func (a *App) Run() error {
+	// 启用 panic 恢复（如果配置）
+	if a.recovery != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				a.recovery.Handle(r)
+			}
+		}()
+	}
+
 	if err := a.Init(); err != nil {
 		return err
 	}
@@ -258,6 +371,7 @@ func (a *App) Run() error {
 
 	// 使用事件泵的通道
 	eventChan := a.pump.Events()
+	renderStartTime := time.Now()
 
 	for a.state == StateRunning {
 		select {
@@ -270,11 +384,16 @@ func (a *App) Run() error {
 		case <-a.quit:
 			a.state = StateStopping
 			return nil
+		case <-a.contextMgr.Context().Done():
+			a.state = StateStopping
+			return nil
 		}
 
-		// 渲染
-		if a.dirty {
+		// 渲染 - 使用节流器控制帧率
+		if a.dirty && a.throttler.ShouldRender() {
+			renderStartTime = time.Now()
 			a.render()
+			a.throttler.RecordFrameTime(time.Since(renderStartTime))
 		}
 	}
 
@@ -282,20 +401,26 @@ func (a *App) Run() error {
 }
 
 // handleEvent 处理事件
-func (a *App) handleEvent(ev event.Event) {
+func (a *App) handleEvent(ev frameworkevent.Event) {
 	// 调试模式：记录事件
 	if a.debugMode && a.debugRecorder != nil {
 		a.debugRecorder.RecordEvent(ev)
+	}
+
+	// 通过事件过滤器处理
+	if !a.eventFilter(ev) {
+		// 事件被过滤器拦截
+		return
 	}
 
 	// 路由事件
 	a.router.Route(ev)
 
 	// 键盘事件发送到根组件
-	if ev.Type() == event.EventKeyPress {
+	if ev.Type() == frameworkevent.EventKeyPress {
 		if a.root != nil {
 			// 使用 duck typing 检查是否有 HandleEvent 方法
-			if handler, ok := a.root.(interface{ HandleEvent(event.Event) bool }); ok {
+			if handler, ok := a.root.(interface{ HandleEvent(frameworkevent.Event) bool }); ok {
 				if handler.HandleEvent(ev) {
 					a.dirty = true
 				}
@@ -306,7 +431,7 @@ func (a *App) handleEvent(ev event.Event) {
 
 	// 如果有目标组件，分发到组件
 	if target := ev.Target(); target != nil {
-		if handler, ok := target.(interface{ HandleEvent(event.Event) bool }); ok {
+		if handler, ok := target.(interface{ HandleEvent(frameworkevent.Event) bool }); ok {
 			if handler.HandleEvent(ev) {
 				a.dirty = true
 			}
@@ -614,9 +739,43 @@ func (a *App) Close() error {
 	}
 
 	// 显示终端光标
-	fmt.Print("\x1b[?25h")
+	a.ShowCursor()
+
+	// 关闭 panic 恢复管理器
+	if a.recovery != nil {
+		a.recovery.Close()
+	}
 
 	return nil
+}
+
+// ============================================================================
+// Terminal 接口实现（用于 Panic Recovery）
+// ============================================================================
+
+// SetNormalMode 恢复终端正常模式
+func (a *App) SetNormalMode() {
+	// TUI framework 使用事件泵，这里不需要额外操作
+}
+
+// ShowCursor 显示光标
+func (a *App) ShowCursor() {
+	fmt.Print("\x1b[?25h")
+}
+
+// ExitAltScreen 退出备用屏幕
+func (a *App) ExitAltScreen() {
+	fmt.Print("\x1b[?1049l")
+}
+
+// EnableEcho 启用回显
+func (a *App) EnableEcho() {
+	// 事件泵会处理回显
+}
+
+// Flush 刷新输出
+func (a *App) Flush() {
+	os.Stdout.Sync()
 }
 
 // GetState 获取应用状态
