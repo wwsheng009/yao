@@ -382,25 +382,26 @@ func TestBuiltinThemes(t *testing.T) {
 
 func TestGetBuiltinTheme(t *testing.T) {
 	tests := []struct {
-		name    string
-		theme   string
-		wantNil bool
+		name       string
+		theme      string
+		wantNotNil bool
+		wantName   string
 	}{
-		{"light theme", "light", false},
-		{"dark theme", "dark", false},
-		{"dracula theme", "dracula", false},
-		{"nord theme", "nord", false},
-		{"unknown theme", "unknown", true},
+		{"light theme", "light", true, "light"},
+		{"dark theme", "dark", true, "dark"},
+		{"dracula theme", "dracula", true, "dracula"},
+		{"nord theme", "nord", true, "nord"},
+		{"unknown theme", "unknown", true, "dark"}, // returns default dark theme
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := GetBuiltinTheme(tt.theme)
-			if (got == nil) != tt.wantNil {
-				t.Errorf("GetBuiltinTheme() = %v, wantNil %v", got, tt.wantNil)
+			if (got != nil) != tt.wantNotNil {
+				t.Errorf("GetBuiltinTheme() = %v, wantNotNil %v", got, tt.wantNotNil)
 			}
-			if got != nil && got.Name != tt.theme {
-				t.Errorf("GetBuiltinTheme() Name = %v, want %v", got.Name, tt.theme)
+			if got != nil && got.Name != tt.wantName {
+				t.Errorf("GetBuiltinTheme() Name = %v, want %v", got.Name, tt.wantName)
 			}
 		})
 	}

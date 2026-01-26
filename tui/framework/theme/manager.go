@@ -102,6 +102,11 @@ func (m *Manager) Set(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	return m.setLocked(name)
+}
+
+// setLocked 在已持有锁的情况下设置当前主题
+func (m *Manager) setLocked(name string) error {
 	theme, ok := m.themes[name]
 	if !ok {
 		return fmt.Errorf("theme not found: %s", name)
@@ -156,16 +161,16 @@ func (m *Manager) Toggle() error {
 	for i, name := range names {
 		if name == currentName {
 			if i < len(names)-1 {
-				return m.Set(names[i+1])
+				return m.setLocked(names[i+1])
 			} else {
-				return m.Set(names[0])
+				return m.setLocked(names[0])
 			}
 		}
 	}
 
 	// 如果没找到当前主题，设置第一个
 	if len(names) > 0 {
-		return m.Set(names[0])
+		return m.setLocked(names[0])
 	}
 
 	return nil
@@ -190,16 +195,16 @@ func (m *Manager) Prev() error {
 	for i, name := range names {
 		if name == currentName {
 			if i > 0 {
-				return m.Set(names[i-1])
+				return m.setLocked(names[i-1])
 			} else {
-				return m.Set(names[len(names)-1])
+				return m.setLocked(names[len(names)-1])
 			}
 		}
 	}
 
 	// 如果没找到当前主题，设置最后一个
 	if len(names) > 0 {
-		return m.Set(names[len(names)-1])
+		return m.setLocked(names[len(names)-1])
 	}
 
 	return nil
