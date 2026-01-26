@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework"
@@ -27,11 +28,21 @@ func main() {
 	fmt.Println("  Enter       - 提交表单")
 	fmt.Println("  Esc         - 退出")
 	fmt.Println()
+	fmt.Println("调试模式:")
+	fmt.Println("  设置环境变量 TUI_DEBUG=true 启用调试日志")
+	fmt.Println("  设置环境变量 TUI_INPUT_DEBUG=1 启用TextInput调试")
+	fmt.Println()
 	fmt.Print("按 Enter 开始...")
 	fmt.Scanln()
 
 	// 创建应用
 	app := framework.NewApp()
+
+	// 启用调试模式（如果设置了环境变量）
+	if os.Getenv("TUI_DEBUG") == "true" {
+		app.SetDebugMode(true)
+		fmt.Println("调试模式已启用")
+	}
 
 	// 创建登录表单
 	loginForm := createLoginForm()
