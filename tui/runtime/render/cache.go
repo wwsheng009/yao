@@ -1,6 +1,7 @@
 package render
 
 import (
+	"os"
 	"sync"
 	"time"
 
@@ -90,6 +91,12 @@ func NewCache(config CacheConfig) *Cache {
 var globalCache *Cache
 var globalCacheOnce sync.Once
 
+// isCacheDisabled checks if cache is disabled via environment variable
+// Set TUI_DISABLE_CACHE=1 environment variable to disable
+func isCacheDisabled() bool {
+	return os.Getenv("TUI_DISABLE_CACHE") == "1"
+}
+
 // GetGlobalCache returns the global cache instance (lazy initialization)
 func GetGlobalCache() *Cache {
 	globalCacheOnce.Do(func() {
@@ -105,6 +112,9 @@ func SetGlobalCache(cache *Cache) {
 
 // GetStyle retrieves a cached CellStyle for the given lipgloss.Style
 func (c *Cache) GetStyle(style lipgloss.Style) (runtime.CellStyle, bool) {
+	if isCacheDisabled() {
+		return runtime.CellStyle{}, false // Cache disabled, always miss
+	}
 	key := styleSignature(style)
 
 	c.mu.RLock()
@@ -164,6 +174,9 @@ func (c *Cache) SetStyle(style lipgloss.Style, cellStyle runtime.CellStyle) {
 
 // GetMeasurement retrieves cached text dimensions
 func (c *Cache) GetMeasurement(text string, style lipgloss.Style) (width, height int, ok bool) {
+	if isCacheDisabled() {
+		return 0, 0, false // Cache disabled, always miss
+	}
 	key := textStyleSignature(text, style)
 
 	c.mu.RLock()
@@ -224,6 +237,9 @@ func (c *Cache) SetMeasurement(text string, style lipgloss.Style, width, height 
 
 // GetANSISegments retrieves cached ANSI segments
 func (c *Cache) GetANSISegments(line string) ([]StyledSegment, bool) {
+	if isCacheDisabled() {
+		return nil, false // Cache disabled, always miss
+	}
 	c.mu.RLock()
 	entry, exists := c.ansiSegments[line]
 	c.mu.RUnlock()
@@ -261,6 +277,9 @@ func (c *Cache) SetANSISegments(line string, segments []StyledSegment) {
 
 // GetRenderedText retrieves cached rendered text
 func (c *Cache) GetRenderedText(text string, style lipgloss.Style) (string, bool) {
+	if isCacheDisabled() {
+		return "", false // Cache disabled, always miss
+	}
 	key := textStyleSignature(text, style)
 
 	c.mu.RLock()
