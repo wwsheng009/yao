@@ -5,21 +5,21 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/core"
 	"github.com/yaoapp/yao/tui/legacy/layout"
 )
 
 const maxLayoutDepth = 50
 
 // InitializeComponents initializes all component instances and creates the layout tree.
+// DEPRECATED: Component registry has been removed, component initialization is limited.
 func (m *Model) InitializeComponents() []tea.Cmd {
-	log.Trace("InitializeComponents: Starting component initialization")
+	log.Trace("InitializeComponents: Starting component initialization (registry deprecated)")
 
 	if m.ComponentInstanceRegistry == nil {
 		m.ComponentInstanceRegistry = NewComponentInstanceRegistry()
 	}
 
-	registry := GetGlobalRegistry()
+	registry := GetGlobalRegistry() // Returns nil
 
 	// Create layout tree from Config.Layout
 	m.LayoutRoot = m.createLayoutTree(&m.Config.Layout, registry, 0)
@@ -49,7 +49,7 @@ func (m *Model) InitializeComponents() []tea.Cmd {
 
 	var allCmds []tea.Cmd
 
-	// Initialize all components in the layout tree
+	// Initialize all components in the layout tree (limited functionality)
 	m.initializeLayoutComponents(m.LayoutRoot, registry, &allCmds)
 	log.Trace("InitializeComponents: Initialized components, got %d commands", len(allCmds))
 
@@ -420,56 +420,13 @@ func propsMatch(source, target map[string]interface{}) bool {
 }
 
 // initializeComponent creates and registers a component instance.
+// DEPRECATED: Component registry has been removed, this function is a no-op.
 func (m *Model) initializeComponent(comp *Component, registry *ComponentRegistry, cmds *[]tea.Cmd) error {
 	if comp == nil || comp.Type == "" {
 		return fmt.Errorf("component is nil or has empty type")
 	}
 
-	factory, exists := registry.GetComponentFactory(ComponentType(comp.Type))
-	if !exists || factory == nil {
-		return fmt.Errorf("unknown component type: %s", comp.Type)
-	}
-
-	props := m.resolveProps(comp)
-
-	renderConfig := core.RenderConfig{
-		Data:   props,
-		Width:  m.Width,
-		Height: m.Height,
-	}
-
-	componentInstance, isNew := m.ComponentInstanceRegistry.GetOrCreate(
-		comp.ID,
-		comp.Type,
-		factory,
-		renderConfig,
-	)
-
-	if comp.ID != "" && isInteractiveComponent(comp.Type) {
-		if m.Components == nil {
-			m.Components = make(map[string]*core.ComponentInstance)
-		}
-
-		m.Components[comp.ID] = componentInstance
-
-		if isNew {
-			log.Trace("InitializeComponents: Created new component instance %s (type: %s)", comp.ID, comp.Type)
-
-			if subscriber, ok := componentInstance.Instance.(interface{ GetSubscribedMessageTypes() []string }); ok {
-				messageTypes := subscriber.GetSubscribedMessageTypes()
-				if len(messageTypes) > 0 {
-					m.MessageSubscriptionManager.Subscribe(comp.ID, messageTypes)
-					log.Trace("InitializeComponents: Registered message subscriptions for %s: %v", comp.ID, messageTypes)
-				}
-			}
-		}
-
-		if initCmd := componentInstance.Instance.Init(); initCmd != nil {
-			*cmds = append(*cmds, initCmd)
-		}
-	} else {
-		log.Trace("InitializeComponents: Reusing existing component instance %s (type: %s)", comp.ID, comp.Type)
-	}
-
+	// Registry has been removed, component initialization is disabled
+	log.Trace("initializeComponent: Skipping component %s (registry removed)", comp.ID)
 	return nil
 }

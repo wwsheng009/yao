@@ -11,7 +11,7 @@ import (
 // It works closely with the render engine to ensure consistency.
 type ConfigValidator struct {
 	config   *Config
-	registry *ComponentRegistry
+	registry *ComponentRegistry // DEPRECATED: Will be nil
 	errors   []ValidationError
 	warnings []ValidationError
 }
@@ -204,23 +204,28 @@ func (v *ConfigValidator) validateComponent(comp *Component, path string, depth 
 
 	// Check if component type is registered
 	if v.registry != nil {
-		factory, exists := v.registry.GetComponentFactory(ComponentType(comp.Type))
-		if !exists || factory == nil {
-			// Check if it's a built-in type that might not be in registry
-			builtIns := map[string]bool{
-				"header": true, "footer": true, "text": true,
-				"input": true, "textarea": true, "menu": true,
-				"table": true, "list": true, "form": true,
-				"chat": true, "crud": true, "viewport": true,
-				"filepicker": true, "paginator": true,
-				"progress": true, "timer": true, "stopwatch": true,
-				"spinner": true, "cursor": true, "help": true,
-			}
+		// Registry is deprecated, skip factory check
+		_ = v.registry
+	} else {
+		// Check if it's a known built-in type
+		builtIns := map[string]bool{
+			"header": true, "footer": true, "text": true,
+			"input": true, "textarea": true, "menu": true,
+			"table": true, "list": true, "form": true,
+			"chat": true, "crud": true, "viewport": true,
+			"filepicker": true, "paginator": true,
+			"progress": true, "timer": true, "stopwatch": true,
+			"spinner": true, "cursor": true, "help": true,
+			"row": true, "column": true, "flex": true,
+			"box": true, "button": true, "calendar": true,
+			"checkbox": true, "contextmenu": true,
+			"modal": true, "radio": true, "splitpane": true,
+			"tabs": true, "tree": true, "virtual_list": true,
+		}
 
-			if !builtIns[comp.Type] {
-				v.addError(path+".type",
-					fmt.Sprintf("unknown component type: '%s' - not registered in component registry", comp.Type))
-			}
+		if !builtIns[comp.Type] && comp.Type != "layout" {
+			v.addError(path+".type",
+				fmt.Sprintf("unknown component type: '%s'", comp.Type))
 		}
 	}
 

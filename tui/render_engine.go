@@ -166,32 +166,9 @@ func (m *Model) RenderComponent(comp *Component) string {
 
 	componentInstance, exists := m.ComponentInstanceRegistry.Get(comp.ID)
 	if !exists {
-		// If component instance doesn't exist in registry, try to create it on-demand
-		// This is mainly for testing scenarios where direct rendering is needed
-		registry := GetGlobalRegistry()
-		factory, factoryExists := registry.GetComponentFactory(ComponentType(comp.Type))
-		if !factoryExists {
-			log.Error("RenderComponent: Unknown component type %s for %s", comp.Type, comp.ID)
-			return m.renderUnknownComponent(comp.Type)
-		}
-
-		// Create component instance on-demand
-		instance := factory(renderConfig, comp.ID)
-		componentInstance = &core.ComponentInstance{
-			ID:         comp.ID,
-			Type:       comp.Type,
-			Instance:   instance,
-			LastConfig: renderConfig,
-		}
-
-		// Store in registry for future use
-		m.ComponentInstanceRegistry.UpdateComponent(comp.ID, componentInstance.Instance)
-		if m.Components == nil {
-			m.Components = make(map[string]*core.ComponentInstance)
-		}
-		m.Components[comp.ID] = componentInstance
-
-		log.Trace("RenderComponent: Created component instance on-demand for %s (type: %s)", comp.ID, comp.Type)
+		// DEPRECATED: Component registry has been removed, on-demand creation is disabled
+		log.Error("RenderComponent: Component instance not found for %s (type: %s)", comp.ID, comp.Type)
+		return m.renderUnknownComponent(comp.Type)
 	}
 
 	if !isRenderConfigChanged(componentInstance.LastConfig, renderConfig) {

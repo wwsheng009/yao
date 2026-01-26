@@ -32,6 +32,21 @@ var LightTheme = &Theme{
 			Foreground: &Color{Type: ColorRGB, Value: [3]int{227, 233, 240}},
 		},
 	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{30, 41, 59}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{66, 133, 244}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{148, 163, 184}},
+				},
+			},
+		},
+	},
 	Spacing: DefaultSpacingSet(),
 }
 
@@ -65,6 +80,21 @@ var DarkTheme = &Theme{
 		},
 		"border.default": {
 			Foreground: &Color{Type: ColorRGB, Value: [3]int{55, 65, 81}},
+		},
+	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{227, 233, 240}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{97, 175, 239}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{161, 161, 170}},
+				},
+			},
 		},
 	},
 	Spacing: DefaultSpacingSet(),
@@ -107,6 +137,21 @@ var DraculaTheme = &Theme{
 			Bold:       true,
 		},
 	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{248, 248, 242}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{189, 147, 249}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{98, 114, 164}},
+				},
+			},
+		},
+	},
 	Spacing: DefaultSpacingSet(),
 }
 
@@ -140,6 +185,21 @@ var NordTheme = &Theme{
 		},
 		"border.default": {
 			Foreground: &Color{Type: ColorRGB, Value: [3]int{59, 66, 82}},
+		},
+	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{236, 239, 244}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{136, 192, 208}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{216, 222, 233}},
+				},
+			},
 		},
 	},
 	Spacing: DefaultSpacingSet(),
@@ -187,6 +247,21 @@ var MonokaiTheme = &Theme{
 			Italic:     true,
 		},
 	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{248, 248, 242}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{166, 226, 46}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{117, 113, 94}},
+				},
+			},
+		},
+	},
 	Spacing: DefaultSpacingSet(),
 }
 
@@ -220,6 +295,21 @@ var TokyoNightTheme = &Theme{
 		},
 		"border.default": {
 			Foreground: &Color{Type: ColorRGB, Value: [3]int{77, 87, 114}},
+		},
+	},
+	Components: map[string]ComponentStyle{
+		"input": {
+			Base: StyleConfig{
+				Foreground: &Color{Type: ColorRGB, Value: [3]int{169, 177, 214}},
+			},
+			States: map[string]StyleConfig{
+				"focus": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{39, 105, 187}},
+				},
+				"placeholder": {
+					Foreground: &Color{Type: ColorRGB, Value: [3]int{113, 124, 180}},
+				},
+			},
 		},
 	},
 	Spacing: DefaultSpacingSet(),

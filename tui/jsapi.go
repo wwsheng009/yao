@@ -5,7 +5,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/gou/runtime/v8/bridge"
-	"github.com/yaoapp/yao/tui/components"
 	"github.com/yaoapp/yao/tui/core"
 	"rogchap.com/v8go"
 )
@@ -681,20 +680,10 @@ func tuiFocusNextInputMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemp
 }
 
 // tuiSubmitFormMethod returns a function that submits the form
+// DEPRECATED: Input component collection has been removed due to tui/components removal
 // Usage: tui.SubmitForm()
 func tuiSubmitFormMethod(iso *v8go.Isolate, model *Model) *v8go.FunctionTemplate {
 	return v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
-		// Collect all input values and update state
-		model.StateMu.Lock()
-		for id, comp := range model.Components {
-			if comp.Type == "input" {
-				if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
-					model.State[id] = inputWrapper.GetValue()
-				}
-			}
-		}
-		model.StateMu.Unlock()
-
 		// CRITICAL: Mark for re-render when state changes
 		model.forceRender = true
 

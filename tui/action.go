@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/gou/process"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/components"
 	"github.com/yaoapp/yao/tui/core"
 )
 
@@ -144,19 +143,9 @@ func ProcessFocusPrevAction(model *Model, action *core.Action) (interface{}, err
 }
 
 // ProcessFormSubmitAction handles form submission
+// DEPRECATED: Input component collection has been removed due to tui/components removal
 // Usage: Called internally by executeProcessAction
 func ProcessFormSubmitAction(model *Model, action *core.Action) (interface{}, error) {
-	// Collect all input values and update state
-	model.StateMu.Lock()
-	for id, comp := range model.Components {
-		if comp.Type == "input" {
-			if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
-				model.State[id] = inputWrapper.GetValue()
-			}
-		}
-	}
-	model.StateMu.Unlock()
-
 	// CRITICAL: Mark for re-render when state changes
 	model.forceRender = true
 
@@ -173,20 +162,9 @@ func ProcessFormSubmitAction(model *Model, action *core.Action) (interface{}, er
 }
 
 // ProcessSubmitAction handles general data submission
+// DEPRECATED: Input component collection has been removed due to tui/components removal
 // Usage: Called internally by executeProcessAction
 func ProcessSubmitAction(model *Model, action *core.Action) (interface{}, error) {
-	// For general submission, we can collect input values similar to form submission
-	// but may also include additional processing based on action parameters
-	model.StateMu.Lock()
-	for id, comp := range model.Components {
-		if comp.Type == "input" {
-			if inputWrapper, ok := comp.Instance.(*components.InputComponentWrapper); ok {
-				model.State[id] = inputWrapper.GetValue()
-			}
-		}
-	}
-	model.StateMu.Unlock()
-
 	// CRITICAL: Mark for re-render when state changes
 	model.forceRender = true
 
