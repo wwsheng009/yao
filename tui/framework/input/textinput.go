@@ -11,7 +11,6 @@ import (
 	"github.com/yaoapp/yao/tui/framework/cursor"
 	"github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/style"
-	"github.com/yaoapp/yao/tui/framework/styling"
 	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )
@@ -98,8 +97,10 @@ type TextInput struct {
 	echo        rune
 	maxLength   int
 
-	// 样式提供者（依赖注入：组件不依赖具体主题实现）
-	styleProvider styling.StyleProvider
+	// 本地样式覆盖（可选）
+	normalStyle     *style.Style
+	focusStyle      *style.Style
+	placeholderStyle *style.Style
 
 	// 光标 - 使用独立的 Cursor 组件
 	cursorComp *cursor.Cursor
@@ -110,7 +111,6 @@ func NewTextInput() *TextInput {
 	return &TextInput{
 		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:    component.NewStateHolder(),
-		styleProvider:  styling.GetGlobalProvider(),
 		value:          "",
 		cursor:         0,
 		placeholder:    "",
@@ -126,7 +126,6 @@ func NewTextInputPlaceholder(placeholder string) *TextInput {
 	return &TextInput{
 		BaseComponent:  component.NewBaseComponent("input"),
 		StateHolder:    component.NewStateHolder(),
-		styleProvider:  styling.GetGlobalProvider(),
 		value:          "",
 		cursor:         0,
 		placeholder:    placeholder,
@@ -220,67 +219,27 @@ func (t *TextInput) Clear() *TextInput {
 	return t
 }
 
-// SetStyleProvider 设置样式提供者（依赖注入）
-// 这允许外部（如容器）注入主题系统或其他样式源
-func (t *TextInput) SetStyleProvider(provider styling.StyleProvider) *TextInput {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.styleProvider = provider
-	return t
-}
-
-// GetStyleProvider 获取当前样式提供者
-func (t *TextInput) GetStyleProvider() styling.StyleProvider {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.styleProvider
-}
-
-// SetNormalStyle 设置普通状态样式（通过本地覆盖）
+// SetNormalStyle 设置普通状态样式
 func (t *TextInput) SetNormalStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// 创建一个本地样式覆盖提供者
-	t.styleProvider = &OverrideProvider{
-		parent:     t.styleProvider,
-		baseStyle:  s,
-		focusStyle: nil,
-		placeholderStyle: nil,
-	}
+	t.normalStyle = &s
 	return t
 }
 
-// SetFocusStyle 设置焦点状态样式（通过本地覆盖）
+// SetFocusStyle 设置焦点状态样式
 func (t *TextInput) SetFocusStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	provider := &OverrideProvider{
-		parent:           t.styleProvider,
-		focusStyle:       &s,
-	}
-	// 如果已有覆盖提供者，保留其他设置
-	if existing, ok := t.styleProvider.(*OverrideProvider); ok {
-		provider.baseStyle = existing.baseStyle
-		provider.placeholderStyle = existing.placeholderStyle
-	}
-	t.styleProvider = provider
+	t.focusStyle = &s
 	return t
 }
 
-// SetPlaceholderStyle 设置占位符样式（通过本地覆盖）
+// SetPlaceholderStyle 设置占位符样式
 func (t *TextInput) SetPlaceholderStyle(s style.Style) *TextInput {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	provider := &OverrideProvider{
-		parent:            t.styleProvider,
-		placeholderStyle:  &s,
-	}
-	// 如果已有覆盖提供者，保留其他设置
-	if existing, ok := t.styleProvider.(*OverrideProvider); ok {
-		provider.baseStyle = existing.baseStyle
-		provider.focusStyle = existing.focusStyle
-	}
-	t.styleProvider = provider
+	t.placeholderStyle = &s
 	return t
 }
 
@@ -331,133 +290,29 @@ func (t *TextInput) SetDirtyCallback(fn func()) {
 // 辅助方法
 // ============================================================================
 
-// OverrideProvider 本地样式覆盖提供者
-// 允许组件实例覆盖从 StyleProvider 获取的样式
-type OverrideProvider struct {
-	parent            styling.StyleProvider
-	baseStyle         style.Style
-	focusStyle        *style.Style
-	placeholderStyle  *style.Style
-}
-
-// GetStyle 实现 styling.StyleProvider 接口
-func (p *OverrideProvider) GetStyle(componentID, state string) styling.StyleConfig {
-	// 首先检查本地覆盖
-	switch state {
-	case "focus":
-		if p.focusStyle != nil {
-			return p.styleToConfig(*p.focusStyle)
-		}
-	case "placeholder":
-		if p.placeholderStyle != nil {
-			return p.styleToConfig(*p.placeholderStyle)
-		}
-	}
-
-	// 检查 baseStyle（当没有特定状态样式时）
-	if state == "" && p.baseStyle != (style.Style{}) {
-		return p.styleToConfig(p.baseStyle)
-	}
-
-	// 回退到父提供者
-	if p.parent != nil {
-		return p.parent.GetStyle(componentID, state)
-	}
-
-	return styling.StyleConfig{}
-}
-
-// styleToConfig 将 style.Style 转换为 styling.StyleConfig
-func (p *OverrideProvider) styleToConfig(s style.Style) styling.StyleConfig {
-	config := styling.StyleConfig{}
-	if s.FG != style.NoColor {
-		config.Foreground = &styling.Color{
-			Type:  styling.ColorNamed,
-			Value: [3]int{255, 255, 255}, // 简化处理，实际需要解析颜色
-		}
-	}
-	if s.BG != style.NoColor {
-		config.Background = &styling.Color{
-			Type:  styling.ColorNamed,
-			Value: [3]int{0, 0, 0},
-		}
-	}
-	config.Bold = s.IsBold()
-	config.Italic = s.IsItalic()
-	config.Underline = s.IsUnderline()
-	config.Strikethrough = s.IsStrikethrough()
-	config.Reverse = s.IsReverse()
-	config.Blink = s.IsBlink()
-	return config
-}
-
-// stylingConfigToStyle 将 styling.StyleConfig 转换为 style.Style
-func (t *TextInput) stylingConfigToStyle(config styling.StyleConfig) style.Style {
-	s := style.Style{}
-	if config.Foreground != nil {
-		// 简化处理：将 RGB 转换为命名的颜色
-		s.FG = t.colorToStyleColor(*config.Foreground)
-	}
-	if config.Background != nil {
-		s.BG = t.colorToStyleColor(*config.Background)
-	}
-	if config.Bold {
-		s = s.Bold(true)
-	}
-	if config.Italic {
-		s = s.Italic(true)
-	}
-	if config.Underline {
-		s = s.Underline(true)
-	}
-	if config.Strikethrough {
-		s = s.Strikethrough(true)
-	}
-	if config.Reverse {
-		s = s.Reverse(true)
-	}
-	if config.Blink {
-		s = s.Blink(true)
-	}
-	return s
-}
-
-// colorToStyleColor 将 styling.Color 转换为 style.Color
-func (t *TextInput) colorToStyleColor(c styling.Color) style.Color {
-	// 简化处理：根据 RGB 值选择最接近的命名颜色
-	r, g, b := c.Value[0], c.Value[1], c.Value[2]
-
-	// 青色（输入框焦点常用色）
-	if r < 100 && g > 200 && b > 200 {
-		return style.Cyan
-	}
-	// 灰色（占位符常用色）
-	if r > 100 && r < 180 && g > 100 && g < 180 && b > 100 && b < 180 {
-		return style.BrightBlack
-	}
-	// 白色/浅色
-	if r > 200 && g > 200 && b > 200 {
-		return style.White
-	}
-	// 黑色/深色
-	if r < 100 && g < 100 && b < 100 {
-		return style.Black
-	}
-
-	return style.NoColor
-}
-
 // getDrawStyle 根据当前状态获取绘制样式
+// 优先级：本地覆盖 > 主题样式 > 默认样式
 func (t *TextInput) getDrawStyle(isFocused bool, hasValue bool) style.Style {
+	// 首先检查本地覆盖
+	if !hasValue && t.placeholderStyle != nil {
+		return *t.placeholderStyle
+	}
+	if isFocused && t.focusStyle != nil {
+		return *t.focusStyle
+	}
+	if t.normalStyle != nil {
+		return *t.normalStyle
+	}
+
+	// 从主题样式系统获取（通过 style.GetStyle）
 	var state string
 	if !hasValue {
 		state = "placeholder"
-	} else if isFocused {
+	}	else if isFocused {
 		state = "focus"
 	}
 
-	config := t.styleProvider.GetStyle("input", state)
-	return t.stylingConfigToStyle(config)
+	return style.GetStyle("input", state)
 }
 
 // ============================================================================
@@ -531,7 +386,7 @@ func (t *TextInput) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	displayValue := value
 	hasValue := value != ""
 
-	// 使用主题系统获取样式
+	// 使用样式系统获取样式
 	drawStyle := t.getDrawStyle(isFocused, hasValue)
 
 	if value == "" && placeholder != "" {

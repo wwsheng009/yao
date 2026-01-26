@@ -3,9 +3,36 @@ package style
 import (
 	"fmt"
 	"strings"
-
-	"github.com/yaoapp/yao/tui/framework/theme"
 )
+
+// =============================================================================
+// 全局样式获取 - 连接到主题系统
+// =============================================================================
+
+// getGlobalStyleGetter 获取全局样式获取函数
+// 这是一个桥接函数，让 style 包可以访问 styling 包的全局样式
+// 使用包变量函数避免循环导入
+var getGlobalStyleGetter func() func(string, string) Style
+
+// RegisterStyleGetter 注册全局样式获取函数
+// 由主题系统在初始化时调用
+func RegisterStyleGetter(getter func() func(string, string) Style) {
+	getGlobalStyleGetter = getter
+}
+
+// GetStyle 获取组件样式
+// 这是从组件获取样式的入口点
+// 如果主题系统未初始化，返回空样式
+func GetStyle(componentID, state string) Style {
+	if getGlobalStyleGetter == nil {
+		return Style{}
+	}
+	getter := getGlobalStyleGetter()
+	if getter == nil {
+		return Style{}
+	}
+	return getter(componentID, state)
+}
 
 // Color 颜色表示（简化版，与 theme.Color 兼容）
 // 建议新代码使用 theme.Color
@@ -288,41 +315,6 @@ func ParseRGB(r, g, b int) Color {
 // ParseHex 解析十六进制颜色
 func ParseHex(hex string) Color {
 	return Color(hex)
-}
-
-// =============================================================================
-// 与 theme 系统的集成
-// =============================================================================
-
-// FromThemeColor 将 theme.Color 转换为 style.Color
-func FromThemeColor(c theme.Color) Color {
-	return Color(c.String())
-}
-
-// ToThemeColor 将 style.Color 转换为 theme.Color
-func ToThemeColor(c Color) theme.Color {
-	return theme.ParseColor(string(c))
-}
-
-// Theme 主题（兼容旧代码）
-// 建议：新代码使用 theme.Theme
-type Theme = theme.Theme
-
-// DefaultTheme 默认主题
-var DefaultTheme = theme.DarkTheme
-
-// LightTheme 亮色主题
-var LightTheme = theme.LightTheme
-
-// DraculaTheme Dracula 主题
-var DraculaTheme = theme.DraculaTheme
-
-// NordTheme Nord 主题
-var NordTheme = theme.NordTheme
-
-// GetTheme 获取主题
-func GetTheme(name string) *theme.Theme {
-	return theme.GetBuiltinTheme(name)
 }
 
 // =============================================================================

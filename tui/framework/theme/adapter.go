@@ -1,6 +1,9 @@
 package theme
 
 import (
+	"fmt"
+
+	"github.com/yaoapp/yao/tui/framework/style"
 	"github.com/yaoapp/yao/tui/framework/styling"
 )
 
@@ -8,110 +11,242 @@ import (
 // 主题到样式提供者的适配器
 // =============================================================================
 
-// ThemeProvider 主题样式提供者
+// ThemeStyleProvider 主题样式提供者
 // 将 theme.Manager 适配为 styling.StyleProvider 接口
 // 这实现了适配器模式，让主题系统可以作为样式提供者使用
-type ThemeProvider struct {
+type ThemeStyleProvider struct {
 	manager *Manager
 }
 
-// NewThemeProvider 创建主题样式提供者
-func NewThemeProvider(manager *Manager) *ThemeProvider {
-	return &ThemeProvider{
+// NewThemeStyleProvider 创建主题样式提供者
+func NewThemeStyleProvider(manager *Manager) *ThemeStyleProvider {
+	return &ThemeStyleProvider{
 		manager: manager,
 	}
 }
 
 // GetStyle 实现 styling.StyleProvider 接口
-func (p *ThemeProvider) GetStyle(componentID, state string) styling.StyleConfig {
+// 直接返回 style.Style，供组件渲染使用
+func (p *ThemeStyleProvider) GetStyle(componentID, state string) style.Style {
 	if p.manager == nil {
-		return styling.StyleConfig{}
+		return style.Style{}
 	}
 
 	// 从主题获取样式配置
 	config := p.manager.GetComponentStyle(componentID, state)
 
-	// 转换为 styling.StyleConfig
-	return p.convertToStylingConfig(config)
+	// 转换为 style.Style（一次性转换，渲染层直接使用）
+	return p.configToStyle(config)
 }
 
-// convertToStylingConfig 将 theme.StyleConfig 转换为 styling.StyleConfig
-func (p *ThemeProvider) convertToStylingConfig(config StyleConfig) styling.StyleConfig {
-	result := styling.StyleConfig{}
+// Name 实现 styling.ThemeProvider 接口
+func (p *ThemeStyleProvider) Name() string {
+	if p.manager != nil && p.manager.Current() != nil {
+		return p.manager.Current().Name
+	}
+	return "unknown"
+}
+
+// SetTheme 实现 styling.ThemeProvider 接口
+func (p *ThemeStyleProvider) SetTheme(name string) error {
+	if p.manager == nil {
+		return styling.ErrThemeNotFound
+	}
+	return p.manager.Set(name)
+}
+
+// CurrentTheme 实现 styling.ThemeProvider 接口
+func (p *ThemeStyleProvider) CurrentTheme() string {
+	if p.manager != nil && p.manager.Current() != nil {
+		return p.manager.Current().Name
+	}
+	return "default"
+}
+
+// configToStyle 将 StyleConfig 转换为 style.Style
+// 这是唯一需要转换的地方 - 从主题配置到渲染样式
+func (p *ThemeStyleProvider) configToStyle(config StyleConfig) style.Style {
+	s := style.Style{}
 
 	if config.Foreground != nil {
-		result.Foreground = p.convertColor(*config.Foreground)
+		s.FG = p.colorToStyleColor(*config.Foreground)
 	}
 	if config.Background != nil {
-		result.Background = p.convertColor(*config.Background)
+		s.BG = p.colorToStyleColor(*config.Background)
 	}
-	result.Bold = config.Bold
-	result.Italic = config.Italic
-	result.Underline = config.Underline
-	result.Strikethrough = config.Strikethrough
-	result.Reverse = config.Reverse
-	result.Blink = config.Blink
+	if config.Bold {
+		s = s.Bold(true)
+	}
+	if config.Italic {
+		s = s.Italic(true)
+	}
+	if config.Underline {
+		s = s.Underline(true)
+	}
+	if config.Strikethrough {
+		s = s.Strikethrough(true)
+	}
+	if config.Reverse {
+		s = s.Reverse(true)
+	}
+	if config.Blink {
+		s = s.Blink(true)
+	}
 
-	return result
+	return s
 }
 
-// convertColor 转换颜色
-func (p *ThemeProvider) convertColor(c Color) *styling.Color {
+// colorToStyleColor 将 theme.Color 转换为 style.Color
+func (p *ThemeStyleProvider) colorToStyleColor(c Color) style.Color {
 	if c.IsNone() {
-		return nil
+		return style.NoColor
 	}
 
-	sc := &styling.Color{
-		Type: styling.ColorType(c.Type),
-	}
-
-	// 根据 color 类型提取值
 	switch c.Type {
 	case ColorRGB, ColorHex:
-		if rgb, ok := c.Value.([3]int); ok {
-			sc.Value = rgb
-		}
-	case Color256:
-		if code, ok := c.Value.(int); ok {
-			// 将 256 色码转换为 RGB 简化处理
-			// 实际应用中可能需要更复杂的转换
-			sc.Value = [3]int{code, code, code}
-		}
+		r, g, b := c.RGBValue()
+		// 根据RGB值选择最接近的命名颜色
+		return p.rgbToNamedColor(r, g, b)
+
 	case ColorNamed:
 		if name, ok := c.Value.(string); ok {
-			// 命名颜色转为预设的 RGB 值
-			sc.Value = namedColorToRGB(name)
+			return p.namedColorToStyle(name)
+		}
+
+	case Color256:
+		// 256色模式简化处理
+		if code, ok := c.Value.(int); ok {
+			return p.color256ToStyle(code)
 		}
 	}
 
-	return sc
+	return style.NoColor
 }
 
-// namedColorToRGB 将命名颜色转换为 RGB 值
-func namedColorToRGB(name string) [3]int {
-	// 基本颜色映射
-	colors := map[string][3]int{
-		"black":         {0, 0, 0},
-		"red":           {255, 0, 0},
-		"green":         {0, 255, 0},
-		"yellow":        {255, 255, 0},
-		"blue":          {0, 0, 255},
-		"magenta":       {255, 0, 255},
-		"cyan":          {0, 255, 255},
-		"white":         {255, 255, 255},
-		"bright-black":   {128, 128, 128},
-		"bright-red":     {255, 128, 128},
-		"bright-green":   {128, 255, 128},
-		"bright-yellow":  {255, 255, 128},
-		"bright-blue":    {128, 128, 255},
-		"bright-magenta": {255, 128, 255},
-		"bright-cyan":    {128, 255, 255},
-		"bright-white":   {255, 255, 255},
+// rgbToNamedColor 将RGB转换为最接近的命名颜色
+func (p *ThemeStyleProvider) rgbToNamedColor(r, g, b int) style.Color {
+	// 计算亮度
+	brightness := (r + g + b) / 3
+
+	// 黑色/深色
+	if brightness < 50 {
+		return style.Black
 	}
-	if rgb, ok := colors[name]; ok {
-		return rgb
+
+	// 白色/浅色
+	if brightness > 200 {
+		return style.White
 	}
-	return [3]int{255, 255, 255}
+
+	// 灰色
+	if r > 100 && r < 180 && g > 100 && g < 180 && b > 100 && b < 180 {
+		return style.BrightBlack
+	}
+
+	// 红色
+	if r > 200 && g < 100 && b < 100 {
+		return style.Red
+	}
+
+	// 绿色
+	if r < 100 && g > 200 && b < 100 {
+		return style.Green
+	}
+
+	// 蓝色
+	if r < 100 && g < 100 && b > 200 {
+		return style.Blue
+	}
+
+	// 青色 (Cyan - 输入框焦点常用色)
+	if r < 100 && g > 200 && b > 200 {
+		return style.Cyan
+	}
+
+	// 品红
+	if r > 200 && g < 100 && b > 200 {
+		return style.Magenta
+	}
+
+	// 黄色
+	if r > 200 && g > 200 && b < 100 {
+		return style.Yellow
+	}
+
+	// 亮蓝
+	if r < 150 && g < 200 && b > 200 {
+		return style.BrightBlue
+	}
+
+	// 亮绿
+	if r < 150 && g > 200 && b < 150 {
+		return style.BrightGreen
+	}
+
+	// 亮红
+	if r > 200 && g < 150 && b < 150 {
+		return style.BrightRed
+	}
+
+	// 默认返回白色
+	return style.White
+}
+
+// namedColorToStyle 命名颜色转style.Color
+func (p *ThemeStyleProvider) namedColorToStyle(name string) style.Color {
+	// 直接使用 ColorCodes 映射
+	if code, ok := ColorCodes[name]; ok {
+		// 将ANSI代码转为style.Color
+		return p.ansiCodeToColor(code)
+	}
+	return style.NoColor
+}
+
+// ansiCodeToColor ANSI代码转style.Color
+func (p *ThemeStyleProvider) ansiCodeToColor(code int) style.Color {
+	colors := map[int]style.Color{
+		0:  style.Black,
+		1:  style.Red,
+		2:  style.Green,
+		3:  style.Yellow,
+		4:  style.Blue,
+		5:  style.Magenta,
+		6:  style.Cyan,
+		7:  style.White,
+		8:  style.BrightBlack,
+		9:  style.BrightRed,
+		10: style.BrightGreen,
+		11: style.BrightYellow,
+		12: style.BrightBlue,
+		13: style.BrightMagenta,
+		14: style.BrightCyan,
+		15: style.BrightWhite,
+	}
+	if c, ok := colors[code]; ok {
+		return c
+	}
+	return style.NoColor
+}
+
+// color256ToStyle 256色转style.Color
+func (p *ThemeStyleProvider) color256ToStyle(code int) style.Color {
+	// 简化处理：将256色映射到16色
+	// 0-7: 标准色, 8-15: 亮色, 16-231: 216色, 232-255: 灰度
+	switch {
+	case code <= 7:
+		return p.ansiCodeToColor(code)
+	case code <= 15:
+		return p.ansiCodeToColor(code)
+	case code >= 232 && code <= 255:
+		// 灰度，根据亮度返回
+		if code < 244 {
+			return style.BrightBlack
+		}
+		return style.White
+	default:
+		// 216色区域，简化处理
+		return style.White
+	}
 }
 
 // =============================================================================
@@ -120,7 +255,51 @@ func namedColorToRGB(name string) [3]int {
 
 // RegisterAsGlobal 将主题管理器注册为全局样式提供者
 // 这是应用初始化时的便捷方法
+// 同时注册到 styling 包和 style 包的桥接
 func (m *Manager) RegisterAsGlobal() {
-	provider := NewThemeProvider(m)
-	styling.RegisterGlobalProvider(provider)
+	provider := NewThemeStyleProvider(m)
+	styling.SetProvider(provider)
+
+	// 注册到 style 包的桥接，让 style.GetStyle() 可以工作
+	// 包装为 func() StyleGetter 以匹配 style.RegisterStyleGetter 的签名
+	style.RegisterStyleGetter(func() func(string, string) style.Style {
+		return styling.GetStyleGetter()
+	})
+}
+
+// SetTheme 设置主题并更新全局提供者
+// 便捷方法：切换主题
+func (m *Manager) SetThemeGlobal(name string) error {
+	if err := m.Set(name); err != nil {
+		return err
+	}
+
+	// 更新全局提供者（如果当前已注册）
+	if current := styling.GetProvider(); current != nil {
+		if tsp, ok := current.(*ThemeStyleProvider); ok && tsp.manager == m {
+			styling.SetProvider(NewThemeStyleProvider(m))
+		}
+	}
+
+	return nil
+}
+
+// =============================================================================
+// 便捷主题切换入口
+// =============================================================================
+
+// InitThemes 初始化主题系统
+// 创建管理器，注册内置主题，设置为全局提供者
+func InitThemes(initialTheme string) (*Manager, error) {
+	mgr := NewManager()
+	mgr.RegisterMultiple(BuiltinThemes())
+
+	if initialTheme != "" {
+		if err := mgr.Set(initialTheme); err != nil {
+			return mgr, fmt.Errorf("failed to set initial theme: %w", err)
+		}
+	}
+
+	mgr.RegisterAsGlobal()
+	return mgr, nil
 }

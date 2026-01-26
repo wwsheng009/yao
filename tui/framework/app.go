@@ -14,6 +14,7 @@ import (
 	frameworkevent "github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/platform"
 	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/framework/theme"
 	"github.com/yaoapp/yao/tui/runtime/core"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 	"github.com/yaoapp/yao/tui/runtime/render"
@@ -78,6 +79,11 @@ type App struct {
 
 	// 上下文管理器
 	contextMgr *core.ContextManager
+
+	// 主题管理器
+	themeMgr     *theme.Manager
+	themeName    string // 当前主题名称
+	themeEnabled bool   // 是否启用主题系统
 }
 
 // NewApp 创建新应用
@@ -190,6 +196,51 @@ func (a *App) GetRenderStats() render.Stats {
 func (a *App) ForceRender() {
 	a.throttler.ForceRender()
 	a.dirty = true
+}
+
+// ============================================================================
+// 主题系统配置
+// ============================================================================
+
+// InitTheme 初始化主题系统
+// 如果未指定主题名称，则使用默认主题 "dark"
+func (a *App) InitTheme(themeName string) error {
+	mgr, err := theme.InitThemes(themeName)
+	if err != nil {
+		return fmt.Errorf("failed to initialize theme: %w", err)
+	}
+	a.themeMgr = mgr
+	a.themeName = mgr.Current().Name
+	a.themeEnabled = true
+	return nil
+}
+
+// SetTheme 切换主题
+func (a *App) SetTheme(name string) error {
+	if a.themeMgr == nil {
+		return errors.New("theme manager not initialized, call InitTheme first")
+	}
+	if err := a.themeMgr.Set(name); err != nil {
+		return err
+	}
+	a.themeName = name
+	a.dirty = true // 触发重绘
+	return nil
+}
+
+// GetTheme 获取当前主题名称
+func (a *App) GetTheme() string {
+	return a.themeName
+}
+
+// ThemeManager 获取主题管理器
+func (a *App) ThemeManager() *theme.Manager {
+	return a.themeMgr
+}
+
+// IsThemeEnabled 检查主题系统是否启用
+func (a *App) IsThemeEnabled() bool {
+	return a.themeEnabled
 }
 
 // ============================================================================

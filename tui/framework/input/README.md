@@ -279,3 +279,98 @@ Main Loop (每 16ms):
 | `tui/framework/input/cursor.go` | 全局光标管理器（新建） |
 | `tui/framework/form/form.go` | 焦点传播修复 |
 | `tui/framework/style/style.go` | Reverse() 方法已存在 |
+
+---
+
+## 主题系统集成
+
+TextInput 组件已集成主题系统，支持运行时主题切换。
+
+### 样式状态
+
+组件支持以下样式状态：
+
+| 状态 | 说明 |
+|------|------|
+| `""` 或 `"default"` | 默认状态 |
+| `"focus"` | 获得焦点 |
+| `"placeholder"` | 占位符显示 |
+
+### 使用方式
+
+```go
+import "github.com/yaoapp/yao/tui/framework/input"
+
+// 创建输入框
+input := input.NewTextInput()
+
+// 设置占位符
+input.SetPlaceholder("请输入用户名...")
+
+// 组件会自动使用当前主题样式
+// 无需手动传递样式对象
+```
+
+### 本地样式覆盖
+
+```go
+import "github.com/yaoapp/yao/tui/framework/style"
+
+// 设置焦点样式（覆盖主题）
+input.SetFocusStyle(style.Style{}.
+    Foreground(style.Red).
+    Bold(true))
+
+// 设置占位符样式
+input.SetPlaceholderStyle(style.Style{}.
+    Foreground(style.BrightBlack))
+
+// 设置默认样式
+input.SetNormalStyle(style.Style{}.
+    Foreground(style.White))
+```
+
+### 主题切换
+
+```go
+import "github.com/yaoapp/yao/tui/framework/styling"
+
+// 运行时切换主题（所有输入框立即生效）
+err := styling.SetTheme("light")
+```
+
+### 实现细节
+
+组件通过 `style.GetStyle()` 获取主题样式，无需依赖 `styling` 包：
+
+```go
+// textinput.go 中的实现
+func (t *TextInput) getDrawStyle(isFocused bool, hasValue bool) style.Style {
+    // 优先级：本地覆盖 > 主题样式
+    if !hasValue && t.placeholderStyle != nil {
+        return *t.placeholderStyle
+    }
+    if isFocused && t.focusStyle != nil {
+        return *t.focusStyle
+    }
+    if t.normalStyle != nil {
+        return *t.normalStyle
+    }
+
+    // 从主题获取
+    var state string
+    if !hasValue {
+        state = "placeholder"
+    } else if isFocused {
+        state = "focus"
+    }
+
+    return style.GetStyle("input", state)
+}
+```
+
+### 相关文档
+
+- [TUI_THEME_DESIGN.md](../docs/TUI_THEME_DESIGN.md) - 主题管理系统设计
+- [../style/README.md](../style/README.md) - 样式系统
+- [../theme/](../theme/) - 主题系统
