@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"time"
 )
 
@@ -150,4 +151,104 @@ func (e *BaseEvent) Reset() {
 	e.stopped = false
 	e.stoppedImm = false
 	e.timestamp = time.Time{}
+}
+
+// ==============================================================================
+// Event Context (for Filter System)
+// ==============================================================================
+
+// Context 事件上下文，用于过滤器系统
+type Context struct {
+	// context Go 标准上下文
+	context context.Context
+
+	// source 事件源
+	source string
+
+	// metadata 元数据
+	metadata map[string]interface{}
+}
+
+// NewContext 创建事件上下文
+func NewContext() *Context {
+	return &Context{
+		context:  context.Background(),
+		metadata: make(map[string]interface{}),
+	}
+}
+
+// NewContextWithContext 创建带 Go 上下文的事件上下文
+func NewContextWithContext(ctx context.Context) *Context {
+	return &Context{
+		context:  ctx,
+		metadata: make(map[string]interface{}),
+	}
+}
+
+// Context 返回 Go 标准上下文
+func (c *Context) Context() context.Context {
+	if c == nil {
+		return context.Background()
+	}
+	return c.context
+}
+
+// WithContext 设置 Go 标准上下文
+func (c *Context) WithContext(ctx context.Context) *Context {
+	c.context = ctx
+	return c
+}
+
+// Source 返回事件源
+func (c *Context) Source() string {
+	if c == nil {
+		return ""
+	}
+	return c.source
+}
+
+// WithSource 设置事件源
+func (c *Context) WithSource(source string) *Context {
+	c.source = source
+	return c
+}
+
+// Get 获取元数据
+func (c *Context) Get(key string) interface{} {
+	if c == nil || c.metadata == nil {
+		return nil
+	}
+	return c.metadata[key]
+}
+
+// Set 设置元数据
+func (c *Context) Set(key string, value interface{}) {
+	if c.metadata == nil {
+		c.metadata = make(map[string]interface{})
+	}
+	c.metadata[key] = value
+}
+
+// With 设置元数据（链式调用）
+func (c *Context) With(key string, value interface{}) *Context {
+	c.Set(key, value)
+	return c
+}
+
+// Clone 克隆上下文
+func (c *Context) Clone() *Context {
+	if c == nil {
+		return NewContext()
+	}
+
+	metadata := make(map[string]interface{}, len(c.metadata))
+	for k, v := range c.metadata {
+		metadata[k] = v
+	}
+
+	return &Context{
+		context:  c.context,
+		source:   c.source,
+		metadata: metadata,
+	}
 }

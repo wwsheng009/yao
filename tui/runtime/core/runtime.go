@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/yaoapp/yao/tui/framework/platform"
 	"github.com/yaoapp/yao/tui/runtime/action"
@@ -39,6 +41,9 @@ type Runtime struct {
 	// KeyMap 输入映射
 	keyMap *input.KeyMap
 
+	// ContextManager 上下文管理器
+	contextManager *ContextManager
+
 	// Root 根节点
 	root layout.Node
 
@@ -65,6 +70,7 @@ func NewRuntime(pf platform.RuntimePlatform) *Runtime {
 		stateTracker:     state.NewTracker(),
 		actionDispatcher: action.NewDispatcher(),
 		keyMap:           input.NewKeyMap(),
+		contextManager:   NewContextManager(context.Background()),
 		dirtyTracker:     paint.NewDirtyTracker(),
 		running:          false,
 	}
@@ -453,6 +459,13 @@ func (r *Runtime) Run() error {
 	defer r.Stop()
 
 	for r.IsRunning() {
+		// 检查上下文是否已取消
+		select {
+		case <-r.Context().Done():
+			return r.Context().Err()
+		default:
+		}
+
 		if err := r.Update(); err != nil {
 			return err
 		}
@@ -462,4 +475,70 @@ func (r *Runtime) Run() error {
 	}
 
 	return nil
+}
+
+// ==============================================================================
+// Context Support Methods
+// ==============================================================================
+
+// Context 返回运行时上下文
+func (r *Runtime) Context() context.Context {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.contextManager.Context()
+}
+
+// WithContext 设置父上下文
+func (r *Runtime) WithContext(ctx context.Context) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.contextManager = NewContextManager(ctx)
+}
+
+// Shutdown 优雅关闭运行时
+func (r *Runtime) Shutdown(timeout ...time.Duration) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// 停止运行
+	r.running = false
+
+	// 关闭平台
+	if err := r.platform.Close(); err != nil {
+		return err
+	}
+
+	// 关闭上下文管理器
+	return r.contextManager.Shutdown(timeout...)
+}
+
+// Go 在运行时上下文中启动 goroutine
+func (r *Runtime) Go(f func(context.Context) error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	r.contextManager.Go(f)
+}
+
+// ContextValue 获取上下文值
+func (r *Runtime) ContextValue(key ContextKey) interface{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.contextManager.Value(key)
+}
+
+// SetContextValue 设置上下文值
+func (r *Runtime) SetContextValue(key ContextKey, value interface{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.contextManager.WithValue(key, value)
+}
+
+// IsCanceled 检查上下文是否已取消
+func (r *Runtime) IsCanceled() bool {
+	select {
+	case <-r.Context().Done():
+		return true
+	default:
+		return false
+	}
 }
