@@ -294,7 +294,7 @@ func (m *Manager) GetStyle(componentID, styleKey string) StyleConfig {
 		return StyleConfig{}
 	}
 
-	// 1. 查找组件特定样式
+	// 1. 查找组件特定样式（如 input、button 等）
 	if compStyle, ok := m.current.Components[componentID]; ok {
 		if styleKey != "" {
 			if stateStyle, ok := compStyle.States[styleKey]; ok {
@@ -304,12 +304,22 @@ func (m *Manager) GetStyle(componentID, styleKey string) StyleConfig {
 		return compStyle.Base
 	}
 
-	// 2. 查找全局样式
-	if style, ok := m.current.Styles[styleKey]; ok {
-		return style
+	// 2. 如果 styleKey 为空，尝试用 componentID 直接查找全局样式
+	// 这支持 "text.primary"、"text.secondary" 这样的样式ID
+	if styleKey == "" {
+		if style, ok := m.current.Styles[componentID]; ok {
+			return style
+		}
 	}
 
-	// 3. 查找父主题
+	// 3. 查找全局样式（使用 styleKey）
+	if styleKey != "" {
+		if style, ok := m.current.Styles[styleKey]; ok {
+			return style
+		}
+	}
+
+	// 4. 查找父主题
 	return m.resolveStyle(m.current.Parent, componentID, styleKey)
 }
 

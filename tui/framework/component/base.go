@@ -38,6 +38,9 @@ type BaseComponent struct {
 
 	// 父容器
 	parent Container
+
+	// 组件上下文（用于脏标记等运行时功能）
+	context *ComponentContext
 }
 
 // NewBaseComponent 创建 V3 基础组件
@@ -143,6 +146,7 @@ func (c *BaseComponent) Unmount() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.parent = nil
+	c.context = nil
 }
 
 // IsMounted 检查是否已挂载
@@ -150,6 +154,33 @@ func (c *BaseComponent) IsMounted() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.parent != nil
+}
+
+// MountWithContext 挂载到父容器并接收组件上下文
+// 实现 MountableWithContext 接口
+func (c *BaseComponent) MountWithContext(parent Container, ctx *ComponentContext) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.parent = parent
+	c.context = ctx
+}
+
+// GetComponentContext 获取组件上下文
+func (c *BaseComponent) GetComponentContext() *ComponentContext {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.context
+}
+
+// MarkDirty 标记组件为脏状态，触发重新渲染
+func (c *BaseComponent) MarkDirty() {
+	c.mu.RLock()
+	ctx := c.context
+	c.mu.RUnlock()
+
+	if ctx != nil {
+		ctx.MarkDirty()
+	}
 }
 
 // ============================================================================

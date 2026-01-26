@@ -1,6 +1,7 @@
 package styling
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"github.com/yaoapp/yao/tui/framework/style"
@@ -15,28 +16,35 @@ import (
 // 这样组件只需要导入 style 包，而不需要导入 styling 包
 type StyleGetter func(componentID, state string) style.Style
 
+// styleGetterWrapper 包装 StyleGetter，确保 atomic.Value 存储相同类型
+type styleGetterWrapper struct {
+	getter StyleGetter
+}
+
 // globalGetter 全局样式获取函数（原子存储）
-var globalGetter atomic.Value // 存储 StyleGetter
+// 使用 wrapper 确保存储类型一致
+var globalGetter atomic.Value // 存储 *styleGetterWrapper
 
 // init 初始化默认获取函数
 func init() {
-	globalGetter.Store(defaultStyleGetter)
+	globalGetter.Store(&styleGetterWrapper{getter: defaultStyleGetter})
 }
 
 // GetStyleGetter 获取全局样式获取函数
 // 这是组件获取样式的入口点
 func GetStyleGetter() StyleGetter {
-	getter := globalGetter.Load()
-	if getter == nil {
+	wrapper := globalGetter.Load()
+	if wrapper == nil {
 		return defaultStyleGetter
 	}
-	return getter.(StyleGetter)
+	return wrapper.(*styleGetterWrapper).getter
 }
 
 // SetStyleGetter 设置全局样式获取函数
 // 通常由主题系统调用
+// 注意：多次调用会覆盖之前的 getter，但不会改变类型
 func SetStyleGetter(getter StyleGetter) {
-	globalGetter.Store(getter)
+	globalGetter.Store(&styleGetterWrapper{getter: getter})
 }
 
 // defaultStyleGetter 默认样式获取函数
@@ -73,6 +81,28 @@ func defaultButtonStyle(state string) style.Style {
 	default:
 		return style.Style{}
 	}
+}
+
+// =============================================================================
+// 主题初始化保护（防止多次初始化）
+// =============================================================================
+
+var (
+	themeInitOnce sync.Once
+	isThemeInitialized bool
+)
+
+// MarkThemeInitialized 标记主题已初始化
+// 由 InitThemes 调用，防止重复注册
+func MarkThemeInitialized() {
+	themeInitOnce.Do(func() {
+		isThemeInitialized = true
+	})
+}
+
+// IsThemeInitialized 检查主题是否已初始化
+func IsThemeInitialized() bool {
+	return isThemeInitialized
 }
 
 // =============================================================================
@@ -130,11 +160,8 @@ func (p styleGetterProvider) GetStyle(componentID, state string) style.Style {
 
 // GetProvider 获取当前样式提供者
 func GetProvider() StyleProvider {
-	getter := globalGetter.Load()
-	if getter == nil {
-		return DefaultProvider{}
-	}
-	return GetterToProvider(getter.(StyleGetter))
+	getter := GetStyleGetter()
+	return GetterToProvider(getter)
 }
 
 // SetProvider 设置样式提供者

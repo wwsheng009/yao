@@ -99,10 +99,60 @@ func (k *KeyMap) BindFunc(combo string, handler func(*KeyEvent)) error {
 
 // Lookup 查找快捷键处理器
 func (k *KeyMap) Lookup(ev *KeyEvent) (EventHandler, bool) {
-	// TODO: 实现查找
+	// 优先按字符键查找
+	if ev.Key > 0 {
+		if handler, ok := k.bindings[string(ev.Key)]; ok {
+			return handler, true
+		}
+	}
+
+	// 按特殊键查找
+	if ev.Special != KeyUnknown {
+		specialName := k.specialKeyName(ev.Special)
+		if handler, ok := k.bindings[specialName]; ok {
+			return handler, true
+		}
+	}
+
 	return nil, false
 }
 
+// specialKeyName 获取特殊键名称
+func (k *KeyMap) specialKeyName(key SpecialKey) string {
+	names := map[SpecialKey]string{
+		KeyEscape:   "escape",
+		KeyEnter:    "enter",
+		KeyTab:      "tab",
+		KeyBackspace: "backspace",
+		KeyDelete:   "delete",
+		KeyInsert:   "insert",
+		KeyUp:       "up",
+		KeyDown:     "down",
+		KeyLeft:     "left",
+		KeyRight:    "right",
+		KeyHome:     "home",
+		KeyEnd:      "end",
+		KeyPageUp:   "pageup",
+		KeyPageDown: "pagedown",
+		KeyF1:       "f1",
+		KeyF2:       "f2",
+		KeyF3:       "f3",
+		KeyF4:       "f4",
+		KeyF5:       "f5",
+		KeyF6:       "f6",
+		KeyF7:       "f7",
+		KeyF8:       "f8",
+		KeyF9:       "f9",
+		KeyF10:      "f10",
+		KeyF11:      "f11",
+		KeyF12:      "f12",
+		KeySpace:    "space",
+	}
+	if name, ok := names[key]; ok {
+		return name
+	}
+	return ""
+}
 
 // MousePressEvent 鼠标按下事件
 type MousePressEvent struct {

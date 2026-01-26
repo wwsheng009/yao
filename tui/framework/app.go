@@ -84,6 +84,9 @@ type App struct {
 	themeMgr     *theme.Manager
 	themeName    string // 当前主题名称
 	themeEnabled bool   // 是否启用主题系统
+
+	// 用户数据存储（用于存储任意用户定义数据）
+	userData map[string]interface{}
 }
 
 // NewApp 创建新应用
@@ -99,6 +102,7 @@ func NewApp() *App {
 		debugLogFile: os.Getenv("TUI_DEBUG_LOG"),
 		throttler:    render.NewThrottler(60), // 默认 60 FPS
 		contextMgr:   core.NewContextManager(context.Background()),
+		userData:     make(map[string]interface{}),
 	}
 }
 
@@ -241,6 +245,16 @@ func (a *App) ThemeManager() *theme.Manager {
 // IsThemeEnabled 检查主题系统是否启用
 func (a *App) IsThemeEnabled() bool {
 	return a.themeEnabled
+}
+
+// SetUserData 设置用户数据
+func (a *App) SetUserData(key string, value interface{}) {
+	a.userData[key] = value
+}
+
+// GetUserData 获取用户数据
+func (a *App) GetUserData(key string) interface{} {
+	return a.userData[key]
 }
 
 // ============================================================================
@@ -467,8 +481,27 @@ func (a *App) handleEvent(ev frameworkevent.Event) {
 	// 路由事件
 	a.router.Route(ev)
 
-	// 键盘事件发送到根组件
+	// 窗口大小调整事件处理
+	if ev.Type() == frameworkevent.EventResize {
+		if resizeEv, ok := ev.(*frameworkevent.ResizeEvent); ok {
+			a.Resize(resizeEv.NewWidth, resizeEv.NewHeight)
+		}
+		return
+	}
+
+	// 键盘事件处理
 	if ev.Type() == frameworkevent.EventKeyPress {
+		// 首先检查快捷键映射
+		if keyEv, ok := ev.(*frameworkevent.KeyEvent); ok {
+			if handler, found := a.keyMap.Lookup(keyEv); found {
+				if handler.HandleEvent(ev) {
+					a.dirty = true
+					return
+				}
+			}
+		}
+
+		// 然后发送到根组件
 		if a.root != nil {
 			// 使用 duck typing 检查是否有 HandleEvent 方法
 			if handler, ok := a.root.(interface{ HandleEvent(frameworkevent.Event) bool }); ok {
@@ -529,6 +562,7 @@ func (a *App) render() {
 		outputMode := os.Getenv("TUI_OUTPUT_MODE")
 		if outputMode == "direct" {
 			a.outputBufferDirect(buf)
+			// a.outputBuffer(buf)
 		} else {
 			// 默认使用差异比较优化
 			a.outputBuffer(buf)
@@ -626,15 +660,28 @@ func (a *App) outputBuffer(buf *paint.Buffer) {
 
 	// 构建输出内容
 	currentY := -1
+	cursorX := 0  // 追踪终端光标的实际列位置
 	for _, change := range changes {
 		x, y := change.x, change.y
+
 		newCell := buf.Cells[y][x]
+
+		// 跳过空字符和宽字符的填充单元格
+		if newCell.Char == 0 || newCell.Width == 0 {
+			continue
+		}
+
+		// 如果当前单元格在光标位置之前（被宽字符占据），跳过
+		if y == currentY && x < cursorX {
+			continue
+		}
 
 		// 如果换行了，移动到新行的开头
 		if y != currentY {
 			output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
 			currentY = y
 			lastX, lastY = x, y
+			cursorX = x
 		} else if x != lastX || y != lastY {
 			// 同一行内，使用相对移动
 			if x > lastX {
@@ -644,6 +691,7 @@ func (a *App) outputBuffer(buf *paint.Buffer) {
 				output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
 			}
 			lastX, lastY = x, y
+			cursorX = x
 		}
 
 		// 设置字符
@@ -664,7 +712,12 @@ func (a *App) outputBuffer(buf *paint.Buffer) {
 		}
 
 		output.WriteRune(char)
-		lastX++
+		// 更新光标位置（宽字符占据 2 列）
+		cursorX += newCell.Width
+		if cursorX == 0 {
+			cursorX = 1
+		}
+		lastX = cursorX  // 用于下次相对移动
 	}
 
 	// 更新 prevBuffer - 在所有输出完成后更新
@@ -711,8 +764,20 @@ func (a *App) outputBufferDirect(buf *paint.Buffer) {
 
 	// 构建输出内容 - 输出所有单元格
 	for y := 0; y < buf.Height; y++ {
+		skipNextCell := false
 		for x := 0; x < buf.Width; x++ {
+			// 如果上一个字符是宽字符，跳过它占据的下一个单元格
+			if skipNextCell {
+				skipNextCell = false
+				continue
+			}
+
 			cell := buf.Cells[y][x]
+
+			// 跳过宽字符的填充单元格 (Width == 0)
+			if cell.Width == 0 {
+				continue
+			}
 
 			// 设置字符
 			char := cell.Char
@@ -732,6 +797,8 @@ func (a *App) outputBufferDirect(buf *paint.Buffer) {
 			}
 
 			output.WriteRune(char)
+			// 如果是宽字符，标记跳过下一个单元格
+			skipNextCell = (cell.Width == 2)
 		}
 
 		// 行末重置样式并换行（除了最后一行）
@@ -851,7 +918,19 @@ func (a *App) GetSize() (width, height int) {
 
 // Resize 调整尺寸
 func (a *App) Resize(width, height int) {
+	sizeChanged := a.terminalWidth != width || a.terminalHeight != height
 	a.terminalWidth = width
 	a.terminalHeight = height
 	a.dirty = true
+
+	// 尺寸变化时清屏，避免残留内容
+	if sizeChanged && !a.firstRender {
+		a.clearScreen()
+	}
+}
+
+// clearScreen 清屏
+func (a *App) clearScreen() {
+	fmt.Print("\x1b[2J")  // 清屏
+	fmt.Print("\x1b[H")   // 移动光标到左上角
 }

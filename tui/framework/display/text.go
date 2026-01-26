@@ -24,6 +24,10 @@ type Text struct {
 	wrap     bool
 	maxLines int
 	style    style.Style
+
+	// 主题样式支持
+	styleID string // 用于从主题获取样式的组件ID
+	state   string // 组件状态（如 "focus", "disabled" 等）
 }
 
 // NewText 创建 V3 文本组件
@@ -114,6 +118,28 @@ func (t *Text) WithStyle(s style.Style) *Text {
 	return t.SetStyle(s)
 }
 
+// SetStyleID 设置主题样式ID
+func (t *Text) SetStyleID(styleID string) *Text {
+	t.styleID = styleID
+	return t
+}
+
+// SetState 设置组件状态
+func (t *Text) SetState(state string) *Text {
+	t.state = state
+	return t
+}
+
+// GetStyleID 获取主题样式ID
+func (t *Text) GetStyleID() string {
+	return t.styleID
+}
+
+// GetState 获取组件状态
+func (t *Text) GetState() string {
+	return t.state
+}
+
 // ============================================================================
 // Measurable 接口实现
 // ============================================================================
@@ -142,6 +168,11 @@ func (t *Text) Measure(maxWidth, maxHeight int) (width, height int) {
 		lineCount = maxHeight
 	}
 
+	// 确保至少返回 1 行高度（即使是空文本）
+	if lineCount == 0 {
+		lineCount = 1
+	}
+
 	return maxLineWidth, lineCount
 }
 
@@ -165,6 +196,12 @@ func (t *Text) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		return
 	}
 
+	// 获取样式：如果设置了 styleID，从主题系统动态获取
+	paintStyle := t.style
+	if t.styleID != "" {
+		paintStyle = style.GetStyle(t.styleID, t.state)
+	}
+
 	// 处理每一行
 	y := 0
 	for i, line := range t.lines {
@@ -179,13 +216,18 @@ func (t *Text) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		processedLine := t.processLine(line, width)
 
 		// 处理对齐
-		if textRuneCount(processedLine) < width {
+		if textDisplayWidth(processedLine) < width {
 			processedLine = t.alignLine(processedLine, width)
 		}
 
 		// 应用样式并绘制
-		for x, char := range processedLine {
-			buf.SetCell(ctx.X+x, ctx.Y+y, char, t.style)
+		col := 0
+		for _, char := range processedLine {
+			if col >= width {
+				break
+			}
+			buf.SetCell(ctx.X+col, ctx.Y+y, char, paintStyle)
+			col += runeWidth(char)
 		}
 
 		y++
@@ -233,7 +275,7 @@ func (t *Text) wrapLine(line string, width int) string {
 
 // alignLine 对齐行
 func (t *Text) alignLine(line string, width int) string {
-	lineLen := textRuneCount(line)
+	lineLen := textDisplayWidth(line)
 	if lineLen >= width {
 		return line
 	}
@@ -261,4 +303,35 @@ func textRuneCount(s string) int {
 		count++
 	}
 	return count
+}
+
+// textDisplayWidth 计算文本的显示宽度（考虑宽字符）
+func textDisplayWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		width += runeWidth(r)
+	}
+	return width
+}
+
+// runeWidth 返回字符的显示宽度 (1 或 2)
+func runeWidth(r rune) int {
+	// CJK 字符范围 (中文、日文、韩文等)
+	if r >= 0x1100 && (r <= 0x115f || r == 0x2329 || r == 0x232a ||
+		(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) ||
+		(r >= 0xac00 && r <= 0xd7a3) ||
+		(r >= 0xf900 && r <= 0xfaff) ||
+		(r >= 0xfe10 && r <= 0xfe19) ||
+		(r >= 0xfe30 && r <= 0xfe6f) ||
+		(r >= 0xff00 && r <= 0xff60) ||
+		(r >= 0xffe0 && r <= 0xffe6) ||
+		(r >= 0x20000 && r <= 0x2fffd) ||
+		(r >= 0x30000 && r <= 0x3fffd)) {
+		return 2
+	}
+	// Emoji 和其他符号
+	if r >= 0x1f300 && r <= 0x1f9f0 {
+		return 2
+	}
+	return 1
 }

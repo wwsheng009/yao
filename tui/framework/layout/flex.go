@@ -129,15 +129,16 @@ func (f *Flex) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 	// 计算子组件尺寸和位置
 	sizes := f.calculateSizes(availableWidth, availableHeight)
 
-	currentPos := 0
+	// 根据布局方向设置偏移量
+	var offsetX, offsetY int
 	for i, child := range children {
 		childW, childH := sizes[i].width, sizes[i].height
 
 		childCtx := component.PaintContext{
 			AvailableWidth:  childW,
 			AvailableHeight: childH,
-			X:               ctx.X + currentPos,
-			Y:               ctx.Y,
+			X:               ctx.X + offsetX,
+			Y:               ctx.Y + offsetY,
 		}
 
 		// 绘制可绘制的子组件
@@ -147,9 +148,9 @@ func (f *Flex) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 		// 更新位置
 		if f.direction == Row {
-			currentPos += childW + f.gap
+			offsetX += childW + f.gap
 		} else {
-			currentPos += childH + f.gap
+			offsetY += childH + f.gap
 		}
 	}
 }
@@ -231,8 +232,10 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 		// 垂直布局
 		totalGap := f.gap * (count - 1)
 		availH := availableH - totalGap
-		if availH < 0 {
-			availH = 0
+		if availH < count {
+			// 如果间隙太大，确保每个子组件至少有 1 单位高度
+			availH = count
+			totalGap = 0 // 移除间隙以确保所有子组件可见
 		}
 
 		var prefTotal int
@@ -244,10 +247,20 @@ func (f *Flex) calculateSizes(availableW, availableH int) []Size {
 		}
 
 		if prefTotal <= availH {
+			// 分配首选尺寸，并将剩余空间均匀分配给所有子组件
+			remaining := availH - prefTotal
+			baseHeight := remaining / count
+			remainder := remaining % count
+
 			for i := range children {
-				sizes[i].height = prefSizes[i]
+				sizes[i].height = prefSizes[i] + baseHeight
+				// 前几个组件各多分配1单位，直到余数分配完
+				if i < remainder {
+					sizes[i].height++
+				}
 			}
 		} else {
+			// 空间不足，按比例分配
 			if count > 0 {
 				avgH := availH / count
 				for i := range sizes {

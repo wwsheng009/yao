@@ -33,7 +33,7 @@ func (p *ThemeStyleProvider) GetStyle(componentID, state string) style.Style {
 	}
 
 	// 从主题获取样式配置
-	config := p.manager.GetComponentStyle(componentID, state)
+	config := p.manager.GetStyle(componentID, state)
 
 	// 转换为 style.Style（一次性转换，渲染层直接使用）
 	return p.configToStyle(config)
@@ -105,7 +105,6 @@ func (p *ThemeStyleProvider) colorToStyleColor(c Color) style.Color {
 	switch c.Type {
 	case ColorRGB, ColorHex:
 		r, g, b := c.RGBValue()
-		// 根据RGB值选择最接近的命名颜色
 		return p.rgbToNamedColor(r, g, b)
 
 	case ColorNamed:
@@ -134,62 +133,95 @@ func (p *ThemeStyleProvider) rgbToNamedColor(r, g, b int) style.Color {
 	}
 
 	// 白色/浅色
-	if brightness > 200 {
+	if brightness > 230 {
 		return style.White
 	}
 
-	// 灰色
-	if r > 100 && r < 180 && g > 100 && g < 180 && b > 100 && b < 180 {
-		return style.BrightBlack
+	// 改进的颜色匹配 - 按主导色分类
+	maxVal := r
+	if g > maxVal {
+		maxVal = g
+	}
+	if b > maxVal {
+		maxVal = b
+	}
+	minVal := r
+	if g < minVal {
+		minVal = g
+	}
+	if b < minVal {
+		minVal = b
 	}
 
-	// 红色
-	if r > 200 && g < 100 && b < 100 {
-		return style.Red
+	// 颜色范围
+	rRange := maxVal - minVal
+	isColorful := rRange > 50
+
+	// 灰度/低饱和度
+	if !isColorful || rRange < 30 {
+		if brightness > 160 {
+			return style.White // 亮灰
+		}
+		if brightness > 100 {
+			return style.BrightBlack // 中灰
+		}
+		return style.Black // 暗灰
 	}
 
-	// 绿色
-	if r < 100 && g > 200 && b < 100 {
-		return style.Green
-	}
-
-	// 蓝色
-	if r < 100 && g < 100 && b > 200 {
-		return style.Blue
-	}
-
-	// 青色 (Cyan - 输入框焦点常用色)
-	if r < 100 && g > 200 && b > 200 {
-		return style.Cyan
-	}
-
-	// 品红
-	if r > 200 && g < 100 && b > 200 {
-		return style.Magenta
-	}
-
-	// 黄色
-	if r > 200 && g > 200 && b < 100 {
-		return style.Yellow
-	}
-
-	// 亮蓝
-	if r < 150 && g < 200 && b > 200 {
-		return style.BrightBlue
-	}
-
-	// 亮绿
-	if r < 150 && g > 200 && b < 150 {
-		return style.BrightGreen
-	}
-
-	// 亮红
-	if r > 200 && g < 150 && b < 150 {
+	// 有颜色的部分
+	if r >= g && r >= b {
+		// 红色主导
+		if r > 180 && g < 150 {
+			return style.Red
+		}
+		if r > 200 && g > 150 {
+			return style.Yellow // 偏黄的红色
+		}
+		if r > 200 && g < 100 && b > 150 {
+			return style.Magenta // 偏紫的红色
+		}
 		return style.BrightRed
 	}
 
-	// 默认返回白色
-	return style.White
+	if g >= r && g >= b {
+		// 绿色主导
+		if g > 180 && b < 150 {
+			return style.Green
+		}
+		if g > 180 && b > 150 {
+			return style.Cyan // 青色（绿+蓝）
+		}
+		if r > 150 {
+			return style.Yellow // 黄色（红+绿）
+		}
+		return style.BrightGreen
+	}
+
+	if b >= r && b >= g {
+		// 蓝色主导
+		if b > 200 && r < 150 && g < 150 {
+			return style.Blue
+		}
+		if b > 180 && g > 150 {
+			return style.BrightBlue // 亮蓝
+		}
+		if b > 180 && r > 150 {
+			return style.Magenta // 品红（红+蓝）
+		}
+		if b > 150 && g > 150 {
+			return style.Cyan // 青色（蓝+绿）
+		}
+		return style.BrightBlue
+	}
+
+	// 默认根据亮度返回
+	if brightness > 160 {
+		return style.White
+	}
+	if brightness > 80 {
+		return style.BrightBlack
+	}
+	return style.Black
 }
 
 // namedColorToStyle 命名颜色转style.Color
@@ -290,7 +322,21 @@ func (m *Manager) SetThemeGlobal(name string) error {
 
 // InitThemes 初始化主题系统
 // 创建管理器，注册内置主题，设置为全局提供者
+// 注意：多次调用此函数是安全的，只有第一次会执行注册
 func InitThemes(initialTheme string) (*Manager, error) {
+	// 如果已经初始化过，直接返回默认管理器
+	if styling.IsThemeInitialized() {
+		mgr := NewManager()
+		mgr.RegisterMultiple(BuiltinThemes())
+		if initialTheme != "" {
+			if err := mgr.Set(initialTheme); err != nil {
+				return mgr, fmt.Errorf("failed to set initial theme: %w", err)
+			}
+		}
+		return mgr, nil
+	}
+
+	// 首次初始化
 	mgr := NewManager()
 	mgr.RegisterMultiple(BuiltinThemes())
 
@@ -301,5 +347,6 @@ func InitThemes(initialTheme string) (*Manager, error) {
 	}
 
 	mgr.RegisterAsGlobal()
+	styling.MarkThemeInitialized()
 	return mgr, nil
 }

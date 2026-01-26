@@ -112,11 +112,10 @@ func (p *Pump) convertResizeEvent(raw platform.RawInput) Event {
 			eventType: EventResize,
 			timestamp: raw.Timestamp,
 		},
-	}
-
-	// 从 Data 解析尺寸 (格式: "width,height")
-	if len(raw.Data) >= 2 {
-		// 简化处理，实际应该解析 ANSI 窗口调整序列
+		OldWidth: 0, // 可以在以后实现
+		OldHeight: 0,
+		NewWidth:  raw.Width,
+		NewHeight: raw.Height,
 	}
 
 	return ev

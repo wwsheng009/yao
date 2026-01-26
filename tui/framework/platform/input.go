@@ -34,6 +34,10 @@ type RawInput struct {
 	MouseButton MouseButton
 	MouseAction MouseAction
 
+	// 窗口大小
+	Width     int
+	Height    int
+
 	// 其他
 	Data     []byte
 	Timestamp time.Time

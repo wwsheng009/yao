@@ -14,7 +14,10 @@ type windowsInputReader struct {
 	events       chan<- RawInput
 	quit         chan struct{}
 	quitOnce     sync.Once
+	mu           sync.Mutex
 	originalMode uint32
+	lastWidth    int
+	lastHeight   int
 }
 
 func newInputReaderImpl() inputReaderImpl {
@@ -28,6 +31,17 @@ func newWindowsInputReader() inputReaderImpl {
 }
 
 func (r *windowsInputReader) Start(events chan<- RawInput) error {
+	r.mu.Lock()
+	// Recreate quit channel if it was closed
+	select {
+	case <-r.quit:
+		r.quit = make(chan struct{})
+		r.quitOnce = sync.Once{}
+	default:
+		// Channel still open, reuse it
+	}
+	r.mu.Unlock()
+
 	r.events = events
 
 	handle, _, err := procGetStdHandle.Call(STD_INPUT_HANDLE)
@@ -40,6 +54,9 @@ func (r *windowsInputReader) Start(events chan<- RawInput) error {
 	mode := r.originalMode | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS
 	mode &^= ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_MOUSE_INPUT
 	r.setConsoleMode(handle, mode)
+
+	// 初始化当前窗口大小
+	r.updateWindowSize(handle)
 
 	go r.readLoop(handle)
 
@@ -74,10 +91,18 @@ func (r *windowsInputReader) ReadEvent() (RawInput, error) {
 }
 
 func (r *windowsInputReader) readLoop(handle uintptr) {
+	pollTicker := time.NewTicker(250 * time.Millisecond)
+	defer pollTicker.Stop()
+
 	for {
 		select {
 		case <-r.quit:
 			return
+
+		case <-pollTicker.C:
+			// 定期检查窗口大小变化（Windows resize 事件不可靠）
+			r.updateWindowSize(handle)
+
 		default:
 			var count uint32
 			procGetNumberOfConsoleInputEvents.Call(handle, uintptr(unsafe.Pointer(&count)))
@@ -130,10 +155,26 @@ func (r *windowsInputReader) parseRecord(record *INPUT_RECORD) RawInput {
 		return r.parseKeyEvent(record, now)
 
 	case WINDOW_BUFFER_SIZE_EVENT:
-		return RawInput{
-			Type:      InputResize,
-			Timestamp: now,
+		// 获取控制台屏幕缓冲区信息
+		handle, _, _ := procGetStdHandle.Call(STD_OUTPUT_HANDLE)
+		if handle != 0 {
+			var info CONSOLE_SCREEN_BUFFER_INFO
+			procGetConsoleScreenBufferInfo.Call(handle, uintptr(unsafe.Pointer(&info)))
+
+			// 使用 srWindow 获取实际可见窗口大小（而不是 dwSize 缓冲区大小）
+			// srWindow.Right - srWindow.Left + 1 = 宽度
+			// srWindow.Bottom - srWindow.Top + 1 = 高度
+			width := int(info.srWindow.Right - info.srWindow.Left + 1)
+			height := int(info.srWindow.Bottom - info.srWindow.Top + 1)
+
+			return RawInput{
+				Type:      InputResize,
+				Timestamp: now,
+				Width:     width,
+				Height:    height,
+			}
 		}
+		return RawInput{Timestamp: now}
 
 	default:
 		return RawInput{Timestamp: now}
@@ -240,6 +281,37 @@ func (r *windowsInputReader) setConsoleMode(handle uintptr, mode uint32) {
 	procSetConsoleMode.Call(handle, uintptr(mode))
 }
 
+// updateWindowSize 检查并发送窗口大小变化事件
+func (r *windowsInputReader) updateWindowSize(handle uintptr) {
+	outHandle, _, _ := procGetStdHandle.Call(STD_OUTPUT_HANDLE)
+	if outHandle == 0 {
+		return
+	}
+
+	var info CONSOLE_SCREEN_BUFFER_INFO
+	procGetConsoleScreenBufferInfo.Call(outHandle, uintptr(unsafe.Pointer(&info)))
+
+	width := int(info.srWindow.Right - info.srWindow.Left + 1)
+	height := int(info.srWindow.Bottom - info.srWindow.Top + 1)
+
+	// 检查大小是否变化
+	if width != r.lastWidth || height != r.lastHeight {
+		r.lastWidth = width
+		r.lastHeight = height
+
+		// 发送大小变化事件
+		select {
+		case r.events <- RawInput{
+			Type:      InputResize,
+			Timestamp: time.Now(),
+			Width:     width,
+			Height:    height,
+		}:
+		case <-r.quit:
+		}
+	}
+}
+
 const (
 	ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
 	ENABLE_WINDOW_INPUT            = 0x0008
@@ -268,6 +340,27 @@ type KEY_EVENT_RECORD struct {
 	ControlKeyState uint32
 }
 
+// CONSOLE_SCREEN_BUFFER_INFO 控制台屏幕缓冲区信息
+type CONSOLE_SCREEN_BUFFER_INFO struct {
+	dwSize              COORD
+	dwCursorPosition   COORD
+	wAttributes        uint16
+	srWindow           SMALL_RECT
+	dwMaximumWindowSize COORD
+}
+
+type COORD struct {
+	X int16
+	Y int16
+}
+
+type SMALL_RECT struct {
+	Left   int16
+	Top    int16
+	Right  int16
+	Bottom int16
+}
+
 var (
 	kernel32                         = syscall.NewLazyDLL("kernel32.dll")
 	procGetConsoleMode               = kernel32.NewProc("GetConsoleMode")
@@ -275,6 +368,7 @@ var (
 	procGetStdHandle                 = kernel32.NewProc("GetStdHandle")
 	procReadConsoleInput             = kernel32.NewProc("ReadConsoleInputW")
 	procGetNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
+	procGetConsoleScreenBufferInfo  = kernel32.NewProc("GetConsoleScreenBufferInfo")
 )
 
 // restoreTerminalImpl Windows 终端恢复实现

@@ -57,7 +57,20 @@ func NewBaseContainer(typ string) *BaseContainer {
 // Add 添加子组件
 func (c *BaseContainer) Add(child Node) {
 	c.children = append(c.children, child)
-	if mountable, ok := child.(Mountable); ok {
+
+	// 优先使用 MountableWithContext（如果组件支持且有上下文）
+	if mountable, ok := child.(MountableWithContext); ok {
+		ctx := c.GetComponentContext()
+		if ctx != nil {
+			// 有上下文：使用 MountWithContext
+			mountable.MountWithContext(c, ctx)
+		} else {
+			// 无上下文：回退到普通 Mount
+			if m, ok := child.(Mountable); ok {
+				m.Mount(c)
+			}
+		}
+	} else if mountable, ok := child.(Mountable); ok {
 		mountable.Mount(c)
 	}
 }
