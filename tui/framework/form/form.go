@@ -780,7 +780,7 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 		if keyEv.Special == event.KeyEnter {
 			return f.HandleAction(*action.NewAction(action.ActionSubmit))
 		}
-		if keyEv.Special == event.KeyUp || (keyEv.Special == event.KeyTab && keyEv.Modifiers.Has(event.ModShift)) {
+		if keyEv.Special == event.KeyUp || (keyEv.Special == event.KeyTab && keyEv.Modifiers&event.ModShift != 0) {
 			return f.HandleAction(*action.NewAction(action.ActionNavigateUp))
 		}
 		if keyEv.Special == event.KeyDown || keyEv.Special == event.KeyTab {
@@ -788,7 +788,7 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 		}
 
 		// 处理普通字符输入 - 转发给当前焦点字段
-		if keyEv.Key != 0 && keyEv.Special == event.KeyUnknown {
+		if keyEv.Key.Rune != 0 && keyEv.Special == event.KeyUnknown {
 			currentField := f.getCurrentField()
 			if currentField != nil {
 				// 检查 Input 是否有 HandleEvent 方法

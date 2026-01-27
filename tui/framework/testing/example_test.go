@@ -399,7 +399,9 @@ func BenchmarkTextInputInsertion(b *stdtesting.B) {
 	for i := 0; i < b.N; i++ {
 		// 模拟输入 100 个字符
 		for c := 'a'; c <= 'z'; c++ {
-			keyEv := event.NewKeyEvent(c)
+			keyEv := event.NewKeyEvent(event.Key{
+				Rune: c,
+			})
 			keyEv.Special = event.KeyUnknown
 			input.HandleEvent(keyEv)
 		}

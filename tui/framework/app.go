@@ -408,7 +408,7 @@ func (a *App) Init() error {
 // setupRouter 设置事件路由
 func (a *App) setupRouter() {
 	// 订阅退出事件
-	a.router.Subscribe(frameworkevent.EventClose, frameworkevent.EventHandlerFunc(func(ev frameworkevent.Event) bool {
+	a.router.Subscribe(frameworkevent.EventQuit, frameworkevent.EventHandlerFunc(func(ev frameworkevent.Event) bool {
 		a.Quit()
 		return true
 	}))

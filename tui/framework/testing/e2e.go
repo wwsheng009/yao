@@ -123,7 +123,7 @@ type CellSnapshot struct {
 type KeyPress struct {
 	Key     rune
 	Special event.SpecialKey
-	Mods    event.KeyModifier
+	Mods    event.Modifier
 }
 
 func (k KeyPress) Execute(ctx *TestContext) error {
@@ -134,11 +134,14 @@ func (k KeyPress) Execute(ctx *TestContext) error {
 
 	// 检查根组件是否有 HandleEvent 方法
 	if handler, ok := ctx.Root.(interface{ HandleEvent(component.Event) bool }); ok {
-		ev := &event.KeyEvent{
-			Key:     k.Key,
-			Special: k.Special,
-			Modifiers: k.Mods,
+		ev := event.NewKeyEvent(event.Key{
+			Rune: k.Key,
+			Name: k.Special.String(),
+		})
+		if k.Special != event.KeyUnknown {
+			ev.Special = k.Special
 		}
+		ev.Modifiers = k.Mods
 		if !handler.HandleEvent(ev) {
 			return fmt.Errorf("key press not handled: %v", k)
 		}

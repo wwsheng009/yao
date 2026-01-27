@@ -55,7 +55,9 @@ func TestAppSimulation(t *stdtesting.T) {
 		fmt.Printf("\n  Typing '%c' (character %d of %d):\n", ch, i+1, len(inputSequence))
 
 		// Create KeyEvent (as event pump would)
-		keyEv := event.NewKeyEvent(ch)
+		keyEv := event.NewKeyEvent(event.Key{
+			Rune: ch,
+		})
 		keyEv.Special = event.KeyUnknown
 
 		// App routes keypress to root component

@@ -1,48 +1,23 @@
 package component
 
+import (
+	"github.com/yaoapp/yao/tui/runtime"
+)
+
 // ==============================================================================
-// Container (V3)
+// BaseContainer Implementation (V3)
 // ==============================================================================
-// V3 容器接口，使用 Node 类型而非 Component
+// BaseContainer provides a default implementation of the Container interface.
+// Container and Layout interfaces are defined in capabilities.go.
 
-// Container 容器接口 (V3)
-type Container interface {
-	Node
-	Mountable
-
-	// 子组件管理 (V3: 使用 Node 类型)
-	Add(child Node)
-	Remove(child Node)
-	RemoveAt(index int)
-	GetChildren() []Node
-	GetChild(index int) Node
-	ChildCount() int
-
-	// 布局
-	SetLayout(layout Layout)
-	GetLayout() Layout
-}
-
-// Layout 布局接口
-type Layout interface {
-	// 测量
-	Measure(container Container, availableWidth, availableHeight int) (width, height int)
-
-	// 布局
-	Layout(container Container, x, y, width, height int)
-
-	// 通知变更
-	Invalidate()
-}
-
-// BaseContainer 基础容器实现 (V3)
+// BaseContainer is the default container implementation.
 type BaseContainer struct {
 	*BaseComponent
 	children []Node
 	layout   Layout
 }
 
-// NewBaseContainer 创建基础容器
+// NewBaseContainer creates a new BaseContainer.
 func NewBaseContainer(typ string) *BaseContainer {
 	return &BaseContainer{
 		BaseComponent: NewBaseComponent(typ),
@@ -51,21 +26,21 @@ func NewBaseContainer(typ string) *BaseContainer {
 }
 
 // ============================================================================
-// 子组件管理 (V3: 使用 Node 类型)
+// Container Interface Implementation
 // ============================================================================
 
-// Add 添加子组件
+// Add adds a child component.
 func (c *BaseContainer) Add(child Node) {
 	c.children = append(c.children, child)
 
-	// 优先使用 MountableWithContext（如果组件支持且有上下文）
+	// Try MountableWithContext first (if component supports it and we have context)
 	if mountable, ok := child.(MountableWithContext); ok {
 		ctx := c.GetComponentContext()
 		if ctx != nil {
-			// 有上下文：使用 MountWithContext
+			// Has context: use MountWithContext
 			mountable.MountWithContext(c, ctx)
 		} else {
-			// 无上下文：回退到普通 Mount
+			// No context: fall back to regular Mount
 			if m, ok := child.(Mountable); ok {
 				m.Mount(c)
 			}
@@ -75,7 +50,7 @@ func (c *BaseContainer) Add(child Node) {
 	}
 }
 
-// Remove 移除子组件
+// Remove removes a child component.
 func (c *BaseContainer) Remove(child Node) {
 	for i, ch := range c.children {
 		if ch == child {
@@ -88,7 +63,7 @@ func (c *BaseContainer) Remove(child Node) {
 	}
 }
 
-// RemoveAt 移除指定位置的子组件
+// RemoveAt removes the child at the given index.
 func (c *BaseContainer) RemoveAt(index int) {
 	if index >= 0 && index < len(c.children) {
 		child := c.children[index]
@@ -99,12 +74,12 @@ func (c *BaseContainer) RemoveAt(index int) {
 	}
 }
 
-// GetChildren 获取子组件列表
+// GetChildren returns the list of children.
 func (c *BaseContainer) GetChildren() []Node {
 	return c.children
 }
 
-// GetChild 获取指定位置的子组件
+// GetChild returns the child at the given index.
 func (c *BaseContainer) GetChild(index int) Node {
 	if index >= 0 && index < len(c.children) {
 		return c.children[index]
@@ -112,42 +87,45 @@ func (c *BaseContainer) GetChild(index int) Node {
 	return nil
 }
 
-// ChildCount 获取子组件数量
+// ChildCount returns the number of children.
 func (c *BaseContainer) ChildCount() int {
 	return len(c.children)
 }
 
-// ============================================================================
-// 布局管理
-// ============================================================================
-
-// SetLayout 设置布局
+// SetLayout sets the layout algorithm.
 func (c *BaseContainer) SetLayout(layout Layout) {
 	c.layout = layout
 }
 
-// GetLayout 获取布局
+// GetLayout returns the current layout algorithm.
 func (c *BaseContainer) GetLayout() Layout {
 	return c.layout
 }
 
 // ============================================================================
-// Measurable 接口实现
+// Measurable Interface Implementation
 // ============================================================================
 
-// Measure 测量理想尺寸
+// Measure calculates the ideal size for this container using runtime.Measurable.
 func (c *BaseContainer) Measure(maxWidth, maxHeight int) (width, height int) {
 	if c.layout != nil {
 		return c.layout.Measure(c, maxWidth, maxHeight)
 	}
-	// 默认：计算所有子组件的总尺寸
+	// Default: calculate total size of all children
+	// Convert to BoxConstraints for runtime.Measurable
+	bc := runtime.BoxConstraints{
+		MinWidth:  0,
+		MaxWidth:  maxWidth,
+		MinHeight: 0,
+		MaxHeight: maxHeight,
+	}
 	for _, child := range c.children {
-		if measurable, ok := child.(Measurable); ok {
-			w, h := measurable.Measure(maxWidth, maxHeight)
-			if w > width {
-				width = w
+		if measurable, ok := child.(runtime.Measurable); ok {
+			size := measurable.Measure(bc)
+			if size.Width > width {
+				width = size.Width
 			}
-			height += h
+			height += size.Height
 		}
 	}
 	return width, height

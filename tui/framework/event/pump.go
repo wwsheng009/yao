@@ -4,9 +4,10 @@ import (
 	"time"
 
 	"github.com/yaoapp/yao/tui/framework/platform"
+	"github.com/yaoapp/yao/tui/runtime/event"
 )
 
-// Pump 事件泵 - 从平台读取原始输入并转换为事件
+// Pump reads raw input from the platform and converts to events.
 type Pump struct {
 	input  platform.InputReader
 	events chan Event
@@ -14,7 +15,7 @@ type Pump struct {
 	running bool
 }
 
-// NewPump 创建事件泵
+// NewPump creates a new event pump.
 func NewPump(reader platform.InputReader) *Pump {
 	return &Pump{
 		input:  reader,
@@ -24,29 +25,29 @@ func NewPump(reader platform.InputReader) *Pump {
 	}
 }
 
-// Start 启动事件泵
+// Start starts the event pump.
 func (p *Pump) Start() error {
 	if p.running {
 		return nil
 	}
 
-	// 创建原始输入通道
+	// Create raw input channel
 	rawInputs := make(chan platform.RawInput, 50)
 
-	// 启动平台输入读取器
+	// Start platform input reader
 	if err := p.input.Start(rawInputs); err != nil {
 		return err
 	}
 
 	p.running = true
 
-	// 启动转换循环
+	// Start conversion loop
 	go p.convertLoop(rawInputs)
 
 	return nil
 }
 
-// convertLoop 转换原始输入为事件
+// convertLoop converts raw inputs to events.
 func (p *Pump) convertLoop(rawInputs <-chan platform.RawInput) {
 	for {
 		select {
@@ -69,7 +70,7 @@ func (p *Pump) convertLoop(rawInputs <-chan platform.RawInput) {
 	}
 }
 
-// convertToEvent 将原始输入转换为事件
+// convertToEvent converts raw input to framework event.
 func (p *Pump) convertToEvent(raw platform.RawInput) Event {
 	switch raw.Type {
 	case platform.InputKeyPress:
@@ -86,68 +87,79 @@ func (p *Pump) convertToEvent(raw platform.RawInput) Event {
 	}
 }
 
-// convertKeyEvent 转换键盘事件
+// convertKeyEvent converts keyboard raw input to KeyEvent.
 func (p *Pump) convertKeyEvent(raw platform.RawInput) Event {
+	baseEv := NewBaseEvent(event.EventKeyPress)
+
+	// Create key event
 	ev := &KeyEvent{
-		BaseEvent: BaseEvent{
-			eventType: EventKeyPress,
-			timestamp: raw.Timestamp,
-		},
-		Special:  SpecialKey(raw.Special),
-		Modifiers: KeyModifier(raw.Modifiers),
+		BaseEvent: baseEv,
 	}
 
-	// 设置字符键
-	if raw.Key > 0 && raw.Special == platform.KeyUnknown {
-		ev.Key = raw.Key
+	// Set special key
+	if raw.Special != platform.KeyUnknown {
+		ev.Special = SpecialKey(raw.Special)
+		ev.Key.Name = ev.Special.String()
+	} else {
+		// Character key
+		ev.Key.Rune = raw.Key
+	}
+
+	// Set modifiers
+	if raw.Modifiers&platform.ModAlt != 0 {
+		ev.Key.Alt = true
+		ev.Modifiers |= ModAlt
+	}
+	if raw.Modifiers&platform.ModCtrl != 0 {
+		ev.Key.Ctrl = true
+		ev.Modifiers |= ModCtrl
+	}
+	if raw.Modifiers&platform.ModShift != 0 {
+		ev.Modifiers |= ModShift
 	}
 
 	return ev
 }
 
-// convertResizeEvent 转换窗口调整事件
+// convertResizeEvent converts resize raw input to ResizeEvent.
 func (p *Pump) convertResizeEvent(raw platform.RawInput) Event {
-	ev := &ResizeEvent{
-		BaseEvent: BaseEvent{
-			eventType: EventResize,
-			timestamp: raw.Timestamp,
-		},
-		OldWidth: 0, // 可以在以后实现
+	return &ResizeEvent{
+		BaseEvent: NewBaseEvent(event.EventResize),
+		OldWidth:  0,
 		OldHeight: 0,
 		NewWidth:  raw.Width,
 		NewHeight: raw.Height,
 	}
-
-	return ev
 }
 
-// convertMouseEvent 转换鼠标事件
+// convertMouseEvent converts mouse raw input to MouseEvent.
 func (p *Pump) convertMouseEvent(raw platform.RawInput) Event {
-	ev := &MousePressEvent{
-		BaseEvent: BaseEvent{
-			eventType: EventMousePress,
-			timestamp: raw.Timestamp,
-		},
-		X:      raw.MouseX,
-		Y:      raw.MouseY,
-		Button: MouseButton(raw.MouseButton),
-	}
+	var eventType event.EventType
 
 	switch raw.MouseAction {
 	case platform.MousePress:
-		ev.eventType = EventMousePress
+		eventType = event.EventMousePress
 	case platform.MouseRelease:
-		ev.eventType = EventMouseRelease
+		eventType = event.EventMouseRelease
 	case platform.MouseMotion:
-		ev.eventType = EventMouseMove
+		eventType = event.EventMouseMove
 	case platform.MouseWheelUp:
-		ev.eventType = EventMouseWheel
+		eventType = event.EventMouseWheel
+	case platform.MouseWheelDown:
+		eventType = event.EventMouseWheel
+	default:
+		eventType = event.EventMousePress
 	}
 
-	return ev
+	return &MouseEvent{
+		BaseEvent: NewBaseEvent(eventType),
+		X:         raw.MouseX,
+		Y:         raw.MouseY,
+		Button:    MouseButton(raw.MouseButton),
+	}
 }
 
-// Stop 停止事件泵
+// Stop stops the event pump.
 func (p *Pump) Stop() {
 	if !p.running {
 		return
@@ -155,29 +167,29 @@ func (p *Pump) Stop() {
 
 	p.running = false
 
-	// 发送停止信号
+	// Send quit signal
 	close(p.quit)
 
-	// 停止输入读取器
+	// Stop input reader
 	if p.input != nil {
 		p.input.Stop()
 	}
 
-	// 关闭事件通道
+	// Close events channel
 	close(p.events)
 }
 
-// Events 返回事件通道
+// Events returns the event channel.
 func (p *Pump) Events() <-chan Event {
 	return p.events
 }
 
-// IsRunning 检查是否正在运行
+// IsRunning checks if the pump is running.
 func (p *Pump) IsRunning() bool {
 	return p.running
 }
 
-// PumpWithTimeout 带超时的事件获取
+// PumpWithTimeout gets an event with timeout.
 func (p *Pump) PumpWithTimeout(timeout time.Duration) (Event, bool) {
 	select {
 	case ev := <-p.events:

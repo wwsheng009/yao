@@ -681,8 +681,8 @@ func (t *TextInput) HandleEvent(ev component.Event) bool {
 		}
 
 		// 处理普通字符输入
-		if keyEv.Key != 0 && keyEv.Special == event.KeyUnknown {
-			a := action.NewAction(action.ActionInputChar).WithPayload(keyEv.Key)
+		if keyEv.Key.Rune != 0 && keyEv.Special == event.KeyUnknown {
+			a := action.NewAction(action.ActionInputChar).WithPayload(keyEv.Key.Rune)
 			return t.HandleAction(*a)
 		}
 	}

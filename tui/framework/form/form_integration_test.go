@@ -33,7 +33,7 @@ func TestFormCharacterInput(t *testing.T) {
 	}
 
 	// 模拟键盘事件 - 输入 'a'
-	keyEv := event.NewKeyEvent('a')
+	keyEv := event.NewKeyEvent(event.Key{Rune: 'a'})
 	keyEv.Special = event.KeyUnknown
 
 	handled := f.HandleEvent(keyEv)
@@ -50,11 +50,11 @@ func TestFormCharacterInput(t *testing.T) {
 	}
 
 	// 输入更多字符
-	keyEv2 := event.NewKeyEvent('b')
+	keyEv2 := event.NewKeyEvent(event.Key{Rune: 'b'})
 	keyEv2.Special = event.KeyUnknown
 	f.HandleEvent(keyEv2)
 
-	keyEv3 := event.NewKeyEvent('c')
+	keyEv3 := event.NewKeyEvent(event.Key{Rune: 'c'})
 	keyEv3.Special = event.KeyUnknown
 	f.HandleEvent(keyEv3)
 
@@ -125,7 +125,7 @@ func TestFormMultipleFields(t *testing.T) {
 	}
 
 	// 在第一个字段输入字符
-	keyEv := event.NewKeyEvent('x')
+	keyEv := event.NewKeyEvent(event.Key{Rune: 'x'})
 	keyEv.Special = event.KeyUnknown
 	f.HandleEvent(keyEv)
 
@@ -146,7 +146,7 @@ func TestFormMultipleFields(t *testing.T) {
 	}
 
 	// 在第二个字段输入字符
-	keyEv2 := event.NewKeyEvent('y')
+	keyEv2 := event.NewKeyEvent(event.Key{Rune: 'y'})
 	keyEv2.Special = event.KeyUnknown
 	f.HandleEvent(keyEv2)
 

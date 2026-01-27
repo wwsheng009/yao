@@ -1,5 +1,7 @@
 package paint
 
+import "fmt"
+
 // ==============================================================================
 // Dirty Region Tracking (V3)
 // ==============================================================================
@@ -207,7 +209,7 @@ func (d *DirtyTracker) String() string {
 		return "DirtyTracker{ALL}"
 	}
 	return "DirtyTracker{" +
-		"cells:" + string(len(d.cells)) +
-		",rects:" + string(len(d.rects)) +
+		"cells:" + fmt.Sprint(len(d.cells)) +
+		",rects:" + fmt.Sprint(len(d.rects)) +
 		"}"
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/runtime"
 )
 
 // TestTableFocusNavigation tests Tab navigation between two tables

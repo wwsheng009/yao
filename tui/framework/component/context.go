@@ -31,17 +31,10 @@ func (c *ComponentContext) MarkDirty() {
 	}
 }
 
-// MountableWithContext 可挂载且需要上下文的组件接口
-//
-// 组件实现此接口以在挂载时接收运行时资源，而不需要 App 直接了解组件的具体类型。
-type MountableWithContext interface {
-	Node
-	// MountWithContext 在挂载到父容器时调用，接收组件上下文
-	MountWithContext(parent Container, ctx *ComponentContext)
-}
+// MountableWithContext is defined in capabilities.go.
 
 // ==============================================================================
-// 辅助接口 - 用于类型安全地访问上下文资源
+// Helper Interfaces - For type-safe context resource access
 // ==============================================================================
 
 // DirtyNotifiable 需要脏标记通知的组件接口

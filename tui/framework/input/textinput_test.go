@@ -54,7 +54,9 @@ func TestTextInputHandleEvent(t *testing.T) {
 	input.SetID("test-input")
 
 	// 使用工厂函数创建 KeyEvent
-	keyEv := event.NewKeyEvent('x')
+	keyEv := event.NewKeyEvent(event.Key{
+		Rune: 'x',
+	})
 	keyEv.Special = event.KeyUnknown // 确保不是特殊键
 
 	handled := input.HandleEvent(keyEv)

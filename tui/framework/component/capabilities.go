@@ -1,196 +1,252 @@
 package component
 
 import (
+	"github.com/yaoapp/yao/tui/runtime"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 
 // ==============================================================================
-// Capability Interfaces (V3)
+// Capability Interfaces (V3) - Built on Runtime Interfaces
 // ==============================================================================
-// 组件通过组合这些能力接口来声明其功能，而不是实现一个大的 Component 接口
-// 这是 React / Flutter / Jetpack Compose 都采用的成熟模式
+// Framework component interfaces are built on top of runtime interfaces.
+// This ensures consistency and allows components to work with both
+// framework and runtime systems.
+//
+// Framework adds framework-specific capabilities (like Mountable with context)
+// on top of the minimal runtime interfaces.
 
-// Node 基础节点接口 - 所有组件的最小接口
-type Node interface {
-	// ID 返回组件唯一标识符
-	ID() string
+// Node is an alias for runtime.Node for convenience.
+// All components must implement this minimal interface.
+type Node = runtime.Node
 
-	// Type 返回组件类型
-	Type() string
-}
+// Positionable is an alias for runtime.Positionable.
+type Positionable = runtime.Positionable
 
-// Mountable 可挂载接口 - 组件可以挂载到容器
-type Mountable interface {
-	Node
+// Sizable is an alias for runtime.Sizable.
+type Sizable = runtime.Sizable
 
-	// Mount 挂载到父容器
-	Mount(parent Container)
+// Located is an alias for runtime.Located.
+type Located = runtime.Located
 
-	// Unmount 从父容器卸载
-	Unmount()
+// Measurable is an alias for runtime.Measurable.
+type Measurable = runtime.Measurable
 
-	// IsMounted 检查是否已挂载
-	IsMounted() bool
-}
+// ComponentNode is an alias for runtime.ComponentNode.
+type ComponentNode = runtime.ComponentNode
 
-// Measurable 可测量接口 - 组件可以报告其理想尺寸
-type Measurable interface {
-	Node
+// InteractiveComponent is an alias for runtime.InteractiveComponent.
+type InteractiveComponent = runtime.InteractiveComponent
 
-	// Measure 根据约束计算理想尺寸
-	// maxWidth/maxHeight 是父容器提供的最大约束
-	// 返回组件期望的理想尺寸
-	Measure(maxWidth, maxHeight int) (width, height int)
+// Focusable is an alias for runtime.Focusable.
+type Focusable = runtime.Focusable
 
-	// GetSize 获取当前分配的尺寸
-	GetSize() (width, height int)
-}
+// Visible is an alias for runtime.Visible.
+type Visible = runtime.Visible
 
-// Paintable 可绘制接口 (V3: 不返回 string)
-// 组件直接绘制到 CellBuffer，而不是返回渲染字符串
+// =============================================================================
+// Framework-Specific Interfaces
+// =============================================================================
+
+// Paintable extends runtime with framework-specific painting.
+// Components implement this to draw into the Buffer.
 type Paintable interface {
 	Node
 
-	// Paint 将组件绘制到缓冲区
-	// ctx 包含绘制上下文（位置、偏移、裁剪区域等）
-	// buf 是虚拟画布，组件在此绘制其内容
+	// Paint renders the component to the buffer.
+	// ctx contains the painting context (position, available size, etc.)
+	// buf is the virtual canvas to draw into.
 	Paint(ctx PaintContext, buf *paint.Buffer)
 }
 
-// PaintContext 绘制上下文
+// PaintContext is the painting context for framework components.
+// It extends the runtime paint context with framework-specific features.
 type PaintContext struct {
-	// 可用尺寸
+	// Available size for the component
 	AvailableWidth  int
 	AvailableHeight int
 
-	// 组件位置 (相对于父组件)
+	// Component position (relative to parent)
 	X int
 	Y int
 
-	// 滚动偏移
+	// Scroll offset
 	OffsetX int
 	OffsetY int
 
-	// Z-index 层级
+	// Z-index for layering
 	ZIndex int
 
-	// 裁剪区域
-	ClipRect *Rect
+	// Clip region (optional)
+	ClipRect *runtime.Rect
 }
 
-// ActionTarget 可处理 Action 的接口 (V3: 不处理 KeyEvent)
-// 组件只处理语义化的 Action，不处理原始按键
+// NewPaintContext creates a new PaintContext with the given dimensions.
+func NewPaintContext(x, y, width, height int) PaintContext {
+	return PaintContext{
+		X:               x,
+		Y:               y,
+		AvailableWidth:  width,
+		AvailableHeight: height,
+	}
+}
+
+// =============================================================================
+// Mountable with Context
+// =============================================================================
+
+// Mountable extends runtime with framework-specific mounting.
+// Framework components can receive a ComponentContext when mounted.
+type Mountable interface {
+	Node
+
+	// Mount attaches the component to a parent.
+	Mount(parent Container)
+
+	// Unmount detaches the component from its parent.
+	Unmount()
+
+	// IsMounted returns true if the component is currently mounted.
+	IsMounted() bool
+}
+
+// MountableWithContext is an extended Mountable that receives context.
+// Components implement this to access runtime resources (like dirty marking).
+type MountableWithContext interface {
+	Node
+
+	// MountWithContext attaches the component and receives component context.
+	MountWithContext(parent Container, ctx *ComponentContext)
+}
+
+// =============================================================================
+// Container Interface
+// =============================================================================
+
+// Container is a component that can hold child components.
+type Container interface {
+	Node
+	Mountable
+
+	// Child management
+	Add(child Node)
+	Remove(child Node)
+	RemoveAt(index int)
+	GetChildren() []Node
+	GetChild(index int) Node
+	ChildCount() int
+
+	// Layout
+	SetLayout(layout Layout)
+	GetLayout() Layout
+}
+
+// Layout is the interface for layout algorithms.
+type Layout interface {
+	// Measure calculates the ideal size for the container.
+	Measure(container Container, availableWidth, availableHeight int) (width, height int)
+
+	// Layout positions children within the container.
+	Layout(container Container, x, y, width, height int)
+
+	// Invalidate is called when the layout needs to be recalculated.
+	Invalidate()
+}
+
+// =============================================================================
+// Action Interface
+// =============================================================================
+
+// ActionTarget handles semantic actions (not raw key events).
+// Components implement this to respond to high-level actions.
 type ActionTarget interface {
 	Node
 
-	// HandleAction 处理语义化 Action
-	// 返回 true 表示已处理，false 表示继续传递
+	// HandleAction processes a semantic action.
+	// Returns true if the action was handled, false to continue propagation.
 	HandleAction(a Action) bool
 }
 
-// Action 语义化 Action (将在 runtime/action 包中完整定义)
+// Action represents a semantic action (like "confirm", "cancel").
 type Action interface {
-	// Type 返回 Action 类型
+	// Type returns the action type.
 	Type() ActionType
 
-	// Payload 返回 Action 携带的数据
+	// Payload returns the action data.
 	Payload() interface{}
 
-	// Source 返回 Action 来源
+	// Source returns where the action originated.
 	Source() string
 
-	// Target 返回 Action 目标
+	// Target returns the intended target of the action.
 	Target() string
 }
 
-// ActionType Action 类型
+// ActionType is the type of action.
 type ActionType string
 
-// Focusable 可聚焦接口 (V3: 返回 FocusID)
-type Focusable interface {
-	Node
+// =============================================================================
+// Framework Component Interface Combinations
+// =============================================================================
 
-	// FocusID 返回焦点标识符
-	// 用于焦点系统定位和管理
-	FocusID() string
-
-	// OnFocus 获得焦点时调用
-	OnFocus()
-
-	// OnBlur 失去焦点时调用
-	OnBlur()
-}
-
-// Scrollable 可滚动接口
-type Scrollable interface {
-	Node
-
-	// ScrollTo 滚动到指定位置
-	ScrollTo(x, y int)
-
-	// ScrollBy 相对滚动
-	ScrollBy(dx, dy int)
-
-	// GetScrollPosition 获取当前滚动位置
-	GetScrollPosition() (x, y int)
-}
-
-// Validatable 可验证接口
-type Validatable interface {
-	Node
-
-	// Validate 验证组件状态
-	Validate() error
-
-	// IsValid 检查是否有效
-	IsValid() bool
-}
-
-// Container 容器接口 - 定义在 container.go 中
-
-// ==============================================================================
-// 组合接口 - 常用能力组合
-// ==============================================================================
-// 这些接口定义了组件的能力组合
-// 注意：BaseComponent 结构体在 base.go 中定义
-
-// ComponentNode 基础组件节点组合
-// 大多数静态组件（如 Text）应该实现这个接口
-type ComponentNode interface {
+// FrameworkComponent combines the most common framework interfaces.
+// Most components should implement this.
+type FrameworkComponent interface {
 	Node
 	Mountable
 	Measurable
 	Paintable
 }
 
-// InteractiveComponent 交互组件组合
-// 可交互组件（如 Button、Input）应该实现这个接口
-type InteractiveComponent interface {
-	ComponentNode
-	ActionTarget
+// FrameworkInteractiveComponent extends FrameworkComponent with interactivity.
+// Interactive components (Button, Input) should implement this.
+type FrameworkInteractiveComponent interface {
+	FrameworkComponent
 	Focusable
+	ActionTarget
 }
 
-// ValidatableComponent 可验证组件组合
-// 需要验证的组件（如 Form、Input）应该实现这个接口
-type ValidatableComponent interface {
-	ComponentNode
-	Validatable
-}
-
-// ContainerComponent 容器组件组合
-// 容器组件（如 Box、Flex）应该实现这个接口
-type ContainerComponent interface {
+// FrameworkContainerComponent combines Container with layout capabilities.
+// Container components (Box, Flex) should implement this.
+type FrameworkContainerComponent interface {
 	Container
 	Measurable
 	Paintable
 }
 
-// ============================================================================
-// Common Types (V3)
-// ============================================================================
+// =============================================================================
+// Other Capability Interfaces
+// =============================================================================
 
-// TextAlign 文本对齐
+// Scrollable is for components that support scrolling.
+type Scrollable interface {
+	Node
+
+	// ScrollTo moves to an absolute position.
+	ScrollTo(x, y int)
+
+	// ScrollBy moves relative to current position.
+	ScrollBy(dx, dy int)
+
+	// GetScrollPosition returns the current scroll position.
+	GetScrollPosition() (x, y int)
+}
+
+// Validatable is for components that can validate their state.
+type Validatable interface {
+	Node
+
+	// Validate checks the component state.
+	Validate() error
+
+	// IsValid returns true if the component is in a valid state.
+	IsValid() bool
+}
+
+// =============================================================================
+// Common Types
+// =============================================================================
+
+// TextAlign for text alignment.
 type TextAlign int
 
 const (

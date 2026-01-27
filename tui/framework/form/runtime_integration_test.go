@@ -65,7 +65,9 @@ func TestRuntimeIntegration(t *stdtesting.T) {
 
 	for i, ch := range "test" {
 		// Create KeyEvent (as event pump would)
-		keyEv := event.NewKeyEvent(ch)
+		keyEv := event.NewKeyEvent(event.Key{
+			Rune: ch,
+		})
 		keyEv.Special = event.KeyUnknown
 
 		// Handle event (as app.handleEvent does)

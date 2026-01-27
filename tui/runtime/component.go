@@ -10,13 +10,8 @@ type Renderer interface {
 	View() string
 }
 
-// Sizable is the interface for components that need to be notified of their size.
-//
-// Components implementing this interface will have SetSize() called before rendering.
-type Sizable interface {
-	// SetSize notifies the component of its allocated dimensions.
-	SetSize(width, height int)
-}
+// Sizable is defined in interfaces.go to maintain consistency.
+// This interface is kept as a reference - use runtime.Sizable from interfaces.go.
 
 // ComponentRef is a lightweight reference to a component instance.
 //

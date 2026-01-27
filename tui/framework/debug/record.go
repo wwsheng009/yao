@@ -115,7 +115,7 @@ func (r *Recorder) RecordEvent(ev event.Event) {
 	}
 
 	if keyEv, ok := ev.(*event.KeyEvent); ok {
-		record.Details = fmt.Sprintf("Key: '%c', Special: %v", keyEv.Key, keyEv.Special)
+		record.Details = fmt.Sprintf("Key: '%c', Special: %v", keyEv.Key.Rune, keyEv.Special)
 	}
 
 	r.eventLog = append(r.eventLog, record)
