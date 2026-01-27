@@ -25,6 +25,8 @@ go run -tags demo tui/framework/examples/demo.go
 
 # 运行主题切换演示
 go run -tags theme_demo tui/framework/examples/theme_demo.go
+
+go run -tags interactive tui/framework/examples/login/interactive.go
 ```
 
 ## 主题演示

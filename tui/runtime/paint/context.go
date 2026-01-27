@@ -18,6 +18,19 @@ type PaintContext struct {
 	// Bounds 组件的边界（相对于父容器）
 	Bounds Rect
 
+	// ============================================================================
+	// Compatibility Fields - Framework components access these directly
+	// These are kept in sync with Bounds for backward compatibility.
+	// ============================================================================
+	// Deprecated: Use Bounds.X instead
+	X int
+	// Deprecated: Use Bounds.Y instead
+	Y int
+	// Deprecated: Use Bounds.Width instead
+	AvailableWidth int
+	// Deprecated: Use Bounds.Height instead
+	AvailableHeight int
+
 	// FocusPath 当前焦点路径
 	FocusPath state.FocusPath
 
@@ -41,15 +54,19 @@ type PaintContext struct {
 // NewPaintContext 创建绘制上下文
 func NewPaintContext(buf *Buffer, bounds Rect) *PaintContext {
 	return &PaintContext{
-		Buffer:      buf,
-		Bounds:      bounds,
-		FocusPath:   make(state.FocusPath, 0),
-		Focused:     false,
-		Disabled:    false,
-		ZIndex:      0,
-		DirtyTracker: NewDirtyTracker(),
-		viewportX:   0,
-		viewportY:   0,
+		Buffer:         buf,
+		Bounds:         bounds,
+		X:              bounds.X,
+		Y:              bounds.Y,
+		AvailableWidth: bounds.Width,
+		AvailableHeight: bounds.Height,
+		FocusPath:      make(state.FocusPath, 0),
+		Focused:        false,
+		Disabled:       false,
+		ZIndex:         0,
+		DirtyTracker:   NewDirtyTracker(),
+		viewportX:      0,
+		viewportY:      0,
 	}
 }
 
@@ -78,6 +95,10 @@ func (c *PaintContext) WithZIndex(zindex int) *PaintContext {
 func (c *PaintContext) WithBounds(bounds Rect) *PaintContext {
 	ctx := c.clone()
 	ctx.Bounds = bounds
+	ctx.X = bounds.X
+	ctx.Y = bounds.Y
+	ctx.AvailableWidth = bounds.Width
+	ctx.AvailableHeight = bounds.Height
 	return ctx
 }
 
@@ -102,20 +123,29 @@ func (c *PaintContext) Child(id string, bounds Rect) *PaintContext {
 	childPath = append(childPath, id)
 
 	return &PaintContext{
-		Buffer:      c.Buffer,
-		Bounds:      bounds,
-		FocusPath:   childPath,
-		Focused:     c.Focused && c.FocusPath.Current() == id,
-		Disabled:    c.Disabled,
-		ZIndex:      c.ZIndex,
-		DirtyTracker: c.DirtyTracker,
-		viewportX:   c.viewportX,
-		viewportY:   c.viewportY,
+		Buffer:          c.Buffer,
+		Bounds:          bounds,
+		X:               bounds.X,
+		Y:               bounds.Y,
+		AvailableWidth:  bounds.Width,
+		AvailableHeight: bounds.Height,
+		FocusPath:       childPath,
+		Focused:         c.Focused && c.FocusPath.Current() == id,
+		Disabled:        c.Disabled,
+		ZIndex:          c.ZIndex,
+		DirtyTracker:    c.DirtyTracker,
+		viewportX:       c.viewportX,
+		viewportY:       c.viewportY,
 	}
 }
 
 // SetCell 在当前位置设置单元格
 func (c *PaintContext) SetCell(x, y int, char rune, s style.Style) {
+	// 防护：检查 Buffer 是否存在
+	if c.Buffer == nil {
+		return
+	}
+
 	// 应用视口偏移
 	actualX := c.Bounds.X + x - c.viewportX
 	actualY := c.Bounds.Y + y - c.viewportY
@@ -136,6 +166,11 @@ func (c *PaintContext) SetCell(x, y int, char rune, s style.Style) {
 
 // SetString 在当前位置写入字符串
 func (c *PaintContext) SetString(x, y int, text string, s style.Style) {
+	// 防护：检查 Buffer 是否存在
+	if c.Buffer == nil {
+		return
+	}
+
 	// 应用视口偏移
 	actualX := c.Bounds.X + x - c.viewportX
 	actualY := c.Bounds.Y + y - c.viewportY
@@ -282,15 +317,19 @@ func (c *PaintContext) Clamp(x, y int) (int, int) {
 // clone 克隆上下文
 func (c *PaintContext) clone() *PaintContext {
 	return &PaintContext{
-		Buffer:      c.Buffer,
-		Bounds:      c.Bounds,
-		FocusPath:   c.FocusPath.Clone(),
-		Focused:     c.Focused,
-		Disabled:    c.Disabled,
-		ZIndex:      c.ZIndex,
-		DirtyTracker: c.DirtyTracker,
-		viewportX:   c.viewportX,
-		viewportY:   c.viewportY,
+		Buffer:          c.Buffer,
+		Bounds:          c.Bounds,
+		X:               c.Bounds.X,
+		Y:               c.Bounds.Y,
+		AvailableWidth:  c.Bounds.Width,
+		AvailableHeight: c.Bounds.Height,
+		FocusPath:       c.FocusPath.Clone(),
+		Focused:         c.Focused,
+		Disabled:        c.Disabled,
+		ZIndex:          c.ZIndex,
+		DirtyTracker:    c.DirtyTracker,
+		viewportX:       c.viewportX,
+		viewportY:       c.viewportY,
 	}
 }
 
@@ -316,6 +355,12 @@ type BoxStyle struct {
 
 	// Style 边框样式
 	Style style.Style
+}
+
+// WithStyle returns a new BoxStyle with the given style applied.
+func (b BoxStyle) WithStyle(s style.Style) BoxStyle {
+	b.Style = s
+	return b
 }
 
 // DefaultBoxStyle 默认边框样式

@@ -152,32 +152,34 @@ func (b *Button) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 	// 计算水平居中位置
 	paddingLeft := (width - buttonWidth) / 2
-	if paddingLeft < 1 {
-		paddingLeft = 1
+	if paddingLeft < 0 {
+		paddingLeft = 0
 	}
 
 	// 计算垂直居中位置
-	y := ctx.Y
+	y := 0
 	if height > 1 {
-		y += (height - 1) / 2
+		y = (height - 1) / 2
+	}
+
+	// 使用 PaintContext 的绘制方法（自动处理坐标偏移）
+	// 绘制空格（按钮前的填充）
+	for i := 0; i < paddingLeft; i++ {
+		ctx.SetCell(i, y, ' ', style.Style{})
 	}
 
 	// 绘制按钮
-	x := ctx.X
-	for i := 0; i < width; i++ {
-		if i < paddingLeft || i >= paddingLeft+buttonWidth {
-			// 绘制空格
-			buf.SetCell(x+i, y, ' ', style.Style{})
-		} else {
-			// 绘制按钮字符
-			charIndex := i - paddingLeft
-			if charIndex < len(buttonText) {
-				char := rune(buttonText[charIndex])
-				buf.SetCell(x+i, y, char, drawStyle)
-			} else {
-				buf.SetCell(x+i, y, ' ', style.Style{})
-			}
+	for i, r := range buttonText {
+		pos := paddingLeft + i
+		if pos < width {
+			ctx.SetCell(pos, y, r, drawStyle)
 		}
+	}
+
+	// 绘制空格（按钮后的填充）
+	endPos := paddingLeft + buttonWidth
+	for i := endPos; i < width; i++ {
+		ctx.SetCell(i, y, ' ', style.Style{})
 	}
 }
 

@@ -33,12 +33,7 @@ func TestCursorPositionRendering(t *testing.T) {
 			txt.OnFocus()
 
 			buf := paint.NewBuffer(80, 24)
-			ctx := component.PaintContext{
-				AvailableWidth:  80,
-				AvailableHeight: 24,
-				X:               2, // 模拟Form中的偏移
-				Y:               1,
-			}
+			ctx := component.NewPaintContext(buf, 2, 1, 80, 24) // 模拟Form中的偏移 (2, 1)
 
 			txt.Paint(ctx, buf)
 
@@ -100,12 +95,7 @@ func TestCursorPositionMovement(t *testing.T) {
 	txt.OnFocus()
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               2,
-		Y:               1,
-	}
+	ctx := component.NewPaintContext(buf, 2, 1, 80, 24) // 模拟Form中的偏移
 
 	// 测试不同光标位置
 	// cursorPos=n 表示光标在第n个字符位置（0-based）
@@ -126,8 +116,9 @@ func TestCursorPositionMovement(t *testing.T) {
 	for _, cp := range cursorPositions {
 		txt.SetCursor(cp.cursor)
 
-		// 创建新的buffer
+		// 创建新的buffer和context
 		buf = paint.NewBuffer(80, 24)
+		ctx = component.NewPaintContext(buf, 2, 1, 80, 24) // 使用新的buffer
 		txt.Paint(ctx, buf)
 
 		expectedAbsX := 2 + 1 + cp.cursor

@@ -32,12 +32,7 @@ func TestTextInputRendering(t *testing.T) {
 			txt.OnFocus()
 
 			buf := paint.NewBuffer(80, 24)
-			ctx := component.PaintContext{
-				AvailableWidth:  80,
-				AvailableHeight: 24,
-				X:               0,
-				Y:               0,
-			}
+			ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 			txt.Paint(ctx, buf)
 
@@ -117,12 +112,7 @@ func TestTextInputWithOffset(t *testing.T) {
 	txt.OnFocus()
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               10, // 偏移 10
-		Y:               5,  // 偏移 5
-	}
+	ctx := component.NewPaintContext(buf, 10, 5, 80, 24) // 偏移 10, 5
 
 	txt.Paint(ctx, buf)
 
@@ -172,12 +162,7 @@ func TestTextInputTypingSequence(t *testing.T) {
 
 	inputs := []rune{'h', 'e', 'l', 'l', 'o'}
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	fmt.Printf("\n=== 连续输入测试 ===\n")
 
@@ -235,12 +220,7 @@ func TestTextInputWideChar(t *testing.T) {
 	txt.OnFocus()
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	txt.Paint(ctx, buf)
 
@@ -295,12 +275,7 @@ func TestBackspaceRendering(t *testing.T) {
 	txt.OnFocus()
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	// 初始渲染
 	txt.Paint(ctx, buf)

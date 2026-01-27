@@ -14,12 +14,7 @@ func TestBlinkPositionStability(t *testing.T) {
 	c.SetBlinkInterval(50 * time.Millisecond)
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               10, // 父组件起始位置
-		Y:               5,
-	}
+	ctx := component.NewPaintContext(buf, 10, 5, 80, 24) // 父组件起始位置 (10, 5)
 
 	// 设置光标位置
 	c.SetPosition(3, 2) // 相对位置
@@ -69,12 +64,7 @@ func TestMultiplePaintCallsSameFrame(t *testing.T) {
 	c.SetBlinkInterval(500 * time.Millisecond) // 较长的间隔
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	c.SetPosition(5, 0)
 
@@ -106,12 +96,7 @@ func TestPositionUpdateDuringBlink(t *testing.T) {
 	c.SetBlinkInterval(100 * time.Millisecond)
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	// 初始位置
 	c.SetPosition(5, 0)
@@ -150,12 +135,7 @@ func TestParentContextChange(t *testing.T) {
 	buf := paint.NewBuffer(80, 24)
 
 	// 第一次绘制：父组件在 (0, 0)
-	ctx1 := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx1 := component.NewPaintContext(buf, 0, 0, 80, 24)
 	c.Paint(ctx1, buf)
 
 	if !buf.Cells[0][3].Style.IsReverse() {
@@ -164,12 +144,7 @@ func TestParentContextChange(t *testing.T) {
 
 	// 第二次绘制：父组件在 (10, 5)
 	buf2 := paint.NewBuffer(80, 24)
-	ctx2 := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               10,
-		Y:               5,
-	}
+	ctx2 := component.NewPaintContext(buf2, 10, 5, 80, 24)
 	c.Paint(ctx2, buf2)
 
 	if !buf2.Cells[5][13].Style.IsReverse() {
@@ -220,12 +195,7 @@ func TestConcurrentPositionAndBlink(t *testing.T) {
 	c.SetBlinkInterval(50 * time.Millisecond)
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	// 模拟用户输入时不断更新位置
 	for i := 0; i < 10; i++ {

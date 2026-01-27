@@ -82,12 +82,7 @@ func TestAppSimulation(t *stdtesting.T) {
 	fmt.Println("\n[Test 4] Render after typing")
 
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	loginForm.Paint(ctx, buf)
 	fmt.Println("  Render complete")

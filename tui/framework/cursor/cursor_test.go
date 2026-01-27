@@ -170,12 +170,7 @@ func TestCursorPaint(t *testing.T) {
 		}
 	}
 
-	ctx := component.PaintContext{
-		AvailableWidth:  20,
-		AvailableHeight: 10,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	// 绘制块状光标
 	c.SetPosition(5, 3)
@@ -212,12 +207,7 @@ func TestCursorPaintWhenNotVisible(t *testing.T) {
 	// 绘制背景
 	buf.SetCell(5, 3, 'x', style.Style{})
 
-	ctx := component.PaintContext{
-		AvailableWidth:  20,
-		AvailableHeight: 10,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 20, 10)
 
 	// 禁用闪烁后绘制
 	c.SetPosition(5, 3)
@@ -238,12 +228,7 @@ func TestPaintCursor(t *testing.T) {
 	testHost := &testCursorHost{cursor: NewCursor()}
 
 	buf := paint.NewBuffer(20, 10)
-	ctx := component.PaintContext{
-		AvailableWidth:  20,
-		AvailableHeight: 10,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 20, 10)
 
 	// 使用便捷函数绘制光标
 	PaintCursor(testHost, ctx, buf, 5, 3)
@@ -268,12 +253,7 @@ func (h *testCursorHost) GetCursor() *Cursor {
 func BenchmarkCursorPaint(b *testing.B) {
 	c := NewCursor()
 	buf := paint.NewBuffer(80, 24)
-	ctx := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

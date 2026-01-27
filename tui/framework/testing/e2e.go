@@ -506,12 +506,7 @@ func (ctx *TestContext) captureRender() {
 		// 创建一个合理大小的缓冲区
 		buf := paint.NewBuffer(80, 24)
 
-		paintCtx := component.PaintContext{
-			AvailableWidth:  80,
-			AvailableHeight: 24,
-			X:               0,
-			Y:               0,
-		}
+		paintCtx := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 		paintable.Paint(paintCtx, buf)
 

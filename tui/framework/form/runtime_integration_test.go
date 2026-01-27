@@ -94,12 +94,7 @@ func TestRuntimeIntegration(t *stdtesting.T) {
 	// Step 5: Render (simulates app.render())
 	fmt.Println("\n[Rendering form]")
 	buf := paint.NewBuffer(80, 24)
-	ctx2 := component.PaintContext{
-		AvailableWidth:  80,
-		AvailableHeight: 24,
-		X:               0,
-		Y:               0,
-	}
+	ctx2 := component.NewPaintContext(buf, 0, 0, 80, 24)
 
 	loginForm.Paint(ctx2, buf)
 	fmt.Println("  [Paint completed]")

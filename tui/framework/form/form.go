@@ -523,12 +523,8 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 		// 绘制输入组件
 		if txt, ok := field.Input.(*input.TextInput); ok {
-			inputCtx := component.PaintContext{
-				AvailableWidth:  width - 2,
-				AvailableHeight: 1,
-				X:                x + 2,
-				Y:                y,
-			}
+			// 创建子组件的 PaintContext，需要包含 Buffer 引用
+			inputCtx := component.NewPaintContext(buf, x+2, y, width-2, 1)
 			formDebugLog("FIELD[%d]: calling TextInput.Paint with ctx.X=%d ctx.Y=%d",
 				i, inputCtx.X, inputCtx.Y)
 			txt.Paint(inputCtx, buf)

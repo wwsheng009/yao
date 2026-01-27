@@ -413,70 +413,49 @@ func (t *TextInput) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		displayValue = string(runes)
 	}
 
-	// 计算垂直位置
-	// TextInput 是单行组件，直接使用 ctx.Y，不做垂直居中
-	y := ctx.Y
+	// TextInput 是单行组件，使用相对坐标 (0, 0)
+	y := 0
 
-	x := ctx.X
-
+	// 使用 PaintContext 的绘制方法（自动处理坐标偏移）
 	// 绘制左边框
-	buf.SetCell(x, y, '[', drawStyle)
-	x++
+	ctx.SetCell(0, y, '[', drawStyle)
 
-	// 绘制内容（只绘制实际文字，不填充额外空格）
+	// 绘制内容（只绘制实际文字）
 	for i, r := range runes {
-		buf.SetCell(x+i, y, r, drawStyle)
+		ctx.SetCell(1+i, y, r, drawStyle)
 	}
-	x += len(runes)
 
 	// 绘制右边框
-	buf.SetCell(x, y, ']', drawStyle)
+	ctx.SetCell(1+len(runes), y, ']', drawStyle)
 
 	// 绘制光标（使用独立的 Cursor 组件）
 	if isFocused {
-		// 计算光标位置
+		// 计算光标位置（相对坐标）
 		// cursorPos 表示光标在文本中的索引（0-based）
-		// 对于块状光标，我们高亮当前光标位置的字符
-		// 如果 cursorPos >= len(value): 光标在末尾，高亮右括号或最后一个字符
-
+		// 块状光标高亮光标位置的字符
 		var cursorX int
 		if len(runes) == 0 {
-			// 空输入，光标在左边框后的位置
+			// 空输入，光标在右边括号位置（或左边框后）
 			cursorX = 1
 		} else if cursorPos >= len(runes) {
-			// 光标在末尾或超出，高亮最后一个字符
-			cursorX = 1 + len(runes) - 1
+			// 光标在末尾，高亮右边括号
+			cursorX = 1 + len(runes) // 右边括号的位置
 		} else {
 			// 光标在某个字符上，高亮该字符
 			cursorX = 1 + cursorPos
 		}
 
-		cursorY := y - ctx.Y // 转换为相对 Y 坐标
-
-		// 确保光标在边界内
-		if cursorX < 1 {
-			cursorX = 1
-		}
-		maxCursorX := 1 + len(runes) // 右括号的位置
-		if cursorX > maxCursorX {
-			cursorX = maxCursorX
-		}
-
-		// 计算绝对光标位置（用于调试）
-		absCursorX := ctx.X + cursorX
-		absCursorY := ctx.Y + cursorY
-
-		debugLog("[%s] FOCUS CURSOR: logical=%d, relative=(%d,%d), absolute=(%d,%d), lenRunes=%d",
-			t.ID(), cursorPos, cursorX, cursorY, absCursorX, absCursorY, len(runes))
+		debugLog("[%s] FOCUS CURSOR: logical=%d, relativeX=%d, lenRunes=%d",
+			t.ID(), cursorPos, cursorX, len(runes))
 
 		// 使用 Cursor 组件绘制光标
 		// Cursor.Paint 会加上 ctx.X 和 ctx.Y 来得到绝对位置
-		t.cursorComp.SetPosition(cursorX, cursorY)
-		//print the x and the y
-
+		t.cursorComp.SetPosition(cursorX, y)
 		t.cursorComp.Paint(ctx, buf)
 
 		// 验证光标是否正确绘制到缓冲区
+		absCursorX := ctx.X + cursorX
+		absCursorY := ctx.Y + y
 		if absCursorX < buf.Width && absCursorY < buf.Height {
 			cell := buf.Cells[absCursorY][absCursorX]
 			debugLog("[%s] FOCUS RESULT: (%d,%d)='%c' reverse=%v",

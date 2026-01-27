@@ -101,3 +101,47 @@ func (b *Buffer) Fill(rect Rect, char rune, s style.Style) {
 type Rect struct {
 	X, Y, Width, Height int
 }
+
+// Intersect calculates the intersection of two rectangles.
+// Returns nil if there is no intersection.
+func (r Rect) Intersect(other *Rect) *Rect {
+	if other == nil {
+		return &r
+	}
+
+	x1 := maxInt(r.X, other.X)
+	y1 := maxInt(r.Y, other.Y)
+	x2 := minInt(r.X+r.Width, other.X+other.Width)
+	y2 := minInt(r.Y+r.Height, other.Y+other.Height)
+
+	if x1 >= x2 || y1 >= y2 {
+		return nil
+	}
+
+	return &Rect{
+		X:      x1,
+		Y:      y1,
+		Width:  x2 - x1,
+		Height: y2 - y1,
+	}
+}
+
+// Contains checks if a point is inside the rectangle.
+func (r Rect) Contains(x, y int) bool {
+	return x >= r.X && x < r.X+r.Width &&
+		y >= r.Y && y < r.Y+r.Height
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

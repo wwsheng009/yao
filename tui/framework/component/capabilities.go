@@ -59,35 +59,43 @@ type Paintable interface {
 }
 
 // PaintContext is the painting context for framework components.
-// It extends the runtime paint context with framework-specific features.
-type PaintContext struct {
-	// Available size for the component
-	AvailableWidth  int
-	AvailableHeight int
+// It is now an alias to runtime.PaintContext to maintain consistency.
+//
+// The runtime PaintContext provides compatibility fields (X, Y, AvailableWidth, AvailableHeight)
+// that are kept in sync with Bounds. Components can access these directly:
+//   ctx.X, ctx.Y - Component position (relative to parent)
+//   ctx.AvailableWidth, ctx.AvailableHeight - Available drawing size
+//   ctx.Bounds.X, ctx.Bounds.Y, ctx.Bounds.Width, ctx.Bounds.Height - Same as above
+//   ctx.Focused - Whether component has focus
+//   ctx.Disabled - Whether component is disabled
+//   ctx.Buffer - The drawing buffer
+//
+// Drawing methods (use these instead of direct Buffer access):
+//   ctx.SetCell(x, y, char, style) - Draw a single character
+//   ctx.SetString(x, y, text, style) - Draw a string
+//   ctx.Fill(rect, char, style) - Fill a rectangle
+//   ctx.DrawBox(rect, boxStyle) - Draw a border
+//   ctx.DrawText(x, y, text, align, style) - Draw aligned text
+//
+// Or use Painter for even more convenience:
+//   painter := paint.NewPainter(&ctx)
+//   painter.Print(0, 0, "Hello", style)
+//   painter.DrawBorder(0, 0, width, height, style)
+type PaintContext = paint.PaintContext
 
-	// Component position (relative to parent)
-	X int
-	Y int
-
-	// Scroll offset
-	OffsetX int
-	OffsetY int
-
-	// Z-index for layering
-	ZIndex int
-
-	// Clip region (optional)
-	ClipRect *runtime.Rect
-}
+// =============================================================================
+// Factory Functions
+// =============================================================================
 
 // NewPaintContext creates a new PaintContext with the given dimensions.
-func NewPaintContext(x, y, width, height int) PaintContext {
-	return PaintContext{
-		X:               x,
-		Y:               y,
-		AvailableWidth:  width,
-		AvailableHeight: height,
-	}
+// This wraps runtime.NewPaintContext for convenience.
+func NewPaintContext(buf *paint.Buffer, x, y, width, height int) PaintContext {
+	return *paint.NewPaintContext(buf, paint.Rect{
+		X:      x,
+		Y:      y,
+		Width:  width,
+		Height: height,
+	})
 }
 
 // =============================================================================

@@ -220,15 +220,9 @@ func (t *Text) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 			processedLine = t.alignLine(processedLine, width)
 		}
 
-		// 应用样式并绘制
-		col := 0
-		for _, char := range processedLine {
-			if col >= width {
-				break
-			}
-			buf.SetCell(ctx.X+col, ctx.Y+y, char, paintStyle)
-			col += runeWidth(char)
-		}
+		// 使用 PaintContext 的绘制方法（自动处理坐标偏移）
+		// ctx.SetString 会自动处理宽字符和边界检查
+		ctx.SetString(0, y, processedLine, paintStyle)
 
 		y++
 	}
