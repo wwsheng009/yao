@@ -287,7 +287,7 @@ func cuiV09IndexHtml() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "cui/v0.9/index.html", size: 0, mode: os.FileMode(438), modTime: time.Unix(1769275877, 0)}
+	info := bindataFileInfo{name: "cui/v0.9/index.html", size: 0, mode: os.FileMode(438), modTime: time.Unix(1769486997, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -307,7 +307,7 @@ func cuiV10IndexHtml() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "cui/v1.0/index.html", size: 10, mode: os.FileMode(438), modTime: time.Unix(1769275878, 0)}
+	info := bindataFileInfo{name: "cui/v1.0/index.html", size: 10, mode: os.FileMode(438), modTime: time.Unix(1769486997, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -327,7 +327,7 @@ func cuiV10Layouts__indexAsyncJs() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "cui/v1.0/layouts__index.async.js", size: 25, mode: os.FileMode(438), modTime: time.Unix(1769275878, 0)}
+	info := bindataFileInfo{name: "cui/v1.0/layouts__index.async.js", size: 25, mode: os.FileMode(438), modTime: time.Unix(1769486997, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -347,7 +347,7 @@ func cuiV10UmiJs() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "cui/v1.0/umi.js", size: 25, mode: os.FileMode(438), modTime: time.Unix(1769275878, 0)}
+	info := bindataFileInfo{name: "cui/v1.0/umi.js", size: 25, mode: os.FileMode(438), modTime: time.Unix(1769486997, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }

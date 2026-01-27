@@ -311,7 +311,7 @@
       "request": "launch",
       "mode": "auto",
       "console": "integratedTerminal",
-      "program": "${workspaceFolder}/tui/framework/examples/login/interactive.go",
+      "program": "${workspaceFolder}/tui/framework/examples/theme_demo.go",
       "args": [],
       "cwd": "${workspaceFolder}/tui/framework/examples/login",
       "env": {
