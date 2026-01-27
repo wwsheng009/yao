@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	tuipkg "github.com/yaoapp/yao/tui"
+	tuipkg "github.com/yaoapp/yao/tui/tea"
 )
 
 // TestTUIListNames tests the tuiNames function

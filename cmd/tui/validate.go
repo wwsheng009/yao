@@ -9,7 +9,7 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
-	"github.com/yaoapp/yao/tui"
+	"github.com/yaoapp/yao/tui/tui"
 )
 
 // ValidateCmd represents the validate command

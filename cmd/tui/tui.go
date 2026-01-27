@@ -15,9 +15,8 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
-	"github.com/yaoapp/yao/tui"
+	"github.com/yaoapp/yao/tui/tui"
 )
-
 var Debug bool
 var Verbose bool
 
@@ -190,7 +189,7 @@ var Cmd = &cobra.Command{
 
 		// Load TUI defaults if available (optional, static defaults that can be overridden)
 		defaults := tui.LoadTUIDefaults(tuiID)
-		if defaults != nil && len(defaults) > 0 {
+		if len(defaults) > 0 {
 			if cfg.Data == nil {
 				cfg.Data = make(map[string]interface{})
 			}
@@ -211,7 +210,7 @@ var Cmd = &cobra.Command{
 		// All data is flattened to support dot-notation access
 		tui.PrepareInitialState(cfg, externalData)
 
-		if externalData != nil && len(externalData) > 0 {
+		if len(externalData) > 0 {
 			log.Info("External data loaded with %d keys", len(externalData))
 		}
 

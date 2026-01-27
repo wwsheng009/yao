@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tuipkg "github.com/yaoapp/yao/tui"
+	tuipkg "github.com/yaoapp/yao/tui/tui"
 )
 
 // TestParseTUIMetadataArgs tests the parsing of TUI metadata with external data arguments

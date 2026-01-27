@@ -13,7 +13,7 @@ import (
 	"github.com/yaoapp/kun/log"
 	"github.com/yaoapp/yao/config"
 	"github.com/yaoapp/yao/engine"
-	"github.com/yaoapp/yao/tui"
+	"github.com/yaoapp/yao/tui/tui"
 )
 
 var useTextOutput bool
@@ -128,6 +128,7 @@ func runTUIList(cfg *tui.Config) {
 
 	// Create Bubble Tea program with context
 	model := tui.NewModel(cfg, nil)
+	model.Init()
 	program := tea.NewProgram(
 		model,
 		tea.WithAltScreen(),       // Use alternate screen buffer
