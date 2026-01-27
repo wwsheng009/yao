@@ -155,7 +155,7 @@ styles.Header = styles.Header.BorderStyle(t.borderType)  // 只应用边框类�
 
 ## 📚 相关文档
 
-- 样式配置指南: `tui/ui/components/TABLE_STYLES.md`
+- 样式配置指南: `/tui/tea/component/TABLE_STYLES.md`
 - 实现总结: `TABLE_STYLES_IMPLEMENTATION_SUMMARY.md`
-- 测试文件: `tui/ui/components/table_styles_test.go`
+- 测试文件: `/tui/tea/component/table_styles_test.go`
 - 示例代码: `tui/examples/table_styles_example.go`

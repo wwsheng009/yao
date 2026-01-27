@@ -42,7 +42,7 @@ type TableModel struct {
 - `WithBorderBottom(show bool) *TableModel`
 - `WithStandardBorder(color string) *TableModel` - 快捷方法
 
-### 2. 增强了 `tui/ui/components/table.go` 中的 TableComponent
+### 2. 增强了 `/tui/tea/component/table.go` 中的 TableComponent
 
 #### 新增字段
 ```go
@@ -103,7 +103,7 @@ type TableComponent struct {
 - `tui/core/message_handler_test.go` - 添加 `SetSize` 方法
 - `tui/legacy/layout/shrink_test.go` - 添加 `SetSize` 方法
 - `tui/legacy/layout/measurable_test.go` - 添加 `SetSize` 方法
-- `tui/ui/components/tree_test.go` - 修复 `BoxConstraints` 使用
+- `/tui/tea/component/tree_test.go` - 修复 `BoxConstraints` 使用
 
 #### 示例应用修复
 - `tui/examples/todo_app/main.go` - 修复 `WithSize` 为 `WithWidth/WithHeight`
@@ -111,7 +111,7 @@ type TableComponent struct {
 
 #### 其他修复
 - `tui/runtime/selection.go` - 移除未使用的导入
-- `tui/ui/components/header_test.go` - 添加缺失的导入
+- `/tui/tea/component/header_test.go` - 添加缺失的导入
 
 ## 使用示例
 
@@ -214,7 +214,7 @@ table := components.NewTable().
 
 ## 文档和示例
 
-1. **样式配置指南**: `tui/ui/components/TABLE_STYLES.md`
+1. **样式配置指南**: `/tui/tea/component/TABLE_STYLES.md`
    - 完整的 API 文档
    - DSL 配置说明
    - 多个实际示例

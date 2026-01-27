@@ -102,7 +102,7 @@ lipgloss.HiddenBorder()   // "hidden"  → 无边框
 ### 测试通过 ✅
 
 ```bash
-$ go test ./tui/ui/components -run TestTableComponentStyles -v
+$ go test ./tui/component -run TestTableComponentStyles -v
 === RUN   TestTableComponentStylesApplication
 --- PASS: TestTableComponentStylesApplication (0.00s)
 === RUN   TestTableComponentStyleChaining

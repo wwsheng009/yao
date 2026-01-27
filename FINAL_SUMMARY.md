@@ -51,7 +51,7 @@ type TableModel struct {
 - `WithCellColor()`, `WithCellBackground()`
 - `WithBorderColor()`
 
-### 2. TableComponent 增强（tui/ui/components/table.go）
+### 2. TableComponent 增强（/tui/tea/component/table.go）
 
 #### 新增字段
 ```go
@@ -121,10 +121,10 @@ type TableComponent struct {
 
 #### 其他修复
 - `tui/runtime/selection.go` - 移除未使用的导入
-- `tui/ui/components/header_test.go` - 添加缺失的导入
-- `tui/ui/components/tree_test.go` - 修复 BoxConstraints 使用
+- `/tui/tea/component/header_test.go` - 添加缺失的导入
+- `/tui/tea/component/tree_test.go` - 修复 BoxConstraints 使用
 
-### 6. 测试覆盖（tui/ui/components/table_styles_test.go）
+### 6. 测试覆盖（/tui/tea/component/table_styles_test.go）
 
 创建了完整的样式测试套件：
 - ✅ 10 个样式应用测试
@@ -230,7 +230,7 @@ $ go build ./...
 
 ### 测试状态
 ```bash
-$ go test ./tui/ui/components -run TestTableComponentStyles -v
+$ go test ./tui/component -run TestTableComponentStyles -v
 === RUN   TestTableComponentStylesApplication
 --- PASS: TestTableComponentStylesApplication (0.00s)
 === RUN   TestTableComponentStyleChaining
@@ -240,7 +240,7 @@ $ go test ./tui/ui/components -run TestTableComponentStyles -v
 === RUN   TestTableComponentStylesNotOverwritten
 --- PASS: TestTableComponentStylesNotOverwritten (0.00s)
 PASS
-ok  	github.com/yaoapp/yao/tui/ui/components	1.261s
+ok  	github.com/yaoapp/yao/tui/component	1.261s
 ```
 
 ### 样式支持矩阵

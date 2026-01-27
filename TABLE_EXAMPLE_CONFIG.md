@@ -58,7 +58,7 @@ package main
 
 import (
     "github.com/charmbracelet/lipgloss"
-    "github.com/yaoapp/yao/tui/ui/components"
+    "github.com/yaoapp/yao/tui/component"
 )
 
 func main() {
@@ -225,7 +225,7 @@ package main
 
 import (
     "fmt"
-    "github.com/yaoapp/yao/tui/ui/components"
+    "github.com/yaoapp/yao/tui/component"
 )
 
 func main() {
