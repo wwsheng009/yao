@@ -139,7 +139,7 @@ import (
     "sync"
 
     "github.com/yaoapp/gou/runtime/v8/bridge"
-    "github.com/yaoapp/yao/tui/core"
+    "github.com/yaoapp/yao/tui/tui/core"
     "rogchap.com/v8go"
 )
 
@@ -311,7 +311,7 @@ import (
     "sync"
 
     "github.com/yaoapp/gou/runtime/v8/bridge"
-    "github.com/yaoapp/yao/tui/core"
+    "github.com/yaoapp/yao/tui/tui/core"
     "rogchap.com/v8go"
 )
 
@@ -514,7 +514,7 @@ package tui
 
 import (
     "github.com/yaoapp/gou/runtime/v8/bridge"
-    "github.com/yaoapp/yao/tui/core"
+    "github.com/yaoapp/yao/tui/tui/core"
     "rogchap.com/v8go"
 )
 

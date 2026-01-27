@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/yaoapp/yao/tui/core"
+	"github.com/yaoapp/yao/tui/tui/core"
 )
 
 // TestLayoutPatterns tests the layout patterns from README.md

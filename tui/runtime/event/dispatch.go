@@ -10,7 +10,7 @@ import (
 // to maintain module boundary rules (runtime MUST NOT import Bubble Tea).
 //
 // For converting Bubble Tea messages to runtime events, use:
-//   github.com/yaoapp/yao/tui/tea/adapter.ConvertBubbleTeaMsg(msg tea.Msg)
+//   "github.com/yaoapp/yao/tui/tui/adapter.ConvertBubbleTeaMsg(msg tea.Msg)
 
 // EventStruct is the concrete implementation of the Event interface.
 // This follows the V3 Event System specification with three-phase propagation.

@@ -1,6 +1,6 @@
 package runtime
 
-import "github.com/yaoapp/yao/tui/core"
+import "github.com/yaoapp/yao/tui/tui/core"
 
 // LayoutNode is the UI Intermediate Representation (IR) for the Yao TUI Runtime.
 //
