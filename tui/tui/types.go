@@ -11,9 +11,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/runtime"
 	"github.com/yaoapp/yao/tui/tui/core"
 	"github.com/yaoapp/yao/tui/tui/legacy/layout"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // MessageHandler defines a function that handles a specific message type
@@ -279,10 +279,10 @@ type Model struct {
 
 	// ========== Runtime Integration (v1) ==========
 	// RuntimeEngine is the new runtime-based layout engine
-	RuntimeEngine *runtime.RuntimeImpl
+	RuntimeEngine tuiruntime.Runtime
 
 	// RuntimeRoot is the root node of the runtime layout tree
-	RuntimeRoot *runtime.LayoutNode
+	RuntimeRoot *tuiruntime.LayoutNode
 
 	// UseRuntime enables the new runtime engine (default: false for compatibility)
 	// When true, RuntimeEngine is used instead of LayoutEngine

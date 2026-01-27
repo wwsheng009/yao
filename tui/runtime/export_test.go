@@ -601,3 +601,50 @@ func ExampleExporter() {
 
 	fmt.Println("Exported to TXT, SVG, and PNG")
 }
+
+// mockContainer creates a mock container node for testing.
+func mockContainer(id, nodeType string, style Style) *LayoutNode {
+	return &LayoutNode{
+		ID:   id,
+		Type: NodeType(nodeType),
+		Style: style,
+		Props: make(map[string]interface{}),
+		dirty: true,
+	}
+}
+
+// mockNode creates a mock node with a component for testing.
+func mockNode(id, nodeType, text string) *LayoutNode {
+	return &LayoutNode{
+		ID:   id,
+		Type: NodeType(nodeType),
+		Style: NewStyle(),
+		Props: map[string]interface{}{
+			"text": text,
+		},
+		Component: NewComponentRef(id, nodeType, &mockComponent{text: text}),
+		dirty: true,
+	}
+}
+
+// mockComponent is a simple mock component for testing.
+type mockComponent struct {
+	text string
+}
+
+// View returns the mock component's text.
+func (m *mockComponent) View() string {
+	return m.text
+}
+
+// SetSize is a no-op for the mock component.
+func (m *mockComponent) SetSize(width, height int) {}
+
+// Measure returns a fixed size for the mock component.
+func (m *mockComponent) Measure(c BoxConstraints) Size {
+	textLen := len(m.text)
+	return Size{
+		Width:  textLen,
+		Height: 1,
+	}
+}

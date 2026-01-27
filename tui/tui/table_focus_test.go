@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // TestTableFocusNavigation tests Tab navigation between two tables
@@ -72,7 +72,7 @@ func TestTableFocusNavigation(t *testing.T) {
 		if child.Component != nil && child.Component.Instance != nil {
 			t.Logf("  Component instance: %T", child.Component.Instance)
 			// Check if wrapper implements FocusableComponent
-			if focusable, ok := child.Component.Instance.(runtime.FocusableComponent); ok {
+			if focusable, ok := child.Component.Instance.(tuiruntime.FocusableComponent); ok {
 				t.Logf("  IsFocusable: %v", focusable.IsFocusable())
 			}
 		}

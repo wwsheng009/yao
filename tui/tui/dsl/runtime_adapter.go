@@ -7,12 +7,12 @@ import (
 	"fmt"
 
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // ToLayoutNode converts a DSL Node tree to a runtime LayoutNode tree.
 // This is the main entry point for converting parsed DSL to the runtime format.
-func (n *Node) ToLayoutNode() *runtime.LayoutNode {
+func (n *Node) ToLayoutNode() *tuiruntime.LayoutNode {
 	if n == nil {
 		return nil
 	}
@@ -24,7 +24,7 @@ func (n *Node) ToLayoutNode() *runtime.LayoutNode {
 	style := n.convertStyle()
 
 	// Create layout node
-	layoutNode := runtime.NewLayoutNode(n.ID, nodeType, style)
+	layoutNode := tuiruntime.NewLayoutNode(n.ID, nodeType, style)
 
 	// Copy props
 	if n.Props != nil {
@@ -46,7 +46,7 @@ func (n *Node) ToLayoutNode() *runtime.LayoutNode {
 }
 
 // ToLayoutTree converts the entire DSL config to a runtime LayoutNode tree.
-func (c *Config) ToLayoutTree() *runtime.LayoutNode {
+func (c *Config) ToLayoutTree() *tuiruntime.LayoutNode {
 	if c.Layout == nil {
 		return nil
 	}
@@ -54,8 +54,8 @@ func (c *Config) ToLayoutTree() *runtime.LayoutNode {
 }
 
 // convertStyle converts DSL style properties to runtime Style.
-func (n *Node) convertStyle() runtime.Style {
-	style := runtime.NewStyle()
+func (n *Node) convertStyle() tuiruntime.Style {
+	style := tuiruntime.NewStyle()
 
 	// Apply style from NodeStyle if present
 	if n.Style != nil {
@@ -71,17 +71,17 @@ func (n *Node) convertStyle() runtime.Style {
 }
 
 // applyStyleFromNodeStyle applies style from a NodeStyle object.
-func applyStyleFromNodeStyle(style runtime.Style, nodeStyle *NodeStyle) runtime.Style {
+func applyStyleFromNodeStyle(style tuiruntime.Style, nodeStyle *NodeStyle) tuiruntime.Style {
 	// Width
 	if nodeStyle.Width != nil {
 		width, _, _, _ := ParseSize(nodeStyle.Width)
-		style.Width = width
+		style.Width = &width
 	}
 
 	// Height
 	if nodeStyle.Height != nil {
 		height, _, _, _ := ParseSize(nodeStyle.Height)
-		style.Height = height
+		style.Height = &height
 	}
 
 	// FlexGrow
@@ -140,11 +140,11 @@ func applyStyleFromNodeStyle(style runtime.Style, nodeStyle *NodeStyle) runtime.
 }
 
 // applyDirectStyleProps applies direct style properties from the node.
-func applyDirectStyleProps(style runtime.Style, node *Node) runtime.Style {
+func applyDirectStyleProps(style tuiruntime.Style, node *Node) tuiruntime.Style {
 	// Width
 	if node.Width != nil {
 		width, isPercent, _, _ := ParseSize(node.Width)
-		style.Width = width
+		style.Width = &width
 		_ = isPercent // Already encoded in width value
 	}
 
@@ -154,7 +154,7 @@ func applyDirectStyleProps(style runtime.Style, node *Node) runtime.Style {
 		if isFlex {
 			style.FlexGrow = 1
 		} else {
-			style.Height = height
+			style.Height = &height
 		}
 		_ = isPercent // Already encoded in height value
 	}
@@ -220,80 +220,80 @@ func applyDirectStyleProps(style runtime.Style, node *Node) runtime.Style {
 }
 
 // mapDSLTypeToRuntime maps DSL component types to runtime NodeTypes.
-func mapDSLTypeToRuntime(dslType string) runtime.NodeType {
+func mapDSLTypeToRuntime(dslType string) tuiruntime.NodeType {
 	switch dslType {
 	case "layout", "vertical", "horizontal":
 		// For layout nodes, determine direction from Direction property
-		return runtime.NodeTypeFlex
+		return tuiruntime.NodeTypeFlex
 	case "row":
-		return runtime.NodeTypeRow
+		return tuiruntime.NodeTypeRow
 	case "column":
-		return runtime.NodeTypeColumn
+		return tuiruntime.NodeTypeColumn
 	default:
 		// All component types are treated as custom (leaf nodes)
-		return runtime.NodeTypeCustom
+		return tuiruntime.NodeTypeCustom
 	}
 }
 
 // mapDirection maps direction strings to runtime Direction.
-func mapDirection(dir string) runtime.Direction {
+func mapDirection(dir string) tuiruntime.Direction {
 	switch dir {
 	case "row", "horizontal":
-		return runtime.DirectionRow
+		return tuiruntime.DirectionRow
 	case "column", "vertical":
-		return runtime.DirectionColumn
+		return tuiruntime.DirectionColumn
 	default:
-		return runtime.DirectionRow // Default
+		return tuiruntime.DirectionRow // Default
 	}
 }
 
 // mapOverflow maps overflow strings to runtime Overflow.
-func mapOverflow(overflow string) runtime.Overflow {
+func mapOverflow(overflow string) tuiruntime.Overflow {
 	switch overflow {
 	case "visible":
-		return runtime.OverflowVisible
+		return tuiruntime.OverflowVisible
 	case "hidden":
-		return runtime.OverflowHidden
+		return tuiruntime.OverflowHidden
 	case "scroll":
-		return runtime.OverflowScroll
+		return tuiruntime.OverflowScroll
 	default:
-		return runtime.OverflowVisible // Default
+		return tuiruntime.OverflowVisible // Default
 	}
 }
 
 // mapAlign maps align strings to runtime Align.
-func mapAlign(align string) runtime.Align {
+func mapAlign(align string) tuiruntime.Align {
 	switch align {
 	case "start":
-		return runtime.AlignStart
+		return tuiruntime.AlignStart
 	case "center":
-		return runtime.AlignCenter
+		return tuiruntime.AlignCenter
 	case "end":
-		return runtime.AlignEnd
+		return tuiruntime.AlignEnd
 	case "stretch":
-		return runtime.AlignStretch
+		return tuiruntime.AlignStretch
 	default:
-		return runtime.AlignStart // Default
+		return tuiruntime.AlignStart // Default
 	}
 }
 
 // mapJustify maps justify strings to runtime Justify.
-func mapJustify(justify string) runtime.Justify {
+func mapJustify(justify string) tuiruntime.Justify {
 	switch justify {
 	case "start":
-		return runtime.JustifyStart
+		return tuiruntime.JustifyStart
 	case "center":
-		return runtime.JustifyCenter
+		return tuiruntime.JustifyCenter
 	case "end":
-		return runtime.JustifyEnd
+		return tuiruntime.JustifyEnd
 	case "space-between":
-		return runtime.JustifySpaceBetween
+		return tuiruntime.JustifySpaceBetween
 	case "space-around":
-		return runtime.JustifySpaceAround
+		return tuiruntime.JustifySpaceAround
 	case "space-evenly":
-		return runtime.JustifySpaceEvenly
+		return tuiruntime.JustifySpaceEvenly
 	default:
-		return runtime.JustifyStart // Default
+		return tuiruntime.JustifyStart // Default
 	}
 }
 
@@ -343,10 +343,10 @@ func parseBorderFromWidth(value interface{}) *BorderSpec {
 	return nil
 }
 
-// toRuntimeInsets converts a slice to runtime.Insets.
-func toRuntimeInsets(padding []int) runtime.Insets {
+// toRuntimeInsets converts a slice to tuiruntime.Insets.
+func toRuntimeInsets(padding []int) tuiruntime.Insets {
 	if len(padding) == 0 {
-		return runtime.Insets{}
+		return tuiruntime.Insets{}
 	}
 
 	var top, right, bottom, left int
@@ -363,7 +363,7 @@ func toRuntimeInsets(padding []int) runtime.Insets {
 		top, right, bottom, left = padding[0], padding[1], padding[2], padding[3]
 	}
 
-	return runtime.Insets{
+	return tuiruntime.Insets{
 		Top:    top,
 		Right:  right,
 		Bottom: bottom,
@@ -373,7 +373,7 @@ func toRuntimeInsets(padding []int) runtime.Insets {
 
 // BindComponents binds component instances to layout nodes.
 // This is called after component instances are created.
-func (c *Config) BindComponents(componentMap map[string]*runtime.LayoutNode) {
+func (c *Config) BindComponents(componentMap map[string]*tuiruntime.LayoutNode) {
 	if c.Layout == nil {
 		return
 	}
@@ -381,7 +381,7 @@ func (c *Config) BindComponents(componentMap map[string]*runtime.LayoutNode) {
 }
 
 // bindComponents recursively binds component instances.
-func (n *Node) bindComponents(componentMap map[string]*runtime.LayoutNode) {
+func (n *Node) bindComponents(componentMap map[string]*tuiruntime.LayoutNode) {
 	if _, ok := componentMap[n.ID]; ok {
 		// Component found, it will be linked elsewhere
 		log.Trace("DSL: Component %s found in component map", n.ID)
@@ -394,7 +394,7 @@ func (n *Node) bindComponents(componentMap map[string]*runtime.LayoutNode) {
 
 // ValidateAndConvert validates the DSL config and converts to runtime LayoutNode.
 // This is a convenience function that combines validation and conversion.
-func ValidateAndConvert(data []byte, filename string) (*Config, *runtime.LayoutNode, error) {
+func ValidateAndConvert(data []byte, filename string) (*Config, *tuiruntime.LayoutNode, error) {
 	// Parse
 	cfg, err := ParseFile(data, filename)
 	if err != nil {

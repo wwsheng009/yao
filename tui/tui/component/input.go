@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yaoapp/yao/tui/tui/core"
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // InputProps defines the properties for the Input component
@@ -512,9 +512,9 @@ func (w *InputComponentWrapper) SetCursorBlinkSpeed(speedMs int) {
 	}
 }
 
-// Measure implements the runtime.Measurable interface for the Input component.
+// Measure implements the tuiruntime.Measurable interface for the Input component.
 // Returns the preferred size of the input component given the constraints.
-func (w *InputComponentWrapper) Measure(c runtime.BoxConstraints) runtime.Size {
+func (w *InputComponentWrapper) Measure(c tuiruntime.BoxConstraints) tuiruntime.Size {
 	// Input components typically have a height of 1 (single line)
 	height := 1
 
@@ -566,5 +566,5 @@ func (w *InputComponentWrapper) Measure(c runtime.BoxConstraints) runtime.Size {
 		width = c.MaxWidth
 	}
 
-	return runtime.Size{Width: width, Height: height}
+	return tuiruntime.Size{Width: width, Height: height}
 }

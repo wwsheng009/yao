@@ -3,7 +3,7 @@ package dsl
 import (
 	"testing"
 
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // TestToLayoutNode tests converting DSL Node to runtime LayoutNode.
@@ -49,11 +49,11 @@ func TestToLayoutNode(t *testing.T) {
 		t.Errorf("Expected ID 'root', got '%s'", layoutNode.ID)
 	}
 
-	if layoutNode.Type != runtime.NodeTypeRow {
+	if layoutNode.Type != tuiruntime.NodeTypeRow {
 		t.Errorf("Expected type NodeTypeRow, got %v", layoutNode.Type)
 	}
 
-	if layoutNode.Style.Direction != runtime.DirectionRow {
+	if layoutNode.Style.Direction != tuiruntime.DirectionRow {
 		t.Errorf("Expected DirectionRow, got %v", layoutNode.Style.Direction)
 	}
 
@@ -62,7 +62,7 @@ func TestToLayoutNode(t *testing.T) {
 	}
 
 	// Check padding
-	expectedPadding := runtime.Insets{Top: 1, Right: 2, Bottom: 1, Left: 2}
+	expectedPadding := tuiruntime.Insets{Top: 1, Right: 2, Bottom: 1, Left: 2}
 	if layoutNode.Style.Padding != expectedPadding {
 		t.Errorf("Expected padding %+v, got %+v", expectedPadding, layoutNode.Style.Padding)
 	}
@@ -121,17 +121,17 @@ func TestToLayoutNodeWithBorder(t *testing.T) {
 	tests := []struct {
 		name   string
 		border interface{}
-		want   runtime.Insets
+		want   tuiruntime.Insets
 	}{
 		{
 			name:   "uniform border",
 			border: 2,
-			want:   runtime.Insets{Top: 2, Right: 2, Bottom: 2, Left: 2},
+			want:   tuiruntime.Insets{Top: 2, Right: 2, Bottom: 2, Left: 2},
 		},
 		{
 			name:   "array border",
 			border: []interface{}{1, 2, 3, 4},
-			want:   runtime.Insets{Top: 1, Right: 2, Bottom: 3, Left: 4},
+			want:   tuiruntime.Insets{Top: 1, Right: 2, Bottom: 3, Left: 4},
 		},
 		{
 			name: "spec border",
@@ -141,7 +141,7 @@ func TestToLayoutNodeWithBorder(t *testing.T) {
 				Bottom: 3,
 				Left:   4,
 			},
-			want: runtime.Insets{Top: 1, Right: 2, Bottom: 3, Left: 4},
+			want: tuiruntime.Insets{Top: 1, Right: 2, Bottom: 3, Left: 4},
 		},
 	}
 
@@ -184,11 +184,11 @@ func TestToLayoutNodeWithAlignment(t *testing.T) {
 
 	layoutNode := dslNode.ToLayoutNode()
 
-	if layoutNode.Style.AlignItems != runtime.AlignCenter {
+	if layoutNode.Style.AlignItems != tuiruntime.AlignCenter {
 		t.Errorf("Expected AlignCenter, got %v", layoutNode.Style.AlignItems)
 	}
 
-	if layoutNode.Style.Justify != runtime.JustifySpaceBetween {
+	if layoutNode.Style.Justify != tuiruntime.JustifySpaceBetween {
 		t.Errorf("Expected JustifySpaceBetween, got %v", layoutNode.Style.Justify)
 	}
 }
@@ -252,17 +252,17 @@ func TestValidateAndConvert(t *testing.T) {
 func TestMapDSLTypeToRuntime(t *testing.T) {
 	tests := []struct {
 		dslType       string
-		expectedType  runtime.NodeType
+		expectedType  tuiruntime.NodeType
 	}{
-		{"row", runtime.NodeTypeRow},
-		{"column", runtime.NodeTypeColumn},
-		{"vertical", runtime.NodeTypeFlex},
-		{"horizontal", runtime.NodeTypeFlex},
-		{"layout", runtime.NodeTypeFlex},
-		{"text", runtime.NodeTypeCustom},
-		{"header", runtime.NodeTypeCustom},
-		{"menu", runtime.NodeTypeCustom},
-		{"progress", runtime.NodeTypeCustom},
+		{"row", tuiruntime.NodeTypeRow},
+		{"column", tuiruntime.NodeTypeColumn},
+		{"vertical", tuiruntime.NodeTypeFlex},
+		{"horizontal", tuiruntime.NodeTypeFlex},
+		{"layout", tuiruntime.NodeTypeFlex},
+		{"text", tuiruntime.NodeTypeCustom},
+		{"header", tuiruntime.NodeTypeCustom},
+		{"menu", tuiruntime.NodeTypeCustom},
+		{"progress", tuiruntime.NodeTypeCustom},
 	}
 
 	for _, tt := range tests {
@@ -279,12 +279,12 @@ func TestMapDSLTypeToRuntime(t *testing.T) {
 func TestMapDirection(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected runtime.Direction
+		expected tuiruntime.Direction
 	}{
-		{"row", runtime.DirectionRow},
-		{"horizontal", runtime.DirectionRow},
-		{"column", runtime.DirectionColumn},
-		{"vertical", runtime.DirectionColumn},
+		{"row", tuiruntime.DirectionRow},
+		{"horizontal", tuiruntime.DirectionRow},
+		{"column", tuiruntime.DirectionColumn},
+		{"vertical", tuiruntime.DirectionColumn},
 	}
 
 	for _, tt := range tests {
@@ -301,12 +301,12 @@ func TestMapDirection(t *testing.T) {
 func TestMapAlign(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected runtime.Align
+		expected tuiruntime.Align
 	}{
-		{"start", runtime.AlignStart},
-		{"center", runtime.AlignCenter},
-		{"end", runtime.AlignEnd},
-		{"stretch", runtime.AlignStretch},
+		{"start", tuiruntime.AlignStart},
+		{"center", tuiruntime.AlignCenter},
+		{"end", tuiruntime.AlignEnd},
+		{"stretch", tuiruntime.AlignStretch},
 	}
 
 	for _, tt := range tests {
@@ -323,14 +323,14 @@ func TestMapAlign(t *testing.T) {
 func TestMapJustify(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected runtime.Justify
+		expected tuiruntime.Justify
 	}{
-		{"start", runtime.JustifyStart},
-		{"center", runtime.JustifyCenter},
-		{"end", runtime.JustifyEnd},
-		{"space-between", runtime.JustifySpaceBetween},
-		{"space-around", runtime.JustifySpaceAround},
-		{"space-evenly", runtime.JustifySpaceEvenly},
+		{"start", tuiruntime.JustifyStart},
+		{"center", tuiruntime.JustifyCenter},
+		{"end", tuiruntime.JustifyEnd},
+		{"space-between", tuiruntime.JustifySpaceBetween},
+		{"space-around", tuiruntime.JustifySpaceAround},
+		{"space-evenly", tuiruntime.JustifySpaceEvenly},
 	}
 
 	for _, tt := range tests {
@@ -347,11 +347,11 @@ func TestMapJustify(t *testing.T) {
 func TestMapOverflow(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected runtime.Overflow
+		expected tuiruntime.Overflow
 	}{
-		{"visible", runtime.OverflowVisible},
-		{"hidden", runtime.OverflowHidden},
-		{"scroll", runtime.OverflowScroll},
+		{"visible", tuiruntime.OverflowVisible},
+		{"hidden", tuiruntime.OverflowHidden},
+		{"scroll", tuiruntime.OverflowScroll},
 	}
 
 	for _, tt := range tests {

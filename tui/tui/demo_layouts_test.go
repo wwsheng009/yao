@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // DemoDir 指向 demo 文件的目录
@@ -66,7 +66,7 @@ func setupModel(t *testing.T, filename string, width, height int) *Model {
 }
 
 // getRealRoot returns the actual layout root, bypassing any implicit wrapper
-func getRealRoot(model *Model) *runtime.LayoutNode {
+func getRealRoot(model *Model) *tuiruntime.LayoutNode {
 	root := model.RuntimeRoot
 	// If root has no ID and only one child that looks like a generated container
 	if root != nil && root.ID == "" && len(root.Children) == 1 && root.Children[0].ID != "" {
@@ -79,7 +79,7 @@ func getRealRoot(model *Model) *runtime.LayoutNode {
 // 注意：Demo JSON 中可能没有显式 ID，Layout 引擎会自动生成 ID。
 // 这里我们主要通过结构遍历或 Type/Props 来识别，或者在测试用例中修改 Config 添加 ID。
 // 为简单起见，我们编写一个辅助函数来打印树结构，方便调试，以及通过路径查找。
-func printLayoutTree(node *runtime.LayoutNode, depth int) {
+func printLayoutTree(node *tuiruntime.LayoutNode, depth int) {
 	indent := ""
 	for i := 0; i < depth; i++ {
 		indent += "  "
@@ -230,8 +230,8 @@ func TestLayoutResponsive(t *testing.T) {
 		assert.NotNil(t, grow2Item, "Grow(2) item should exist")
 
 		// Verify types - both should be columns (flex containers)
-		assert.Equal(t, runtime.NodeType("column"), grow1Item.Type, "Grow(1) should be a column")
-		assert.Equal(t, runtime.NodeType("column"), grow2Item.Type, "Grow(2) should be a column")
+		assert.Equal(t, tuiruntime.NodeType("column"), grow1Item.Type, "Grow(1) should be a column")
+		assert.Equal(t, tuiruntime.NodeType("column"), grow2Item.Type, "Grow(2) should be a column")
 
 		// Note: In Runtime, MeasuredWidth reflects the component's preferred
 		// size before flex distribution, not the final distributed width.
@@ -278,9 +278,9 @@ func TestLayoutResponsive(t *testing.T) {
 		assert.NotNil(t, shrink3Item, "Shrink(3) item should exist")
 
 		// Verify types - all should be columns
-		assert.Equal(t, runtime.NodeType("column"), noShrinkItem.Type, "NoShrink should be a column")
-		assert.Equal(t, runtime.NodeType("column"), shrink1Item.Type, "Shrink(1) should be a column")
-		assert.Equal(t, runtime.NodeType("column"), shrink3Item.Type, "Shrink(3) should be a column")
+		assert.Equal(t, tuiruntime.NodeType("column"), noShrinkItem.Type, "NoShrink should be a column")
+		assert.Equal(t, tuiruntime.NodeType("column"), shrink1Item.Type, "Shrink(1) should be a column")
+		assert.Equal(t, tuiruntime.NodeType("column"), shrink3Item.Type, "Shrink(3) should be a column")
 
 		// Note: In Runtime, MeasuredWidth reflects the component's preferred
 		// size before flex distribution. The actual shrink happens during rendering.

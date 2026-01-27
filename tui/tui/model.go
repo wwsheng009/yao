@@ -3,8 +3,8 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/runtime"
 	"github.com/yaoapp/yao/tui/tui/core"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // NewModel creates a new Bubble Tea Model from a TUI configuration.
@@ -167,11 +167,9 @@ func (m *Model) handleGeometryEvent(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		if m.RuntimeEngine != nil {
-			result := m.DispatchEventToRuntime(msg)
+			m.DispatchEventToRuntime(msg)
 			// 鼠标事件可能导致焦点变化（点击聚焦组件）
-			if result.FocusTarget != "" {
-				m.forceRender = true
-			}
+			m.forceRender = true
 		}
 		return m, nil
 	}
@@ -227,80 +225,10 @@ func (m *Model) handleSystemMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleSelectionKeyMsg handles keyboard shortcuts for text selection.
 // Returns true if the key was handled by the selection system.
 // Supports: Ctrl+C (copy), Ctrl+A (select all), Escape (clear), Ctrl+X (cut).
+// Note: Selection functionality is simplified in the new runtime.
 func (m *Model) handleSelectionKeyMsg(msg tea.KeyMsg) bool {
-	if m.RuntimeEngine == nil {
-		return false
-	}
-
-	selection := m.RuntimeEngine.GetSelection()
-	if selection == nil || !selection.IsEnabled() {
-		return false
-	}
-
-	// Check if selection is active
-	isActive := selection.IsActive()
-	log.Trace("handleSelectionKeyMsg: key=%s, selection active=%v", msg.String(), isActive)
-
-	// 检查是否有 Ctrl 修饰键
-	hasCtrl := msg.Type == tea.KeyCtrlC ||
-		msg.Type == tea.KeyCtrlV ||
-		msg.Type == tea.KeyCtrlA ||
-		msg.Type == tea.KeyCtrlX ||
-		msg.String() == "ctrl+c" ||
-		msg.String() == "ctrl+a" ||
-		msg.String() == "ctrl+x"
-
-	// Ctrl+C - 复制选中文本
-	if hasCtrl && (msg.Type == tea.KeyCtrlC || msg.String() == "ctrl+c") {
-		if isActive {
-			// 有选择时复制
-			text, err := m.RuntimeEngine.CopySelection()
-			log.Trace("CopySelection result: text_len=%d, err=%v", len(text), err)
-			if err == nil && text != "" {
-				log.Trace("Copied selection: %d chars", len(text))
-			} else {
-				log.Trace("CopySelection failed: err=%v", err)
-			}
-			return true
-		}
-		log.Trace("Ctrl+C pressed but no active selection, will quit")
-		return false // 没有选择时不处理，让调用者决定是否退出
-	}
-
-	// Ctrl+A - 全选
-	if hasCtrl && (msg.Type == tea.KeyCtrlA || msg.String() == "ctrl+a") {
-		selection.SelectAll()
-		log.Trace("Selected all text")
-		return true
-	}
-
-	// Ctrl+X - 剪切（复制并清除选择）
-	if hasCtrl && (msg.Type == tea.KeyCtrlX || msg.String() == "ctrl+x") {
-		if isActive {
-			text, err := m.RuntimeEngine.CopySelection()
-			if err == nil && text != "" {
-				selection.Clear()
-				log.Trace("Cut selection: %d chars", len(text))
-			}
-			return true
-		}
-	}
-
-	// Escape - 清除选择
-	if msg.Type == tea.KeyEscape {
-		if isActive {
-			selection.Clear()
-			log.Trace("Selection cleared")
-			return true
-		}
-	}
-
-	// Shift+方向键 - 扩展选择（未来实现）
-	// if msg.Type == tea.KeyShiftLeft || msg.Type == tea.KeyShiftRight ... {
-	//     selection.ExtendSelection(...)
-	//     return true
-	// }
-
+	// Selection features are not fully implemented in the new runtime yet
+	// Return false to let the default handlers process the keys
 	return false
 }
 
@@ -494,16 +422,25 @@ func (m *Model) dispatchMessageToComponent(componentID string, msg tea.Msg) (tea
 
 // dispatchToRuntimeComponent dispatches a message to a runtime component
 // Returns (updatedModel, cmd, handled) where handled indicates if the component processed the message
-func (m *Model) dispatchToRuntimeComponent(node *runtime.LayoutNode, msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+func (m *Model) dispatchToRuntimeComponent(node *tuiruntime.LayoutNode, msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	if node == nil || node.Component == nil || node.Component.Instance == nil {
 		return m, nil, false
 	}
 
-	updatedComp, cmd, response := node.Component.Instance.UpdateMsg(msg)
+	// Type assert to core.ComponentInterface
+	compIntf, ok := node.Component.Instance.(interface {
+		UpdateMsg(tea.Msg) (interface{}, tea.Cmd, core.Response)
+		GetStateChanges() (map[string]interface{}, bool)
+	})
+	if !ok {
+		return m, nil, false
+	}
+
+	updatedComp, cmd, response := compIntf.UpdateMsg(msg)
 	node.Component.Instance = updatedComp
 
 	// Unified state synchronization using GetStateChanges()
-	stateChanges, hasChanges := updatedComp.GetStateChanges()
+	stateChanges, hasChanges := compIntf.GetStateChanges()
 	if hasChanges {
 		var actualChanges bool
 		m.StateMu.Lock()

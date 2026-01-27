@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	"github.com/yaoapp/yao/tui/runtime"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // RuntimeAdapter 将 Model 的 DSL Component 转换为 Runtime 可用的 LayoutNode 格式
@@ -17,15 +17,15 @@ func NewRuntimeAdapter(model *Model) *RuntimeAdapter {
 	return &RuntimeAdapter{model: model}
 }
 
-// ToRuntimeLayoutNode 将 DSL Component 转换为 runtime.LayoutNode
+// ToRuntimeLayoutNode 将 DSL Component 转换为 tuiruntime.LayoutNode
 // 这是递归转换，会处理整个组件树
-func (a *RuntimeAdapter) ToRuntimeLayoutNode(comp *Component) *runtime.LayoutNode {
+func (a *RuntimeAdapter) ToRuntimeLayoutNode(comp *Component) *tuiruntime.LayoutNode {
 	if comp == nil {
 		return nil
 	}
 
-	// 构建基础的 runtime.LayoutNode
-	node := runtime.NewLayoutNode(
+	// 构建基础的 tuiruntime.LayoutNode
+	node := tuiruntime.NewLayoutNode(
 		comp.ID,
 		a.mapComponentType(comp.Type),
 		a.mapStyle(comp),
@@ -42,11 +42,11 @@ func (a *RuntimeAdapter) ToRuntimeLayoutNode(comp *Component) *runtime.LayoutNod
 	if comp.ID != "" && comp.ID != "root" {
 		// First check m.Components (for interactive components)
 		if instance, exists := a.model.Components[comp.ID]; exists {
-			node.Component = instance
+			node.Component = tuiruntime.NewComponentRef(instance.ID, instance.Type, instance.Instance)
 		} else {
 			// Then check ComponentInstanceRegistry (for all components including non-interactive)
 			if instance, exists := a.model.ComponentInstanceRegistry.Get(comp.ID); exists {
-				node.Component = instance
+				node.Component = tuiruntime.NewComponentRef(instance.ID, instance.Type, instance.Instance)
 			}
 		}
 	}
@@ -65,25 +65,25 @@ func (a *RuntimeAdapter) ToRuntimeLayoutNode(comp *Component) *runtime.LayoutNod
 }
 
 // mapComponentType 将 TUI 组件类型映射到 Runtime NodeType
-func (a *RuntimeAdapter) mapComponentType(compType string) runtime.NodeType {
+func (a *RuntimeAdapter) mapComponentType(compType string) tuiruntime.NodeType {
 	switch compType {
 	case "text", "header", "footer", "static":
-		return runtime.NodeTypeText
+		return tuiruntime.NodeTypeText
 	case "row", "flex", "hbox":
-		return runtime.NodeTypeRow
+		return tuiruntime.NodeTypeRow
 	case "column", "vbox":
-		return runtime.NodeTypeColumn
+		return tuiruntime.NodeTypeColumn
 	case "viewport", "scroll":
-		return runtime.NodeTypeCustom // 使用 Custom 表示特殊组件
+		return tuiruntime.NodeTypeCustom // 使用 Custom 表示特殊组件
 	default:
-		return runtime.NodeTypeCustom
+		return tuiruntime.NodeTypeCustom
 	}
 }
 
-// mapStyle 将 DSL Component 映射到 runtime.Style
+// mapStyle 将 DSL Component 映射到 tuiruntime.Style
 // 注意：大部分样式属性来自 Props，而不是 Component 的直接字段
-func (a *RuntimeAdapter) mapStyle(comp *Component) runtime.Style {
-	style := runtime.NewStyle()
+func (a *RuntimeAdapter) mapStyle(comp *Component) tuiruntime.Style {
+	style := tuiruntime.NewStyle()
 
 	// 处理 Props 中的样式属性
 	if comp.Props != nil {
@@ -115,7 +115,7 @@ func (a *RuntimeAdapter) mapStyle(comp *Component) runtime.Style {
 
 		// Padding
 		if padding, ok := propIntArray(comp.Props, "padding"); ok && len(padding) >= 4 {
-			style = style.WithPadding(runtime.Insets{
+			style = style.WithPadding(tuiruntime.Insets{
 				Top:    padding[0],
 				Right:  padding[1],
 				Bottom: padding[2],
@@ -123,7 +123,7 @@ func (a *RuntimeAdapter) mapStyle(comp *Component) runtime.Style {
 			})
 		} else if p, ok := propInt(comp.Props, "padding"); ok {
 			// 单值 padding
-			style = style.WithPadding(runtime.Insets{
+			style = style.WithPadding(tuiruntime.Insets{
 				Top:    p,
 				Right:  p,
 				Bottom: p,
@@ -133,14 +133,14 @@ func (a *RuntimeAdapter) mapStyle(comp *Component) runtime.Style {
 
 		// Border
 		if border, ok := propIntArray(comp.Props, "border"); ok && len(border) >= 4 {
-			style = style.WithBorder(runtime.Insets{
+			style = style.WithBorder(tuiruntime.Insets{
 				Top:    border[0],
 				Right:  border[1],
 				Bottom: border[2],
 				Left:   border[3],
 			})
 		} else if b, ok := propInt(comp.Props, "border"); ok {
-			style = style.WithBorder(runtime.Insets{
+			style = style.WithBorder(tuiruntime.Insets{
 				Top:    b,
 				Right:  b,
 				Bottom: b,
@@ -332,84 +332,84 @@ func toInt(v interface{}) (int, bool) {
 // ========== 类型映射函数 ==========
 
 // mapDirection 将布局方向映射到 Runtime Direction
-func mapDirection(d string) runtime.Direction {
+func mapDirection(d string) tuiruntime.Direction {
 	switch d {
 	case "row", "horizontal", "hbox":
-		return runtime.DirectionRow
+		return tuiruntime.DirectionRow
 	case "column", "vertical", "vbox":
-		return runtime.DirectionColumn
+		return tuiruntime.DirectionColumn
 	default:
-		return runtime.DirectionColumn
+		return tuiruntime.DirectionColumn
 	}
 }
 
 // mapAlign 将对齐方式映射到 Runtime Align
-func mapAlign(align string) runtime.Align {
+func mapAlign(align string) tuiruntime.Align {
 	switch align {
 	case "start", "left", "top":
-		return runtime.AlignStart
+		return tuiruntime.AlignStart
 	case "center", "middle":
-		return runtime.AlignCenter
+		return tuiruntime.AlignCenter
 	case "end", "right", "bottom":
-		return runtime.AlignEnd
+		return tuiruntime.AlignEnd
 	case "stretch":
-		return runtime.AlignStretch
+		return tuiruntime.AlignStretch
 	default:
-		return runtime.AlignStart
+		return tuiruntime.AlignStart
 	}
 }
 
 // mapJustify 将主轴对齐映射到 Runtime Justify
-func mapJustify(justify string) runtime.Justify {
+func mapJustify(justify string) tuiruntime.Justify {
 	switch justify {
 	case "start", "left", "top":
-		return runtime.JustifyStart
+		return tuiruntime.JustifyStart
 	case "center", "middle":
-		return runtime.JustifyCenter
+		return tuiruntime.JustifyCenter
 	case "end", "right", "bottom":
-		return runtime.JustifyEnd
+		return tuiruntime.JustifyEnd
 	case "space-between":
-		return runtime.JustifySpaceBetween
+		return tuiruntime.JustifySpaceBetween
 	case "space-around":
-		return runtime.JustifySpaceAround
+		return tuiruntime.JustifySpaceAround
 	case "space-evenly":
-		return runtime.JustifySpaceEvenly
+		return tuiruntime.JustifySpaceEvenly
 	default:
-		return runtime.JustifyStart
+		return tuiruntime.JustifyStart
 	}
 }
 
 // mapOverflow 将溢出处理映射到 Runtime Overflow
-func mapOverflow(overflow string) runtime.Overflow {
+func mapOverflow(overflow string) tuiruntime.Overflow {
 	switch overflow {
 	case "visible":
-		return runtime.OverflowVisible
+		return tuiruntime.OverflowVisible
 	case "hidden":
-		return runtime.OverflowHidden
+		return tuiruntime.OverflowHidden
 	case "scroll":
-		return runtime.OverflowScroll
+		return tuiruntime.OverflowScroll
 	default:
-		return runtime.OverflowVisible
+		return tuiruntime.OverflowVisible
 	}
 }
 
 // mapPosition 将位置属性映射到 Runtime Position
-func (a *RuntimeAdapter) mapPosition(comp *Component) runtime.Position {
-	position := runtime.NewPosition() // Default: relative
+func (a *RuntimeAdapter) mapPosition(comp *Component) tuiruntime.Position {
+	position := tuiruntime.NewPosition() // Default: relative
 
 	// Check for position type in component-level Style field
 	if comp.Style != nil {
 		if posStr, ok := propString(comp.Style, "position"); ok {
 			switch posStr {
 			case "absolute":
-				position.Type = runtime.PositionAbsolute
+				position.Type = tuiruntime.PositionAbsolute
 			case "relative":
-				position.Type = runtime.PositionRelative
+				position.Type = tuiruntime.PositionRelative
 			}
 		}
 
 		// Parse offsets from component-level Style field
-		if position.Type == runtime.PositionAbsolute {
+		if position.Type == tuiruntime.PositionAbsolute {
 			if top, ok := propInt(comp.Style, "top"); ok {
 				position.Top = &top
 			}
@@ -430,20 +430,20 @@ func (a *RuntimeAdapter) mapPosition(comp *Component) runtime.Position {
 		if posStr, ok := propString(comp.Props, "position"); ok {
 			switch posStr {
 			case "absolute":
-				position.Type = runtime.PositionAbsolute
+				position.Type = tuiruntime.PositionAbsolute
 			case "relative":
-				position.Type = runtime.PositionRelative
+				position.Type = tuiruntime.PositionRelative
 			}
 		}
 
 		// Check for position type in style field (nested in props)
 		if style, ok := comp.Props["style"].(map[string]interface{}); ok {
 			if posStr, ok := style["position"].(string); ok && posStr == "absolute" {
-				position.Type = runtime.PositionAbsolute
+				position.Type = tuiruntime.PositionAbsolute
 			}
 
 			// Parse offsets from style field
-			if position.Type == runtime.PositionAbsolute {
+			if position.Type == tuiruntime.PositionAbsolute {
 				if top, ok := propInt(style, "top"); ok {
 					position.Top = &top
 				}
@@ -460,7 +460,7 @@ func (a *RuntimeAdapter) mapPosition(comp *Component) runtime.Position {
 		}
 
 		// Parse offsets from props (direct children)
-		if position.Type == runtime.PositionAbsolute {
+		if position.Type == tuiruntime.PositionAbsolute {
 			if top, ok := propInt(comp.Props, "top"); ok {
 				position.Top = &top
 			}

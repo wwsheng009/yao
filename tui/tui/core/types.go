@@ -274,6 +274,18 @@ type ComponentInstance struct {
 	LastConfig RenderConfig
 }
 
+// AsRuntimeData returns the data needed to create a runtime.ComponentRef.
+// This is a bridge method to allow core components to work with the new runtime system.
+// Usage in runtime package:
+//
+//	ref := runtime.NewComponentRef(instance.ID, instance.Type, instance.Instance)
+func (ci *ComponentInstance) AsRuntimeData() (id, compType string, instance interface{}) {
+	if ci == nil {
+		return "", "", nil
+	}
+	return ci.ID, ci.Type, ci.Instance
+}
+
 // ActionMsg represents an internal action message for cross-component communication
 type ActionMsg struct {
 	ID     string      // Trigger ID

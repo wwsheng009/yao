@@ -1,7 +1,5 @@
 package runtime
 
-import "github.com/yaoapp/yao/tui/tui/core"
-
 // LayoutNode is the UI Intermediate Representation (IR) for the Yao TUI Runtime.
 //
 // It represents a single node in the layout tree, containing all information
@@ -23,7 +21,7 @@ type LayoutNode struct {
 
 	// Component is optional. Leaf nodes (actual UI components) should have this.
 	// Container nodes (flex, row, column) typically don't.
-	Component *core.ComponentInstance
+	Component *ComponentRef
 
 	// Tree structure
 	Parent   *LayoutNode
@@ -108,58 +106,13 @@ func (n *LayoutNode) ClearDirty() {
 	n.dirty = false
 }
 
-// Measure attempts to measure this node using the Measurable interface
-// If the component implements Measurable, it calls Measure with the constraints
-// Returns the measured size, or (0, 0) if not measurable
-//
-// This method handles both:
-//   - runtime.Measurable: New interface with BoxConstraints (preferred)
-//   - core.Measurable: Legacy interface with maxWidth, maxHeight (for compatibility)
+// Measure attempts to measure this node's component.
+// Returns the measured size, or (0, 0) if the component is nil or not measurable.
 func (n *LayoutNode) Measure(c BoxConstraints) Size {
-	if n.Component == nil || n.Component.Instance == nil {
-		return Size{Width: 0, Height: 0}
+	if n.Component == nil {
+		return Size{}
 	}
-
-	// First, try the new runtime.Measurable interface
-	if measurable, ok := n.Component.Instance.(Measurable); ok {
-		return measurable.Measure(c)
-	}
-
-	// Fall back to the legacy core.Measurable interface for compatibility
-	if coreMeasurable, ok := n.Component.Instance.(core.Measurable); ok {
-		// Convert BoxConstraints to the legacy maxWidth, maxHeight format
-		maxWidth := c.MaxWidth
-		maxHeight := c.MaxHeight
-
-		// If constraints are unbounded (MaxWidth < 0), use a reasonable default
-		if maxWidth < 0 {
-			maxWidth = 80 // Default terminal width
-		}
-		if maxHeight < 0 {
-			maxHeight = 24 // Default terminal height
-		}
-
-		width, height := coreMeasurable.Measure(maxWidth, maxHeight)
-
-		// Apply constraints
-		if width < c.MinWidth {
-			width = c.MinWidth
-		}
-		if height < c.MinHeight {
-			height = c.MinHeight
-		}
-		// Apply max constraints (already constrained by component, but enforce)
-		if width > maxWidth {
-			width = maxWidth
-		}
-		if height > maxHeight {
-			height = maxHeight
-		}
-
-		return Size{Width: width, Height: height}
-	}
-
-	return Size{Width: 0, Height: 0}
+	return n.Component.Measure(c)
 }
 
 // GetBounds returns the node's bounding rectangle (X, Y, Width, Height)

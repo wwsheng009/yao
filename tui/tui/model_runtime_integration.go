@@ -3,8 +3,8 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yaoapp/kun/log"
-	"github.com/yaoapp/yao/tui/runtime"
 	"github.com/yaoapp/yao/tui/tui/core"
+	tuiruntime "github.com/yaoapp/yao/tui/tui/runtime"
 )
 
 // ===========================================================================
@@ -26,7 +26,7 @@ func (m *Model) initializeRuntime() {
 	log.Trace("Model.initializeRuntime: initializing runtime engine")
 
 	// 创建 Runtime 引擎
-	m.RuntimeEngine = runtime.NewRuntime(m.Width, m.Height)
+	m.RuntimeEngine = tuiruntime.NewRuntime(m.Width, m.Height)
 
 }
 
@@ -61,7 +61,7 @@ func (m *Model) renderWithRuntime() string {
 	}
 
 	// 创建约束
-	constraints := runtime.BoxConstraints{
+	constraints := tuiruntime.BoxConstraints{
 		MinWidth:  0,
 		MaxWidth:  m.Width,
 		MinHeight: 0,
@@ -96,7 +96,7 @@ func (m *Model) InvalidateRender() {
 
 // updateFocusListFromRuntime 从 LayoutResult 更新可聚焦组件列表
 // 这是几何优先的焦点管理
-func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
+func (m *Model) updateFocusListFromRuntime(result tuiruntime.LayoutResult) {
 	// 根据 LayoutBox 的位置排序可聚焦组件
 	// 排序顺序：Y（行）优先，然后 X（列）
 	type focusableItem struct {
@@ -107,7 +107,9 @@ func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
 	var focusables []focusableItem
 
 	for _, box := range result.Boxes {
-		if box.Node == nil || box.Node.Component == nil || box.Node.Component.Instance == nil {
+		// Find the node in RuntimeRoot by ID
+		node := m.findRuntimeNodeByID(m.RuntimeRoot, box.NodeID)
+		if node == nil || node.Component == nil || node.Component.Instance == nil {
 			continue
 		}
 
@@ -116,10 +118,10 @@ func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
 		type isFocusable interface {
 			IsFocusable() bool
 		}
-		if focusable, ok := box.Node.Component.Instance.(isFocusable); ok {
+		if focusable, ok := node.Component.Instance.(isFocusable); ok {
 			if focusable.IsFocusable() {
 				focusables = append(focusables, focusableItem{
-					id: box.Node.ID,
+					id: box.NodeID,
 					x:  box.X,
 					y:  box.Y,
 				})
@@ -146,14 +148,16 @@ func (m *Model) updateFocusListFromRuntime(result runtime.LayoutResult) {
 
 // updateComponentConfigsForRender 更新组件配置以绑定数据
 // 这解决了 Runtime 模式下 list/table 组件数据绑定问题
-func (m *Model) updateComponentConfigsForRender(result runtime.LayoutResult) {
+func (m *Model) updateComponentConfigsForRender(result tuiruntime.LayoutResult) {
 	for _, box := range result.Boxes {
-		if box.Node == nil || box.Node.Component == nil || box.Node.Component.Instance == nil {
+		// Find the node in RuntimeRoot by ID
+		node := m.findRuntimeNodeByID(m.RuntimeRoot, box.NodeID)
+		if node == nil || node.Component == nil || node.Component.Instance == nil {
 			continue
 		}
 
-		compID := box.Node.ID
-		compInstance := box.Node.Component.Instance
+		compID := box.NodeID
+		compInstance := node.Component.Instance
 
 		// 找到原始组件配置
 		compConfig := m.findComponentConfig(compID)
@@ -172,7 +176,12 @@ func (m *Model) updateComponentConfigsForRender(result runtime.LayoutResult) {
 		}
 
 		// 更新组件配置（这会解析 __bind_data）
-		compInstance.UpdateRenderConfig(config)
+		// Type assert to component with UpdateRenderConfig method
+		if updatable, ok := compInstance.(interface {
+			UpdateRenderConfig(core.RenderConfig) error
+		}); ok {
+			_ = updatable.UpdateRenderConfig(config)
+		}
 	}
 }
 
@@ -204,7 +213,7 @@ func (m *Model) isComponentFocusable(compID string) bool {
 }
 
 // findRuntimeNodeByID recursively searches for a node by ID
-func (m *Model) findRuntimeNodeByID(root *runtime.LayoutNode, id string) *runtime.LayoutNode {
+func (m *Model) findRuntimeNodeByID(root *tuiruntime.LayoutNode, id string) *tuiruntime.LayoutNode {
 	if root == nil {
 		return nil
 	}
@@ -377,7 +386,7 @@ func (m *Model) updateRuntimeWindowSize(width, height int) {
 
 		// 重新计算布局
 		if m.RuntimeRoot != nil {
-			constraints := runtime.BoxConstraints{
+			constraints := tuiruntime.BoxConstraints{
 				MinWidth:  0,
 				MaxWidth:  width,
 				MinHeight: 0,
@@ -451,7 +460,7 @@ func (m *Model) syncStateToRuntime() {
 }
 
 // syncRuntimeNode recursively syncs state to Runtime nodes and their components
-func (m *Model) syncRuntimeNode(node *runtime.LayoutNode) {
+func (m *Model) syncRuntimeNode(node *tuiruntime.LayoutNode) {
 	if node == nil {
 		return
 	}
@@ -536,9 +545,9 @@ func (m *Model) GetRuntimeDebugInfo() map[string]interface{} {
 // ========== Runtime 接口实现 ==========
 
 // GetLayoutResult 获取当前布局结果
-func (m *Model) GetLayoutResult() runtime.LayoutResult {
+func (m *Model) GetLayoutResult() tuiruntime.LayoutResult {
 	if m.RuntimeEngine != nil && m.RuntimeRoot != nil {
-		constraints := runtime.BoxConstraints{
+		constraints := tuiruntime.BoxConstraints{
 			MinWidth:  0,
 			MaxWidth:  m.Width,
 			MinHeight: 0,
@@ -546,16 +555,16 @@ func (m *Model) GetLayoutResult() runtime.LayoutResult {
 		}
 		return m.RuntimeEngine.Layout(m.RuntimeRoot, constraints)
 	}
-	return runtime.LayoutResult{}
+	return tuiruntime.LayoutResult{}
 }
 
 // GetFrame 获取当前渲染帧
-func (m *Model) GetFrame() runtime.Frame {
+func (m *Model) GetFrame() tuiruntime.Frame {
 	if m.RuntimeEngine != nil {
 		result := m.GetLayoutResult()
 		return m.RuntimeEngine.Render(result)
 	}
-	return runtime.Frame{}
+	return tuiruntime.Frame{}
 }
 
 // ResolvePropsForRuntime 为 Runtime 组件包装器提供 Props 解析
@@ -569,38 +578,38 @@ func (m *Model) ResolvePropsForRuntime(compID string) map[string]interface{} {
 	return m.resolveProps(compConfig)
 }
 
-// mapJustifyString maps justify string to runtime.Justify
-func mapJustifyString(justify string) runtime.Justify {
+// mapJustifyString maps justify string to tuiruntime.Justify
+func mapJustifyString(justify string) tuiruntime.Justify {
 	switch justify {
 	case "start", "left", "top":
-		return runtime.JustifyStart
+		return tuiruntime.JustifyStart
 	case "center", "middle":
-		return runtime.JustifyCenter
+		return tuiruntime.JustifyCenter
 	case "end", "right", "bottom":
-		return runtime.JustifyEnd
+		return tuiruntime.JustifyEnd
 	case "space-between":
-		return runtime.JustifySpaceBetween
+		return tuiruntime.JustifySpaceBetween
 	case "space-around":
-		return runtime.JustifySpaceAround
+		return tuiruntime.JustifySpaceAround
 	case "space-evenly":
-		return runtime.JustifySpaceEvenly
+		return tuiruntime.JustifySpaceEvenly
 	default:
-		return runtime.JustifyStart
+		return tuiruntime.JustifyStart
 	}
 }
 
-// mapAlignString maps align string to runtime.Align
-func mapAlignString(align string) runtime.Align {
+// mapAlignString maps align string to tuiruntime.Align
+func mapAlignString(align string) tuiruntime.Align {
 	switch align {
 	case "start", "left", "top":
-		return runtime.AlignStart
+		return tuiruntime.AlignStart
 	case "center", "middle":
-		return runtime.AlignCenter
+		return tuiruntime.AlignCenter
 	case "end", "right", "bottom":
-		return runtime.AlignEnd
+		return tuiruntime.AlignEnd
 	case "stretch":
-		return runtime.AlignStretch
+		return tuiruntime.AlignStretch
 	default:
-		return runtime.AlignStart
+		return tuiruntime.AlignStart
 	}
 }
