@@ -3,6 +3,7 @@ package action
 import (
 	"fmt"
 	"sync"
+	"unsafe"
 )
 
 // ==============================================================================
@@ -10,17 +11,7 @@ import (
 // ==============================================================================
 // Dispatcher 负责将 Action 分发到正确的处理器
 // 分发顺序：全局处理器 → 焦点目标 → 指定目标
-
-// Target Action 目标接口
-// 组件实现此接口以接收 Action
-type Target interface {
-	// ID 返回组件 ID
-	ID() string
-
-	// HandleAction 处理 Action
-	// 返回 true 表示已处理，false 表示继续传递
-	HandleAction(a *Action) bool
-}
+// Target 接口定义在 target.go 中
 
 // Handler Action 处理器函数类型
 type Handler func(a *Action) bool
@@ -70,23 +61,55 @@ func (d *Dispatcher) Unregister(id string) {
 // Subscribe 订阅全局 Action 处理
 func (d *Dispatcher) Subscribe(actionType ActionType, handler Handler) func() {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-
+	// 记录当前 handlers 的长度，用于后续取消订阅
+	handlerIdx := len(d.globalHandlers[actionType])
 	d.globalHandlers[actionType] = append(d.globalHandlers[actionType], handler)
+	d.mu.Unlock()
 
+	// 返回取消订阅函数
 	return func() {
-		d.Unsubscribe(actionType, handler)
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		handlers := d.globalHandlers[actionType]
+		// 检查索引是否仍然有效（中间没有删除）
+		if handlerIdx >= 0 && handlerIdx < len(handlers) {
+			// 使用反射比较函数指针
+			hPtr := getFunctionPointer(handlers[handlerIdx])
+			handlerPtr := getFunctionPointer(handler)
+			if hPtr == handlerPtr {
+				d.globalHandlers[actionType] = append(handlers[:handlerIdx], handlers[handlerIdx+1:]...)
+				return
+			}
+		}
+		// 如果索引失效，使用线性搜索
+		for i, h := range handlers {
+			hPtr := getFunctionPointer(h)
+			handlerPtr := getFunctionPointer(handler)
+			if hPtr == handlerPtr {
+				d.globalHandlers[actionType] = append(handlers[:i], handlers[i+1:]...)
+				break
+			}
+		}
 	}
 }
 
-// Unsubscribe 取消订阅
+// getFunctionPointer 获取函数指针（使用 unsafe）
+func getFunctionPointer(f Handler) uintptr {
+	return uintptr(*(*unsafe.Pointer)(unsafe.Pointer(&f)))
+}
+
+// Unsubscribe 取消订阅（备用方法，不推荐直接使用）
+// 推荐使用 Subscribe 返回的取消函数
 func (d *Dispatcher) Unsubscribe(actionType ActionType, handler Handler) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	handlers := d.globalHandlers[actionType]
+	handlerPtr := getFunctionPointer(handler)
 	for i, h := range handlers {
-		if &h == &handler { // 简单指针比较
+		hPtr := getFunctionPointer(h)
+		if hPtr == handlerPtr {
 			d.globalHandlers[actionType] = append(handlers[:i], handlers[i+1:]...)
 			break
 		}
@@ -104,32 +127,31 @@ func (d *Dispatcher) SetDefaultHandler(handler Handler) {
 // 按顺序尝试：全局处理器 → 焦点目标 → 指定目标
 // 返回 true 表示 Action 已被处理
 func (d *Dispatcher) Dispatch(a *Action) bool {
-	d.logAction(a, "dispatch")
+	var handled bool
 
 	// 1. 全局处理器
 	if d.dispatchGlobal(a) {
-		d.logAction(a, "handled_by_global")
-		return true
-	}
-
-	// 2. 指定目标
-	if a.Target != "" {
+		handled = true
+	} else if a.Target != "" {
+		// 2. 指定目标
 		if d.dispatchToTarget(a, a.Target) {
-			d.logAction(a, "handled_by_target")
-			return true
+			handled = true
 		}
 	}
 
-	// 3. 默认处理器
-	if d.defaultHandler != nil {
-		if d.defaultHandler(a) {
-			d.logAction(a, "handled_by_default")
-			return true
-		}
+	// 3. 默认处理器（如果没有被处理）
+	if !handled && d.defaultHandler != nil {
+		handled = d.defaultHandler(a)
 	}
 
-	d.logAction(a, "not_handled")
-	return false
+	// 记录结果
+	if handled {
+		d.logAction(a, true, "")
+	} else {
+		d.logAction(a, false, "")
+	}
+
+	return handled
 }
 
 // dispatchGlobal 分发到全局处理器
@@ -176,6 +198,17 @@ func (d *Dispatcher) DispatchToFocus(a *Action, focusID string) bool {
 	return d.Dispatch(a)
 }
 
+// DispatchToTarget 分发 Action 到指定目标
+// 这是便捷方法，等同于 a.WithTarget(id) 后调用 Dispatch
+func (d *Dispatcher) DispatchToTarget(targetID string, a *Action) bool {
+	oldTarget := a.Target
+	a.Target = targetID
+	defer func() {
+		a.Target = oldTarget
+	}()
+	return d.Dispatch(a)
+}
+
 // GetTarget 获取目标
 func (d *Dispatcher) GetTarget(id string) (Target, bool) {
 	d.mu.RLock()
@@ -209,7 +242,7 @@ func (d *Dispatcher) ClearLog() {
 }
 
 // logAction 记录 Action
-func (d *Dispatcher) logAction(a *Action, status string) {
+func (d *Dispatcher) logAction(a *Action, handled bool, target string) {
 	if !d.log {
 		return
 	}
@@ -219,7 +252,7 @@ func (d *Dispatcher) logAction(a *Action, status string) {
 
 	entry := LogEntry{
 		Action:  a,
-		Handled: status == "handled",
+		Handled: handled,
 	}
 
 	d.logEntries = append(d.logEntries, entry)

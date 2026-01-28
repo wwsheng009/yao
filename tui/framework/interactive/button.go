@@ -190,13 +190,24 @@ func (b *Button) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 // HandleAction 处理语义化 Action
 func (b *Button) HandleAction(a action.Action) bool {
 	switch a.Type {
-	case action.ActionSubmit:
-		fallthrough
-	case action.ActionSelectItem:
-		if b.onClick != nil {
+	// 提交/点击动作
+	case action.ActionSubmit, action.ActionSelectItem, action.ActionMouseClick:
+		if b.onClick != nil && !b.IsDisabled() {
 			b.onClick()
+			b.MarkDirty()
 		}
 		return true
+
+	// 导航动作 - 按钮不处理，返回 false 让其他组件处理
+	case action.ActionNavigateUp, action.ActionNavigateDown,
+		action.ActionNavigateLeft, action.ActionNavigateRight,
+		action.ActionNavigateNext, action.ActionNavigatePrev:
+		return false
+
+	// 取消动作
+	case action.ActionCancel:
+		// 按钮不处理取消，返回 false
+		return false
 	}
 	return false
 }
