@@ -1,5 +1,7 @@
 package runtime
 
+import "github.com/yaoapp/yao/tui/runtime/priority"
+
 // LayoutNode is the UI Intermediate Representation (IR) for the Yao TUI Runtime.
 //
 // It represents a single node in the layout tree, containing all information
@@ -47,8 +49,14 @@ type LayoutNode struct {
 	MeasuredContentWidth  int
 	MeasuredContentHeight int
 
-	// Dirty flag indicates if the node needs re-layout
-	dirty bool
+	// Dirty flags - separated for optimization
+	// layoutDirty indicates the node needs measure/layout phase (size changed)
+	layoutDirty bool
+	// paintDirty indicates the node needs render phase only (content changed, size same)
+	paintDirty bool
+
+	// Priority level for time-sliced rendering
+	priorityLevel priority.DirtyLevel
 
 	// cacheKey is used for measurement caching
 	cacheKey string
@@ -57,11 +65,12 @@ type LayoutNode struct {
 // NewLayoutNode creates a new LayoutNode
 func NewLayoutNode(id string, nodeType NodeType, style Style) *LayoutNode {
 	return &LayoutNode{
-		ID:    id,
-		Type:  nodeType,
-		Style: style,
-		Props: make(map[string]interface{}),
-		dirty: true,
+		ID:            id,
+		Type:          nodeType,
+		Style:         style,
+		Props:         make(map[string]interface{}),
+		layoutDirty:   true,
+		priorityLevel: priority.DirtyNormal, // Default priority
 	}
 }
 
@@ -81,29 +90,91 @@ func (n *LayoutNode) AddChildren(children ...*LayoutNode) {
 	}
 }
 
-// MarkDirty marks this node and all descendants as dirty
-// Dirty nodes will be recalculated in the next layout pass
+// MarkDirty marks this node and all descendants as both layout and paint dirty
+// This is the "conservative" default when unsure what changed
 func (n *LayoutNode) MarkDirty() {
 	if n == nil {
 		return
 	}
-	n.dirty = true
+	n.layoutDirty = true
+	n.paintDirty = true
 	for _, child := range n.Children {
 		child.MarkDirty()
 	}
 }
 
-// IsDirty returns true if the node needs re-layout
-func (n *LayoutNode) IsDirty() bool {
-	return n != nil && n.dirty
+// MarkLayoutDirty marks this node as needing layout (measure/layout phase)
+// Layout dirtiness propagates to ancestors since size changes may affect parent layout
+func (n *LayoutNode) MarkLayoutDirty() {
+	if n == nil || n.layoutDirty {
+		return
+	}
+	n.layoutDirty = true
+	// Size change may affect parent layout
+	if n.Parent != nil {
+		n.Parent.MarkLayoutDirty()
+	}
 }
 
-// ClearDirty clears the dirty flag
-func (n *LayoutNode) ClearDirty() {
+// MarkPaintDirty marks this node as needing repaint only
+// Paint dirtiness does NOT propagate to ancestors (content change doesn't affect layout)
+func (n *LayoutNode) MarkPaintDirty() {
 	if n == nil {
 		return
 	}
-	n.dirty = false
+	n.paintDirty = true
+}
+
+// IsLayoutDirty returns true if node needs layout (measure/layout phase)
+func (n *LayoutNode) IsLayoutDirty() bool {
+	return n != nil && n.layoutDirty
+}
+
+// IsPaintDirty returns true if node needs paint (render phase only)
+func (n *LayoutNode) IsPaintDirty() bool {
+	return n != nil && n.paintDirty
+}
+
+// IsDirty returns true if the node needs either layout or paint
+func (n *LayoutNode) IsDirty() bool {
+	return n != nil && (n.layoutDirty || n.paintDirty)
+}
+
+// ClearLayoutDirty clears the layout dirty flag
+func (n *LayoutNode) ClearLayoutDirty() {
+	if n != nil {
+		n.layoutDirty = false
+	}
+}
+
+// ClearPaintDirty clears the paint dirty flag
+func (n *LayoutNode) ClearPaintDirty() {
+	if n != nil {
+		n.paintDirty = false
+	}
+}
+
+// ClearDirty clears both layout and paint dirty flags
+func (n *LayoutNode) ClearDirty() {
+	if n != nil {
+		n.layoutDirty = false
+		n.paintDirty = false
+	}
+}
+
+// SetPriority sets the node's priority level
+func (n *LayoutNode) SetPriority(level priority.DirtyLevel) {
+	if n != nil {
+		n.priorityLevel = level
+	}
+}
+
+// GetPriority returns the node's priority level
+func (n *LayoutNode) GetPriority() priority.DirtyLevel {
+	if n == nil {
+		return priority.DirtyNormal
+	}
+	return n.priorityLevel
 }
 
 // Measure attempts to measure this node's component.

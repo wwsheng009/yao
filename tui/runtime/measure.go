@@ -88,7 +88,7 @@ func measure(node *LayoutNode, c BoxConstraints) Size {
 	}
 
 	// Check cache first (for non-dirty nodes)
-	if !node.dirty && node.ID != "" {
+	if !node.layoutDirty && node.ID != "" {
 		if cached, ok := globalMeasureCache.Get(node.ID, c); ok {
 			// Use cached measurement
 			node.MeasuredWidth = cached.Width
@@ -146,7 +146,7 @@ func measure(node *LayoutNode, c BoxConstraints) Size {
 		node.MeasuredHeight = size.Height
 
 		// Cache the result for non-dirty nodes with ID
-		if !node.dirty && node.ID != "" {
+		if !node.layoutDirty && node.ID != "" {
 			globalMeasureCache.Set(node.ID, c, size)
 		}
 
@@ -157,7 +157,7 @@ func measure(node *LayoutNode, c BoxConstraints) Size {
 	size := measureContainer(node, innerC, c)
 
 	// Cache the result for non-dirty nodes with ID
-	if !node.dirty && node.ID != "" {
+	if !node.layoutDirty && node.ID != "" {
 		globalMeasureCache.Set(node.ID, c, size)
 	}
 
