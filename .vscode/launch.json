@@ -306,17 +306,20 @@
       "cwd": "E:/projects/yao/yao-projects/yao-amis-admin",
     },
     {
-      "name": "test tui login",
+      "name": "test tui interactive",
       "type": "go",
       "request": "launch",
       "mode": "auto",
       "console": "integratedTerminal",
-      "program": "${workspaceFolder}/tui/framework/examples/theme_demo.go",
-      "args": [],
+      "program": "${workspaceFolder}/tui/framework/examples/login/interactive.go",
+      "args": [
+        "-tags",
+        "interactive"
+      ],
       "cwd": "${workspaceFolder}/tui/framework/examples/login",
       "env": {
         "TUI_DEBUG": "true",
-        "TUI_CURSOR_DEBUG": "1",
+        "TUI_CURSOR_DEBUG": "01",
         "TUI_OUTPUT_MODE": "direct"
       }
     }
