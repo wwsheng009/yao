@@ -13,6 +13,7 @@ type Manager struct {
 	focusedIndex          int      // Index of currently focused component
 	trapManager           *TrapManager // Manages focus traps (modals, etc.)
 	rootNode              *runtime.LayoutNode
+	geometricNavigator    *GeometricNavigator // Geometric-aware navigation helper
 }
 
 // NewManager creates a new focus manager
@@ -22,6 +23,7 @@ func NewManager(root *runtime.LayoutNode) *Manager {
 		focusedIndex:        -1,
 		trapManager:         NewTrapManager(),
 		rootNode:            root,
+		geometricNavigator:  NewGeometricNavigator(root),
 	}
 }
 
@@ -344,4 +346,64 @@ func (fm *Manager) Clear() {
 	fm.focusableComponents = make([]string, 0)
 	fm.focusedIndex = -1
 	fm.trapManager.Clear()
+}
+
+// ========== Geometric Navigation ==========
+
+// FocusDirection moves focus in the specified direction using geometric navigation
+// Returns the component ID and whether the move was successful
+func (fm *Manager) FocusDirection(direction NavigationDirection) (string, bool) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	// Get available components (respecting traps)
+	available := fm.getAvailableComponents()
+	if len(available) == 0 {
+		return "", false
+	}
+
+	// Get current focused component ID
+	currentID := ""
+	if fm.focusedIndex >= 0 && fm.focusedIndex < len(fm.focusableComponents) {
+		currentID = fm.focusableComponents[fm.focusedIndex]
+	}
+
+	// Use geometric navigator to find next component in direction
+	nextID := fm.geometricNavigator.FindNearestInDirection(currentID, direction, available)
+	if nextID == "" {
+		return "", false
+	}
+
+	// Update focused index in the main list
+	for i, id := range fm.focusableComponents {
+		if id == nextID {
+			fm.focusedIndex = i
+			break
+		}
+	}
+
+	// Apply focus to the component
+	fm.setFocus(nextID)
+
+	return nextID, true
+}
+
+// FocusUp moves focus to the component above the current one
+func (fm *Manager) FocusUp() (string, bool) {
+	return fm.FocusDirection(DirectionUp)
+}
+
+// FocusDown moves focus to the component below the current one
+func (fm *Manager) FocusDown() (string, bool) {
+	return fm.FocusDirection(DirectionDown)
+}
+
+// FocusLeft moves focus to the component to the left of the current one
+func (fm *Manager) FocusLeft() (string, bool) {
+	return fm.FocusDirection(DirectionLeft)
+}
+
+// FocusRight moves focus to the component to the right of the current one
+func (fm *Manager) FocusRight() (string, bool) {
+	return fm.FocusDirection(DirectionRight)
 }

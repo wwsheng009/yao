@@ -251,6 +251,9 @@ func (m *Model) handleKeyPressWithRuntime(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEscape:
 		// ESC 清除焦点
 		return m, m.clearFocus()
+	case tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight:
+		// 方向键导航 - 使用几何感知导航
+		return m.handleDirectionalNavigation(msg)
 	}
 
 	// 3. 转发到焦点组件
@@ -612,4 +615,248 @@ func mapAlignString(align string) tuiruntime.Align {
 	default:
 		return tuiruntime.AlignStart
 	}
+}
+
+// ========== Directional Navigation ==========
+
+// compBounds represents the geometric bounds of a component for navigation
+type compBounds struct {
+	id      string
+	x, y    int
+	width   int
+	height  int
+	centerX int
+	centerY int
+}
+
+// findComponentInDirection finds the nearest focusable component in the given direction
+// direction: "up", "down", "left", "right"
+func (m *Model) findComponentInDirection(focusableIDs []string, direction string) string {
+	if len(focusableIDs) == 0 {
+		return ""
+	}
+
+	// Get the current layout result to find component positions
+	if m.RuntimeEngine == nil || m.RuntimeRoot == nil {
+		// Fallback: use simple list-based navigation if runtime not available
+		return m.findComponentInDirectionLinear(focusableIDs, direction)
+	}
+
+	// Get the current layout result
+	constraints := tuiruntime.BoxConstraints{
+		MinWidth:  0,
+		MaxWidth:  m.Width,
+		MinHeight: 0,
+		MaxHeight: m.Height,
+	}
+	result := m.RuntimeEngine.Layout(m.RuntimeRoot, constraints)
+
+	// Build component bounds map
+	boundsMap := make(map[string]*compBounds)
+	for _, box := range result.Boxes {
+		// Check if this component is focusable
+		isFocusable := false
+		for _, id := range focusableIDs {
+			if id == box.NodeID {
+				isFocusable = true
+				break
+			}
+		}
+		if !isFocusable {
+			continue
+		}
+
+		boundsMap[box.NodeID] = &compBounds{
+			id:      box.NodeID,
+			x:       box.X,
+			y:       box.Y,
+			width:   box.W,
+			height:  box.H,
+			centerX: box.X + box.W/2,
+			centerY: box.Y + box.H/2,
+		}
+	}
+
+	// Get current component bounds
+	currentBounds, hasCurrent := boundsMap[m.CurrentFocus]
+	if !hasCurrent || m.CurrentFocus == "" {
+		// No current focus, find the top-left most component
+		return m.findTopLeftComponent(boundsMap, focusableIDs)
+	}
+
+	// Find best candidate in the given direction
+	return m.findBestInDirection(currentBounds, boundsMap, direction, focusableIDs)
+}
+
+// findComponentInDirectionLinear provides a fallback when runtime is not available
+// Uses simple list index-based navigation
+func (m *Model) findComponentInDirectionLinear(focusableIDs []string, direction string) string {
+	currentIndex := -1
+	for i, id := range focusableIDs {
+		if id == m.CurrentFocus {
+			currentIndex = i
+			break
+		}
+	}
+
+	if currentIndex == -1 {
+		if len(focusableIDs) > 0 {
+			return focusableIDs[0]
+		}
+		return ""
+	}
+
+	switch direction {
+	case "up", "left":
+		// Move to previous component
+		if currentIndex > 0 {
+			return focusableIDs[currentIndex-1]
+		}
+	case "down", "right":
+		// Move to next component
+		if currentIndex < len(focusableIDs)-1 {
+			return focusableIDs[currentIndex+1]
+		}
+	}
+
+	return ""
+}
+
+// findTopLeftComponent finds the component that is most top-left
+func (m *Model) findTopLeftComponent(boundsMap map[string]*compBounds, focusableIDs []string) string {
+	var bestID string
+	var bestX, bestY int = 2147483647, 2147483647 // max int
+
+	for _, id := range focusableIDs {
+		bounds, ok := boundsMap[id]
+		if !ok {
+			continue
+		}
+		// Prioritize Y (top), then X (left)
+		if bounds.y < bestY || (bounds.y == bestY && bounds.x < bestX) {
+			bestX, bestY = bounds.x, bounds.y
+			bestID = bounds.id
+		}
+	}
+
+	return bestID
+}
+
+// findBestInDirection finds the best component to focus in the given direction
+func (m *Model) findBestInDirection(current *compBounds, boundsMap map[string]*compBounds, direction string, focusableIDs []string) string {
+	var bestID string
+	var bestScore float64 = -1
+
+	for _, id := range focusableIDs {
+		candidate, ok := boundsMap[id]
+		if !ok || candidate.id == current.id {
+			continue
+		}
+
+		// Check if candidate is in the right direction
+		if !m.isInDirection(candidate, current, direction) {
+			continue
+		}
+
+		// Calculate score for this candidate
+		score := m.calculateDirectionScore(current, candidate, direction)
+		if score > bestScore {
+			bestScore = score
+			bestID = candidate.id
+		}
+	}
+
+	return bestID
+}
+
+// isInDirection checks if the candidate is in the specified direction from current
+func (m *Model) isInDirection(candidate, current *compBounds, direction string) bool {
+	switch direction {
+	case "up":
+		// Candidate must be above current (lower Y value)
+		return candidate.centerY < current.centerY
+	case "down":
+		// Candidate must be below current (higher Y value)
+		return candidate.centerY > current.centerY
+	case "left":
+		// Candidate must be to the left of current (lower X value)
+		return candidate.centerX < current.centerX
+	case "right":
+		// Candidate must be to the right of current (higher X value)
+		return candidate.centerX > current.centerX
+	}
+	return false
+}
+
+// calculateDirectionScore calculates how good a candidate is for navigation
+// Higher score means better candidate (closer and better aligned)
+func (m *Model) calculateDirectionScore(current, candidate *compBounds, direction string) float64 {
+	const maxDistance = 1000.0
+
+	switch direction {
+	case "up", "down":
+		// For vertical navigation, prioritize vertical distance, then horizontal alignment
+		verticalDist := abs(candidate.centerY - current.centerY)
+		score := (maxDistance - float64(verticalDist)) / maxDistance
+
+		// Bonus for horizontal overlap
+		horizontalOverlap := m.calculateOverlap(
+			current.x, current.x+current.width,
+			candidate.x, candidate.x+candidate.width,
+		)
+		if horizontalOverlap > 0 {
+			overlapBonus := float64(horizontalOverlap) / float64(max(current.width, candidate.width))
+			score += overlapBonus * 0.5
+		}
+		return score
+
+	case "left", "right":
+		// For horizontal navigation, prioritize horizontal distance, then vertical alignment
+		horizontalDist := abs(candidate.centerX - current.centerX)
+		score := (maxDistance - float64(horizontalDist)) / maxDistance
+
+		// Bonus for vertical overlap
+		verticalOverlap := m.calculateOverlap(
+			current.y, current.y+current.height,
+			candidate.y, candidate.y+candidate.height,
+		)
+		if verticalOverlap > 0 {
+			overlapBonus := float64(verticalOverlap) / float64(max(current.height, candidate.height))
+			score += overlapBonus * 0.5
+		}
+		return score
+	}
+
+	return 0
+}
+
+// calculateOverlap calculates the overlap between two line segments
+func (m *Model) calculateOverlap(a1, a2, b1, b2 int) int {
+	left := maxInt(a1, b1)
+	right := minInt(a2, b2)
+	if right > left {
+		return right - left
+	}
+	return 0
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

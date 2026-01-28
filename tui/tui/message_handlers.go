@@ -338,6 +338,14 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleNativeNavigation(msg)
 	}
 
+	// Directional navigation keys (Priority 4.5): Arrow keys for geometric navigation
+	// Only handle if component didn't handle it
+	if !componentHandled && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown ||
+		msg.Type == tea.KeyLeft || msg.Type == tea.KeyRight) {
+		log.Trace("TUI: Directional navigation key detected, CurrentFocus=%q", m.CurrentFocus)
+		return m.handleDirectionalNavigation(msg)
+	}
+
 	// Global bindings (Priority 5): Handle bound actions
 	// Execute when:
 	// - No component has focus, OR
@@ -498,6 +506,42 @@ func (m *Model) handleShiftTabNavigation() (tea.Model, tea.Cmd) {
 	log.Trace("Shift+Tab pressed, moving to previous component, current focus: %s", m.CurrentFocus)
 	// focusPrevComponent internally calls setFocus, so we need to get the command from it
 	return m, m.focusPrevComponent()
+}
+
+// handleDirectionalNavigation handles arrow key navigation between components
+// Uses geometric-aware navigation to find the nearest component in the given direction
+func (m *Model) handleDirectionalNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	log.Trace("Directional navigation key: %v, current focus: %s", msg.Type, m.CurrentFocus)
+
+	// Get all focusable components
+	focusableIDs := m.getFocusableComponentIDs()
+	if len(focusableIDs) == 0 {
+		log.Trace("No focusable components found for directional navigation")
+		return m, nil
+	}
+
+	var nextFocus string
+
+	switch msg.Type {
+	case tea.KeyUp:
+		nextFocus = m.findComponentInDirection(focusableIDs, "up")
+	case tea.KeyDown:
+		nextFocus = m.findComponentInDirection(focusableIDs, "down")
+	case tea.KeyLeft:
+		nextFocus = m.findComponentInDirection(focusableIDs, "left")
+	case tea.KeyRight:
+		nextFocus = m.findComponentInDirection(focusableIDs, "right")
+	default:
+		return m, nil
+	}
+
+	if nextFocus != "" {
+		log.Trace("Directional navigation: %s -> %s", m.CurrentFocus, nextFocus)
+		return m, m.setFocus(nextFocus)
+	}
+
+	log.Trace("No component found in the specified direction")
+	return m, nil
 }
 
 // handleProcessResult processes the result from a Yao Process execution.
