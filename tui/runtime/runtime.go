@@ -3,6 +3,8 @@ package runtime
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // Component is the base interface for all UI components.
@@ -136,6 +138,36 @@ type CellStyle struct {
 	Reverse    bool
 	Foreground string // Hex color or terminal color name
 	Background string // Hex color or terminal color name
+}
+
+// ToStyle converts CellStyle to style.Style for use with paint package
+func (cs CellStyle) ToStyle() style.Style {
+	s := style.Style{}
+	if cs.Bold {
+		s = s.Bold(true)
+	}
+	if cs.Underline {
+		s = s.Underline(true)
+	}
+	if cs.Italic {
+		s = s.Italic(true)
+	}
+	if cs.Strikethrough {
+		s = s.Strikethrough(true)
+	}
+	if cs.Blink {
+		s = s.Blink(true)
+	}
+	if cs.Reverse {
+		s = s.Reverse(true)
+	}
+	if cs.Foreground != "" {
+		s = s.Foreground(style.Color(cs.Foreground))
+	}
+	if cs.Background != "" {
+		s = s.Background(style.Color(cs.Background))
+	}
+	return s
 }
 
 // SetContent sets a cell at the given position.

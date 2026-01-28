@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/yaoapp/yao/tui/framework/component"
@@ -573,168 +572,49 @@ func (a *App) render() {
 }
 
 // outputBuffer 输出缓冲区到终端（局部刷新优化版）
+// 使用 output_diff.go 中的函数来处理差异比较和 ANSI 格式化
 func (a *App) outputBuffer(buf *paint.Buffer) {
-	var output bytes.Buffer
-
-	// 首次渲染时清屏
-	if a.firstRender {
-		output.WriteString("\x1b[2J")  // 清屏
-		a.firstRender = false
-	}
-	// 隐藏终端光标
-	output.WriteString("\x1b[?25l")
-
-	// 调试模式：记录输出
-	if a.debugMode && a.debugRecorder != nil && os.Getenv("TUI_OUTPUT_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[OUTPUT] about to write %d bytes to terminal\n", output.Len())
-	}
-
-	// 跟踪当前样式和位置
-	var currentStyle style.Style
-	var lastX, lastY int = 0, 0
-
 	// 调整 prevBuffer 大小（如果需要）
-	if a.prevBuffer == nil || len(a.prevBuffer) != buf.Height || len(a.prevBuffer[0]) != buf.Width {
-		a.prevBuffer = make([][]paint.Cell, buf.Height)
-		for y := 0; y < buf.Height; y++ {
-			a.prevBuffer[y] = make([]paint.Cell, buf.Width)
-		}
-	}
+	a.prevBuffer = EnsurePrevBufferSize(a.prevBuffer, buf.Width, buf.Height)
 
-	// 扫描缓冲区，查找光标位置（有反转样式的单元格）
-	// 同时收集所有变化的单元格
-	type cellChange struct {
-		x, y  int
-		force bool // 是否强制输出（用于光标）
-	}
-	changes := make([]cellChange, 0)
-	currentCursorX, currentCursorY := -1, -1
+	// 比较新旧 buffer，获取变化列表
+	diffResult := CompareBuffers(buf, a.prevBuffer, a.lastCursorX, a.lastCursorY)
 
-	for y := 0; y < buf.Height; y++ {
-		for x := 0; x < buf.Width; x++ {
-			newCell := buf.Cells[y][x]
-			oldCell := a.prevBuffer[y][x]
-
-			// 检测光标位置（有反转样式的单元格）
-			if newCell.Style.IsReverse() {
-				currentCursorX = x
-				currentCursorY = y
-			}
-
-			// 检查单元格是否改变
-			cellChanged := newCell.Char != oldCell.Char || newCell.Style != oldCell.Style
-
-			if cellChanged {
-				changes = append(changes, cellChange{x: x, y: y, force: false})
-			}
-		}
-	}
-
-	// 如果光标位置改变，强制刷新新旧光标位置
-	if currentCursorX != a.lastCursorX || currentCursorY != a.lastCursorY {
-		// 旧光标位置需要刷新（清除反转样式）
-		if a.lastCursorX >= 0 && a.lastCursorY >= 0 {
-			changes = append(changes, cellChange{x: a.lastCursorX, y: a.lastCursorY, force: true})
-		}
-		// 新光标位置需要刷新（确保反转样式生效）
-		if currentCursorX >= 0 && currentCursorY >= 0 {
-			changes = append(changes, cellChange{x: currentCursorX, y: currentCursorY, force: true})
-		}
-		a.lastCursorX = currentCursorX
-		a.lastCursorY = currentCursorY
-	}
+	// 更新光标位置
+	a.lastCursorX = diffResult.CursorX
+	a.lastCursorY = diffResult.CursorY
 
 	// 如果没有变化，跳过输出
-	if len(changes) == 0 {
+	if !diffResult.HasChanges {
 		return
 	}
 
-	// 按位置排序变化（从上到下，从左到右）以优化输出
-	for i := 0; i < len(changes)-1; i++ {
-		for j := i + 1; j < len(changes); j++ {
-			if changes[j].y < changes[i].y || (changes[j].y == changes[i].y && changes[j].x < changes[i].x) {
-				changes[i], changes[j] = changes[j], changes[i]
-			}
-		}
+	// 调试模式：记录输出
+	if a.debugMode && a.debugRecorder != nil && os.Getenv("TUI_OUTPUT_DEBUG") == "1" {
+		fmt.Fprintf(os.Stderr, "[OUTPUT] %d changes detected\n", len(diffResult.Changes))
 	}
 
-	// 构建输出内容
-	currentY := -1
-	cursorX := 0  // 追踪终端光标的实际列位置
-	for _, change := range changes {
-		x, y := change.x, change.y
+	// 排序变化（从上到下，从左到右）
+	SortChanges(diffResult.Changes)
 
-		newCell := buf.Cells[y][x]
-
-		// 跳过空字符和宽字符的填充单元格
-		if newCell.Char == 0 || newCell.Width == 0 {
-			continue
-		}
-
-		// 如果当前单元格在光标位置之前（被宽字符占据），跳过
-		if y == currentY && x < cursorX {
-			continue
-		}
-
-		// 如果换行了，移动到新行的开头
-		if y != currentY {
-			output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
-			currentY = y
-			lastX, lastY = x, y
-			cursorX = x
-		} else if x != lastX || y != lastY {
-			// 同一行内，使用相对移动
-			if x > lastX {
-				output.WriteString(strings.Repeat("\x1b[C", x-lastX))
-			} else if x < lastX {
-				// 需要向左移动，使用绝对定位
-				output.WriteString(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))
-			}
-			lastX, lastY = x, y
-			cursorX = x
-		}
-
-		// 设置字符
-		char := newCell.Char
-		if char == 0 {
-			char = ' '
-		}
-
-		// 应用样式（如果改变）
-		if newCell.Style != currentStyle {
-			if currentStyle != (style.Style{}) {
-				output.WriteString("\x1b[0m")
-			}
-			if newCell.Style != (style.Style{}) {
-				output.WriteString(newCell.Style.ToANSI())
-			}
-			currentStyle = newCell.Style
-		}
-
-		output.WriteRune(char)
-		// 更新光标位置（宽字符占据 2 列）
-		cursorX += newCell.Width
-		if cursorX == 0 {
-			cursorX = 1
-		}
-		lastX = cursorX  // 用于下次相对移动
-	}
-
-	// 更新 prevBuffer - 在所有输出完成后更新
-	for y := 0; y < buf.Height; y++ {
-		copy(a.prevBuffer[y], buf.Cells[y])
-	}
-
-	// 重置样式
-	if currentStyle != (style.Style{}) {
-		output.WriteString("\x1b[0m")
-	}
-
-	// 移动光标到末尾（避免残留）
-	output.WriteString(fmt.Sprintf("\x1b[%d;%dH", buf.Height, 1))
+	// 格式化为 ANSI 输出
+	output := FormatChangesAsANSI(buf, BufferDiffResult{
+		Changes:    diffResult.Changes,
+		CursorX:    diffResult.CursorX,
+		CursorY:    diffResult.CursorY,
+		HasChanges: true,
+	}, a.firstRender)
 
 	// 一次性输出
-	fmt.Print(output.String())
+	fmt.Print(output)
+
+	// 更新 prevBuffer - 在所有输出完成后更新
+	UpdatePrevBuffer(a.prevBuffer, buf)
+
+	// 清除首次渲染标记
+	if a.firstRender {
+		a.firstRender = false
+	}
 }
 
 // outputBufferDirect 输出缓冲区到终端（全量刷新版）

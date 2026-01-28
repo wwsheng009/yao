@@ -4,6 +4,10 @@
 // - TXT: Plain text output
 // - SVG: Scalable Vector Graphics with styling
 // - PNG: Raster image with bitmap font rendering
+//
+// TODO: This code uses the old Frame/LayoutResult types from runtime_impl.go (deleted).
+// It needs to be updated to work with tui/tui/runtime or core.Runtime.
+// Currently not functional until migrated.
 package runtime
 
 import (

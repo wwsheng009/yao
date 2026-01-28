@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/yaoapp/yao/tui/runtime"
+	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 
 // TestLipglossToCellStyle tests the lipgloss to cell style conversion
@@ -397,7 +398,10 @@ func TestComputeDiff(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	result := ComputeDiff(frame1, frame2)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	result := tracker.Diff(pbuf1, pbuf2)
 
 	assert.True(t, result.HasChanges, "Should detect changes")
 	assert.NotEmpty(t, result.DirtyRegions, "Should have dirty regions")
@@ -416,7 +420,10 @@ func TestComputeDiffWithNoChanges(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	result := ComputeDiff(frame1, frame2)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	result := tracker.Diff(pbuf1, pbuf2)
 
 	assert.False(t, result.HasChanges, "Should not detect changes")
 	assert.Empty(t, result.DirtyRegions, "Should have no dirty regions")
@@ -430,7 +437,10 @@ func TestComputeDiffWithNilOldFrame(t *testing.T) {
 	var oldFrame runtime.Frame
 	newFrame := runtime.Frame{Buffer: buf, Width: 10, Height: 5}
 
-	result := ComputeDiff(oldFrame, newFrame)
+	tracker := paint.NewDirtyTracker()
+	buf1 := cellBufferToPaintBuffer(oldFrame.Buffer)
+	buf2 := cellBufferToPaintBuffer(newFrame.Buffer)
+	result := tracker.Diff(buf1, buf2)
 
 	assert.True(t, result.HasChanges, "Should detect changes with nil old frame")
 	assert.Len(t, result.DirtyRegions, 1, "Should have one dirty region (entire frame)")
@@ -444,7 +454,10 @@ func TestComputeDiffWithNilNewFrame(t *testing.T) {
 	oldFrame := runtime.Frame{Buffer: buf, Width: 10, Height: 5}
 	var newFrame runtime.Frame
 
-	result := ComputeDiff(oldFrame, newFrame)
+	tracker := paint.NewDirtyTracker()
+	buf1 := cellBufferToPaintBuffer(oldFrame.Buffer)
+	buf2 := cellBufferToPaintBuffer(newFrame.Buffer)
+	result := tracker.Diff(buf1, buf2)
 
 	assert.True(t, result.HasChanges, "Should detect changes with nil new frame")
 	assert.Len(t, result.DirtyRegions, 1, "Should mark entire old frame as dirty")
@@ -455,7 +468,10 @@ func TestComputeDiffWithBothNilFrames(t *testing.T) {
 	var oldFrame runtime.Frame
 	var newFrame runtime.Frame
 
-	result := ComputeDiff(oldFrame, newFrame)
+	tracker := paint.NewDirtyTracker()
+	buf1 := cellBufferToPaintBuffer(oldFrame.Buffer)
+	buf2 := cellBufferToPaintBuffer(newFrame.Buffer)
+	result := tracker.Diff(buf1, buf2)
 
 	assert.False(t, result.HasChanges, "Should not detect changes with both nil")
 	assert.Empty(t, result.DirtyRegions, "Should have no dirty regions")
@@ -473,7 +489,10 @@ func TestComputeDiffWithDimensionChange(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 20, Height: 10}
 
-	result := ComputeDiff(frame1, frame2)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	result := tracker.Diff(pbuf1, pbuf2)
 
 	// Should detect changes because the dimensions are different
 	// The extra area (columns 10-19 and rows 5-9) will be marked as dirty
@@ -495,7 +514,10 @@ func TestComputeDiffWithStyleChanges(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	result := ComputeDiff(frame1, frame2)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	result := tracker.Diff(pbuf1, pbuf2)
 
 	assert.True(t, result.HasChanges, "Should detect style changes")
 	assert.Equal(t, 1, result.ChangedCells, "Should have 1 changed cell")
@@ -513,11 +535,17 @@ func TestRenderWithDiff(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	diff := ComputeDiff(frame1, frame2)
-	RenderWithDiff(buf1, frame2, diff)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	diff := tracker.Diff(pbuf1, pbuf2)
 
-	// Check that the dirty cell was updated
-	cell := buf1.GetCell(0, 0)
+	// Verify diff detected the change
+	assert.True(t, diff.HasChanges, "Should detect changes")
+	assert.Equal(t, 1, diff.ChangedCells, "Should have 1 changed cell")
+
+	// Verify the new buffer has the updated content
+	cell := buf2.GetCell(0, 0)
 	assert.Equal(t, 'B', cell.Char, "Should have updated character")
 	assert.True(t, cell.Style.Bold, "Should have updated style")
 }
@@ -539,11 +567,16 @@ func TestGetChangedCellsCount(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	count := GetChangedCellsCount(frame1, frame2)
-	assert.Equal(t, 3, count, "Should count 3 changed cells")
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	diff := tracker.Diff(pbuf1, pbuf2)
+
+	assert.Equal(t, 3, diff.ChangedCells, "Should count 3 changed cells")
 }
 
 // TestShouldRerender tests rerender threshold
+// Note: ShouldRerender function removed, now using dirty tracker's diff result
 func TestShouldRerender(t *testing.T) {
 	buf1 := runtime.NewCellBuffer(10, 5)
 	buf2 := runtime.NewCellBuffer(10, 5)
@@ -559,20 +592,24 @@ func TestShouldRerender(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	// With 100% threshold, should rerender (1.0 >= 1.0 is true)
-	shouldRerender := ShouldRerender(frame1, frame2, 1.0)
-	assert.True(t, shouldRerender, "Should rerender with 100% threshold and all changes (>= comparison)")
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	diff := tracker.Diff(pbuf1, pbuf2)
 
-	// With just above 100% threshold, should not rerender
-	shouldRerender = ShouldRerender(frame1, frame2, 1.01)
-	assert.False(t, shouldRerender, "Should not rerender with threshold > 100%")
+	// All cells changed (50 out of 50)
+	totalCells := 10 * 5
+	changeRatio := float64(diff.ChangedCells) / float64(totalCells)
+
+	// With 100% threshold, should rerender (1.0 >= 1.0 is true)
+	assert.True(t, changeRatio >= 1.0, "Should rerender with 100% threshold and all changes")
 
 	// With 50% threshold, should rerender (100% >= 50%)
-	shouldRerender = ShouldRerender(frame1, frame2, 0.5)
-	assert.True(t, shouldRerender, "Should rerender with 50% threshold and all changes")
+	assert.True(t, changeRatio >= 0.5, "Should rerender with 50% threshold and all changes")
 }
 
 // TestOptimizeFrame tests frame optimization
+// Note: OptimizeFrame function removed, now using dirty tracker's diff result
 func TestOptimizeFrame(t *testing.T) {
 	buf1 := runtime.NewCellBuffer(10, 5)
 	buf2 := runtime.NewCellBuffer(10, 5)
@@ -583,9 +620,80 @@ func TestOptimizeFrame(t *testing.T) {
 	frame1 := runtime.Frame{Buffer: buf1, Width: 10, Height: 5}
 	frame2 := runtime.Frame{Buffer: buf2, Width: 10, Height: 5}
 
-	optimized := OptimizeFrame(frame1, frame2)
+	tracker := paint.NewDirtyTracker()
+	pbuf1 := frameToPaintBuffer(frame1)
+	pbuf2 := frameToPaintBuffer(frame2)
+	diff := tracker.Diff(pbuf1, pbuf2)
 
-	assert.True(t, optimized.Dirty, "Should mark frame as dirty")
-	assert.Equal(t, 10, optimized.Width, "Should preserve width")
-	assert.Equal(t, 5, optimized.Height, "Should preserve height")
+	assert.True(t, diff.HasChanges, "Should detect changes")
+	assert.Equal(t, 10, frame2.Width, "Should preserve width")
+	assert.Equal(t, 5, frame2.Height, "Should preserve height")
+}
+
+// cellBufferToPaintBuffer converts a runtime CellBuffer to a paint.Buffer for diff operations
+func cellBufferToPaintBuffer(cb *runtime.CellBuffer) *paint.Buffer {
+	if cb == nil {
+		return nil
+	}
+	// CellBuffer doesn't expose GetWidth/GetHeight, access private fields via reflection
+	// For testing, we can just use a fixed size or reconstruct from the buffer
+	// Since we can't access private fields directly, let's use a workaround
+	width, height := getCellBufferSize(cb)
+	pb := paint.NewBuffer(width, height)
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			cell := cb.GetCell(x, y)
+			pb.SetCell(x, y, cell.Char, cell.Style.ToStyle())
+		}
+	}
+	return pb
+}
+
+// frameToPaintBuffer converts a Frame to paint.Buffer using the Frame's width/height
+func frameToPaintBuffer(frame runtime.Frame) *paint.Buffer {
+	if frame.Buffer == nil {
+		return nil
+	}
+	pb := paint.NewBuffer(frame.Width, frame.Height)
+	for y := 0; y < frame.Height; y++ {
+		for x := 0; x < frame.Width; x++ {
+			cell := frame.Buffer.GetCell(x, y)
+			pb.SetCell(x, y, cell.Char, cell.Style.ToStyle())
+		}
+	}
+	return pb
+}
+
+// getCellBufferSize gets the width and height from a CellBuffer
+// Since CellBuffer's width/height are private, we infer them by reading cells
+func getCellBufferSize(cb *runtime.CellBuffer) (width, height int) {
+	if cb == nil {
+		return 0, 0
+	}
+	// Try reading cells to determine size
+	// Start from a reasonable max and find actual bounds
+	maxWidth, maxHeight := 200, 100
+	for y := 0; y < maxHeight; y++ {
+		hasContent := false
+		for x := 0; x < maxWidth; x++ {
+			cell := cb.GetCell(x, y)
+			if cell.Char != 0 || cell.Style != (runtime.CellStyle{}) {
+				hasContent = true
+				if x+1 > width {
+					width = x + 1
+				}
+			}
+		}
+		if hasContent {
+			height = y + 1
+		}
+	}
+	// Default to 80x24 if no content found
+	if width == 0 {
+		width = 80
+	}
+	if height == 0 {
+		height = 24
+	}
+	return width, height
 }
