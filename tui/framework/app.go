@@ -11,12 +11,12 @@ import (
 	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework/debug"
 	frameworkevent "github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/runtime/platform"
-	"github.com/yaoapp/yao/tui/runtime/style"
 	"github.com/yaoapp/yao/tui/framework/theme"
 	"github.com/yaoapp/yao/tui/runtime/core"
 	"github.com/yaoapp/yao/tui/runtime/paint"
+	"github.com/yaoapp/yao/tui/runtime/platform"
 	"github.com/yaoapp/yao/tui/runtime/render"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // AppState 应用状态
