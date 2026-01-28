@@ -89,7 +89,8 @@ func (r *unixInputReader) readLoop() {
 				// 尝试解析缓冲区中的数据
 				for len(r.parseBuffer) > 0 {
 					input, remaining := r.parseSequence(r.parseBuffer)
-					if input.Type != 0 {
+					// 发送所有有效事件（InputKeyPress=0 是有效值！）
+					if input.Type >= 0 && input.Type <= InputSignal {
 						select {
 						case r.events <- input:
 						case <-r.quit:

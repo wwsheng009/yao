@@ -51,10 +51,23 @@ func (r *windowsInputReader) Start(events chan<- RawInput) error {
 
 	r.originalMode = r.getConsoleMode(handle)
 
-	// 启用鼠标输入和窗口输入
-	mode := r.originalMode | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT
+	// 设置原始输入模式以获得逐字符输入
+	// 关键：必须禁用 ENABLE_LINE_INPUT 和 ENABLE_ECHO_INPUT
+	mode := r.originalMode
+	// 禁用行缓冲模式和回显
+	mode &^= ENABLE_LINE_INPUT
+	mode &^= ENABLE_ECHO_INPUT
+	// 禁用 PROCESSED_INPUT 以获得原始输入（包括 Ctrl+C 等）
+	// mode &^= ENABLE_PROCESSED_INPUT
+	// 启用我们需要的功能
+	mode |= ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT
+	// 禁用 VT 输入（使用原始输入）
 	mode &^= ENABLE_VIRTUAL_TERMINAL_INPUT
 	r.setConsoleMode(handle, mode)
+
+	// 清空所有待处理的输入事件
+	// fmt.Scanln() 可能会留下一些待处理的事件，特别是 Enter 键
+	r.drainPendingInput(handle)
 
 	// 初始化当前窗口大小
 	r.updateWindowSize(handle)
@@ -62,6 +75,31 @@ func (r *windowsInputReader) Start(events chan<- RawInput) error {
 	go r.readLoop(handle)
 
 	return nil
+}
+
+// drainPendingInput 读取并丢弃所有待处理的输入事件
+func (r *windowsInputReader) drainPendingInput(handle uintptr) {
+	var count uint32
+	procGetNumberOfConsoleInputEvents.Call(handle, uintptr(unsafe.Pointer(&count)))
+
+	for count > 0 {
+		var record INPUT_RECORD
+		var readCount uint32
+
+		procReadConsoleInput.Call(
+			handle,
+			uintptr(unsafe.Pointer(&record)),
+			1,
+			uintptr(unsafe.Pointer(&readCount)),
+		)
+
+		if readCount == 0 {
+			break
+		}
+
+		// 再次检查剩余事件数
+		procGetNumberOfConsoleInputEvents.Call(handle, uintptr(unsafe.Pointer(&count)))
+	}
 }
 
 func (r *windowsInputReader) Stop() error {
@@ -119,8 +157,9 @@ func (r *windowsInputReader) readLoop(handle uintptr) {
 			}
 
 			input := r.parseRecord(record)
-			// 发送所有有效事件（包括鼠标事件）
-			if input.Type != 0 {
+			// 发送所有有效事件（InputKeyPress=0 是有效值！）
+			// 只过滤掉真正无效的类型（<0 或 >InputSignal）
+			if input.Type >= 0 && input.Type <= InputSignal {
 				select {
 				case r.events <- input:
 				case <-r.quit:
@@ -167,8 +206,6 @@ func (r *windowsInputReader) parseRecord(record *INPUT_RECORD) RawInput {
 			procGetConsoleScreenBufferInfo.Call(handle, uintptr(unsafe.Pointer(&info)))
 
 			// 使用 srWindow 获取实际可见窗口大小（而不是 dwSize 缓冲区大小）
-			// srWindow.Right - srWindow.Left + 1 = 宽度
-			// srWindow.Bottom - srWindow.Top + 1 = 高度
 			width := int(info.srWindow.Right - info.srWindow.Left + 1)
 			height := int(info.srWindow.Bottom - info.srWindow.Top + 1)
 
@@ -247,9 +284,7 @@ func (r *windowsInputReader) parseMouseEvent(record *INPUT_RECORD, now time.Time
 	} else if eventFlags&MOUSE_HWHEELED != 0 {
 		input.MouseAction = MouseWheelDown
 	} else if eventFlags&DOUBLE_CLICK != 0 {
-		// 双击事件 - 需要在上层处理
 		input.MouseAction = MousePress
-		// 设置双击标记
 		input.Modifiers |= ModShift // 临时使用 Shift 位表示双击
 	} else if eventFlags&MOUSE_MOVED != 0 {
 		if buttonState != 0 {
@@ -258,7 +293,6 @@ func (r *windowsInputReader) parseMouseEvent(record *INPUT_RECORD, now time.Time
 			input.MouseAction = MouseMotion
 		}
 	} else {
-		// 普通点击
 		if buttonState != 0 {
 			input.MouseAction = MousePress
 		} else {
@@ -370,10 +404,14 @@ func (r *windowsInputReader) updateWindowSize(handle uintptr) {
 }
 
 const (
-	ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
-	ENABLE_WINDOW_INPUT            = 0x0008
-	ENABLE_MOUSE_INPUT             = 0x0010
-	ENABLE_EXTENDED_FLAGS          = 0x0080
+	// 输入模式标志
+	ENABLE_PROCESSED_INPUT        = 0x0001 // Ctrl+C 由系统处理
+	ENABLE_LINE_INPUT             = 0x0002 // 行输入模式（按 Enter 才返回）
+	ENABLE_ECHO_INPUT             = 0x0004 // 回显输入
+	ENABLE_WINDOW_INPUT           = 0x0008 // 窗口输入事件
+	ENABLE_MOUSE_INPUT            = 0x0010 // 鼠标输入
+	ENABLE_EXTENDED_FLAGS         = 0x0080 // 扩展标志
+	ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200 // VT 输入处理
 
 	STD_INPUT_HANDLE  = ^uintptr(10 - 1) // -10 as unsigned
 	STD_OUTPUT_HANDLE = ^uintptr(11 - 1) // -11 as unsigned
