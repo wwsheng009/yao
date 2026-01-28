@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/yaoapp/yao/tui/runtime/priority"
 )
 
 // Notifier is a function that notifies of state changes.
@@ -36,6 +38,10 @@ type ReactiveStore struct {
 	batching     bool
 	pendingKeys  map[string]interface{}
 	pendingNotifs []notification
+
+	// Dependency graph for automatic dirty marking
+	depGraph      *DependencyGraph
+	dirtyCallback DirtyCallback
 }
 
 // notification represents a pending notification during batching.
@@ -52,6 +58,7 @@ func NewReactiveStore() *ReactiveStore {
 		observers: make(map[string][]Notifier),
 		global:    make([]Notifier, 0),
 		enabled:   true,
+		depGraph:  NewDependencyGraph(),
 	}
 }
 
@@ -68,11 +75,21 @@ func (s *ReactiveStore) Get(path string) (interface{}, bool) {
 //
 // If batching is enabled, the notification is deferred until EndBatch is called.
 func (s *ReactiveStore) Set(path string, value interface{}) {
+	s.SetWithZone(path, value, priority.ZoneData)
+}
+
+// SetWithZone sets a value at the given path with a specific zone.
+// The zone determines the priority of the update and is used to mark
+// dependent nodes dirty with the appropriate priority level.
+func (s *ReactiveStore) SetWithZone(path string, value interface{}, zone priority.StateZone) {
 	s.mu.Lock()
 
 	oldValue, exists := s.data[path]
 	originalOld := oldValue
 	s.data[path] = value
+
+	// Get dependents BEFORE releasing lock
+	dependents := s.depGraph.GetDependents(path)
 
 	if s.batching {
 		if s.pendingKeys == nil {
@@ -106,7 +123,15 @@ func (s *ReactiveStore) Set(path string, value interface{}) {
 	s.mu.Unlock()
 
 	if changed && s.enabled {
+		// Notify observers
 		s.notify(path, oldValue, value)
+
+		// Mark dependent nodes dirty via callback
+		for _, nodeID := range dependents {
+			if s.dirtyCallback != nil {
+				s.dirtyCallback(nodeID, zone)
+			}
+		}
 	}
 }
 
@@ -518,3 +543,51 @@ func (sc *StoreContext) AutoDispose() {
 		sc.store.Clear()
 	}()
 }
+
+// =============================================================================
+// Dependency Graph Integration
+// =============================================================================
+
+// SetDirtyCallback sets the callback to be invoked when dependent nodes should be marked dirty
+func (s *ReactiveStore) SetDirtyCallback(cb DirtyCallback) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dirtyCallback = cb
+}
+
+// RegisterDependency registers a node's dependency on a state key
+// When the state at the given key changes, the node will be marked dirty
+func (s *ReactiveStore) RegisterDependency(nodeID, stateKey string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.depGraph.Register(nodeID, stateKey)
+}
+
+// UnregisterDependencies removes all dependencies for a given node
+func (s *ReactiveStore) UnregisterDependencies(nodeID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.depGraph.Unregister(nodeID)
+}
+
+// GetDependents returns all node IDs that depend on the given state key
+func (s *ReactiveStore) GetDependents(stateKey string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.depGraph.GetDependents(stateKey)
+}
+
+// GetDependencies returns all state keys that a node depends on
+func (s *ReactiveStore) GetDependencies(nodeID string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.depGraph.GetDependencies(nodeID)
+}
+
+// DependencyCount returns the total number of registered dependencies
+func (s *ReactiveStore) DependencyCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.depGraph.Size()
+}
+

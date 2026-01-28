@@ -224,6 +224,31 @@ func (p *Prop[T]) GetDependencies() []string {
 	return nil
 }
 
+// ResolveWithTracking resolves the property and registers dependencies.
+// This method should be used during component rendering to automatically
+// track which state keys the component depends on.
+//
+// The tracker parameter is typically the dependency graph from the store.
+func (p *Prop[T]) ResolveWithTracking(ctx Context, nodeID string, tracker DependencyTracker) T {
+	// First, register dependencies
+	deps := p.GetDependencies()
+	if deps != nil && tracker != nil {
+		for _, dep := range deps {
+			tracker.Register(nodeID, dep)
+		}
+	}
+
+	// Then resolve normally
+	return p.Resolve(ctx)
+}
+
+// DependencyTracker is the interface for tracking dependencies.
+// Implemented by DependencyGraph.
+type DependencyTracker interface {
+	Register(nodeID, stateKey string)
+	Unregister(nodeID string)
+}
+
 // getRootPath extracts the root path from a nested path.
 func getRootPath(path string) string {
 	if idx := strings.Index(path, "."); idx >= 0 {
