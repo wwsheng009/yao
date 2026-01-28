@@ -75,12 +75,19 @@ const (
 // 鼠标 Actions
 // ==============================================================================
 const (
-	ActionMouseClick      ActionType = "mouse_click"       // 鼠标点击
-	ActionMouseDoubleClick ActionType = "mouse_double_click" // 鼠标双击
-	ActionMousePress      ActionType = "mouse_press"       // 鼠标按下
-	ActionMouseRelease    ActionType = "mouse_release"     // 鼠标释放
-	ActionMouseMotion     ActionType = "mouse_motion"      // 鼠标移动
-	ActionMouseWheel      ActionType = "mouse_wheel"       // 鼠标滚轮
+	ActionMouseClick       ActionType = "mouse_click"        // 鼠标点击
+	ActionMouseDoubleClick  ActionType = "mouse_double_click" // 鼠标双击
+	ActionMouseTripleClick  ActionType = "mouse_triple_click" // 鼠标三击
+	ActionMousePress        ActionType = "mouse_press"        // 鼠标按下
+	ActionMouseRelease      ActionType = "mouse_release"      // 鼠标释放
+	ActionMouseMotion       ActionType = "mouse_motion"       // 鼠标移动
+	ActionMouseDrag         ActionType = "mouse_drag"         // 鼠标拖动
+	ActionMouseWheel        ActionType = "mouse_wheel"        // 鼠标滚轮
+	ActionMouseWheelUp      ActionType = "mouse_wheel_up"     // 鼠标滚轮向上
+	ActionMouseWheelDown    ActionType = "mouse_wheel_down"   // 鼠标滚轮向下
+	ActionMouseRightClick   ActionType = "mouse_right_click"  // 鼠标右键点击
+	ActionMouseMiddleClick  ActionType = "mouse_middle_click" // 鼠标中键点击
+	ActionMouseHover       ActionType = "mouse_hover"        // 鼠标悬停
 )
 
 // ==============================================================================

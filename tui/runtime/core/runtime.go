@@ -223,19 +223,118 @@ func (r *Runtime) processInput() error {
 		return nil
 	}
 
-	// 转换为 Action
-	act := r.keyMap.Map(*rawInput)
-	if act == nil {
-		return nil
+	// 处理不同类型的输入
+	switch rawInput.Type {
+	case platform.InputKeyPress:
+		// 键盘输入：使用 KeyMap 转换
+		act := r.keyMap.Map(*rawInput)
+		if act == nil {
+			return nil
+		}
+
+		// 设置目标为当前焦点
+		focusID, _ := r.focusManager.GetFocused()
+		act.Target = focusID
+
+		// 分发 Action
+		r.actionDispatcher.Dispatch(act)
+
+	case platform.InputMouse:
+		// 鼠标输入：需要命中测试
+		r.processMouseInput(*rawInput)
+
+	case platform.InputResize:
+		// 窗口大小变化
+		r.HandleWindowSize(rawInput.Width, rawInput.Height)
 	}
 
-	// 设置目标为当前焦点
-	focusID, _ := r.focusManager.GetFocused()
-	act.Target = focusID
-
-	// 分发 Action
-	r.actionDispatcher.Dispatch(act)
 	return nil
+}
+
+// processMouseInput 处理鼠标输入
+func (r *Runtime) processMouseInput(input platform.RawInput) {
+	if r.root == nil {
+		return
+	}
+
+	// 使用命中测试找到目标组件
+	// 注意：这里需要导入 event 包，暂时使用简单的坐标查找
+	targetID := r.findComponentAt(input.MouseX, input.MouseY)
+
+	// 创建鼠标 Action
+	var act *action.Action
+	switch input.MouseAction {
+	case platform.MouseWheelUp:
+		act = action.NewAction(action.ActionMouseWheelUp)
+	case platform.MouseWheelDown:
+		act = action.NewAction(action.ActionMouseWheelDown)
+	case platform.MousePress:
+		act = action.NewAction(action.ActionMouseClick)
+	case platform.MouseRelease:
+		act = action.NewAction(action.ActionMouseRelease)
+	case platform.MouseMotion:
+		act = action.NewAction(action.ActionMouseMotion)
+	}
+
+	if act != nil {
+		act.Target = targetID
+		act = act.WithPayload(MouseEventPayload{
+			X:     input.MouseX,
+			Y:     input.MouseY,
+			Button: input.MouseButton,
+		})
+		r.actionDispatcher.Dispatch(act)
+	}
+}
+
+// MouseEventPayload 鼠标事件负载
+type MouseEventPayload struct {
+	X      int
+	Y      int
+	Button platform.MouseButton
+}
+
+// findComponentAt 在指定坐标查找组件
+func (r *Runtime) findComponentAt(x, y int) string {
+	if r.root == nil {
+		return ""
+	}
+
+	// 简单遍历查找（也可以使用 event.HitTest）
+	return r.findComponentAtNode(r.root, x, y)
+}
+
+// findComponentAtNode 递归查找组件
+func (r *Runtime) findComponentAtNode(node layout.Node, x, y int) string {
+	if node == nil {
+		return ""
+	}
+
+	nodeX, nodeY := node.GetPosition()
+	nodeWidth, nodeHeight := node.GetSize()
+
+	if nodeWidth <= 0 || nodeHeight <= 0 {
+		return ""
+	}
+
+	// 检查点是否在节点内
+	inBounds := x >= nodeX && x < nodeX+nodeWidth &&
+		y >= nodeY && y < nodeY+nodeHeight
+
+	if !inBounds {
+		return ""
+	}
+
+	// 先检查子节点
+	children := node.Children()
+	for i := len(children) - 1; i >= 0; i-- {
+		if childID := r.findComponentAtNode(children[i], x, y); childID != "" {
+			return childID
+		}
+	}
+
+	// 返回当前节点
+	return node.ID()
 }
 
 // layout 执行布局

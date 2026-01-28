@@ -2,7 +2,176 @@ package event
 
 import (
 	"github.com/yaoapp/yao/tui/runtime"
+	"github.com/yaoapp/yao/tui/runtime/layout"
 )
+
+// =============================================================================
+// Hit Testing (Primary API - V3)
+// =============================================================================
+// 基于 layout.Node 接口的命中测试
+// 这是推荐使用的 API，适用于新的 Runtime 核心
+
+// HitTest 在 layout.Node 树中进行命中测试
+func HitTest(root layout.Node, x, y int) *HitTestResult {
+	if root == nil {
+		return &HitTestResult{Found: false}
+	}
+	return hitTestNode(root, x, y)
+}
+
+// HitTestResult 命中测试结果
+type HitTestResult struct {
+	ComponentID string
+	Node        layout.Node
+	LocalX      int // 相对于组件的坐标
+	LocalY      int
+	Found       bool
+}
+
+// hitTestNode 递归查找节点
+func hitTestNode(node layout.Node, x, y int) *HitTestResult {
+	if node == nil {
+		return &HitTestResult{Found: false}
+	}
+
+	nodeX, nodeY := node.GetPosition()
+	nodeWidth, nodeHeight := node.GetSize()
+
+	// 尚未布局的节点跳过
+	if nodeWidth <= 0 || nodeHeight <= 0 {
+		return &HitTestResult{Found: false}
+	}
+
+	// 检查点是否在节点内
+	inBounds := x >= nodeX && x < nodeX+nodeWidth &&
+		y >= nodeY && y < nodeY+nodeHeight
+
+	if !inBounds {
+		return &HitTestResult{Found: false}
+	}
+
+	// 先检查子节点（子节点在上层）
+	children := node.Children()
+	for i := len(children) - 1; i >= 0; i-- {
+		childResult := hitTestNode(children[i], x, y)
+		if childResult.Found {
+			return childResult
+		}
+	}
+
+	// 如果子节点都没命中，返回当前节点
+	return &HitTestResult{
+		ComponentID: node.ID(),
+		Node:        node,
+		LocalX:      x - nodeX,
+		LocalY:      y - nodeY,
+		Found:       true,
+	}
+}
+
+// FindAllAt 在给定坐标点查找所有组件（包括被遮挡的）
+func FindAllAt(root layout.Node, x, y int) []layout.Node {
+	if root == nil {
+		return nil
+	}
+	return findAllAtNode(root, x, y)
+}
+
+// findAllAtNode 递归查找所有包含该点的节点
+func findAllAtNode(node layout.Node, x, y int) []layout.Node {
+	var results []layout.Node
+
+	if node == nil {
+		return results
+	}
+
+	nodeX, nodeY := node.GetPosition()
+	nodeWidth, nodeHeight := node.GetSize()
+
+	if nodeWidth <= 0 || nodeHeight <= 0 {
+		return results
+	}
+
+	inBounds := x >= nodeX && x < nodeX+nodeWidth &&
+		y >= nodeY && y < nodeY+nodeHeight
+
+	if !inBounds {
+		return results
+	}
+
+	// 先收集子节点
+	children := node.Children()
+	for _, child := range children {
+		childResults := findAllAtNode(child, x, y)
+		results = append(results, childResults...)
+	}
+
+	// 添加当前节点
+	results = append(results, node)
+
+	return results
+}
+
+// HitTestRect 查找与矩形相交的所有组件
+type Rect struct {
+	X, Y, Width, Height int
+}
+
+// HitTestRect 查找与矩形相交的所有组件
+func HitTestRect(root layout.Node, rect Rect) []layout.Node {
+	if root == nil {
+		return nil
+	}
+	return hitTestRectNode(root, rect)
+}
+
+// hitTestRectNode 递归查找与矩形相交的节点
+func hitTestRectNode(node layout.Node, rect Rect) []layout.Node {
+	var results []layout.Node
+
+	if node == nil {
+		return results
+	}
+
+	nodeX, nodeY := node.GetPosition()
+	nodeWidth, nodeHeight := node.GetSize()
+
+	if nodeWidth <= 0 || nodeHeight <= 0 {
+		return results
+	}
+
+	// 检查矩形是否相交
+	nodeRect := Rect{X: nodeX, Y: nodeY, Width: nodeWidth, Height: nodeHeight}
+	if !rectsIntersect(nodeRect, rect) {
+		return results
+	}
+
+	// 先收集子节点
+	children := node.Children()
+	for _, child := range children {
+		childResults := hitTestRectNode(child, rect)
+		results = append(results, childResults...)
+	}
+
+	// 添加当前节点
+	results = append(results, node)
+
+	return results
+}
+
+// rectsIntersect 检查两个矩形是否相交
+func rectsIntersect(a, b Rect) bool {
+	return a.X < b.X+b.Width &&
+		a.X+a.Width > b.X &&
+		a.Y < b.Y+b.Height &&
+		a.Y+a.Height > b.Y
+}
+
+// =============================================================================
+// Legacy Hit Testing (Deprecated)
+// =============================================================================
+// 以下 API 使用已弃用的 runtime.LayoutNode
+// 仅用于向后兼容，新代码请使用上面的 layout.Node 版本
 
 // MouseEvent represents a mouse input event.
 type MouseEvent struct {
@@ -57,8 +226,9 @@ const (
 	ModAlt
 )
 
-// HitTestResult contains information about a hit test.
-type HitTestResult struct {
+// LegacyHitTestResult contains information about a hit test (deprecated).
+// Use HitTestResult (based on layout.Node) for new code.
+type LegacyHitTestResult struct {
 	NodeID   string
 	Found    bool
 	X, Y     int   // Local coordinates within the node
@@ -67,10 +237,12 @@ type HitTestResult struct {
 	Node     *runtime.LayoutNode
 }
 
-// HitTest finds the node at a given screen position.
+// LegacyHitTest finds the node at a given screen position (deprecated).
 // It searches through the layout boxes in reverse Z-Index order
 // (top to bottom) to find the topmost node at the position.
-func HitTest(x, y int, boxes []runtime.LayoutBox) *HitTestResult {
+//
+// Deprecated: Use HitTest with layout.Node for new code.
+func LegacyHitTest(x, y int, boxes []runtime.LayoutBox) *LegacyHitTestResult {
 	// Search in reverse order (topmost first)
 	for i := len(boxes) - 1; i >= 0; i-- {
 		box := boxes[i]
@@ -81,7 +253,7 @@ func HitTest(x, y int, boxes []runtime.LayoutBox) *HitTestResult {
 			localX := x - box.X
 			localY := y - box.Y
 
-			return &HitTestResult{
+			return &LegacyHitTestResult{
 				NodeID: box.NodeID,
 				Found:  true,
 				X:      localX,
@@ -94,7 +266,7 @@ func HitTest(x, y int, boxes []runtime.LayoutBox) *HitTestResult {
 	}
 
 	// No hit found
-	return &HitTestResult{
+	return &LegacyHitTestResult{
 		Found: false,
 	}
 }

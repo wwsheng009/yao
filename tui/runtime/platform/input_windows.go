@@ -51,8 +51,9 @@ func (r *windowsInputReader) Start(events chan<- RawInput) error {
 
 	r.originalMode = r.getConsoleMode(handle)
 
-	mode := r.originalMode | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS
-	mode &^= ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_MOUSE_INPUT
+	// 启用鼠标输入和窗口输入
+	mode := r.originalMode | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT
+	mode &^= ENABLE_VIRTUAL_TERMINAL_INPUT
 	r.setConsoleMode(handle, mode)
 
 	// 初始化当前窗口大小
@@ -118,7 +119,8 @@ func (r *windowsInputReader) readLoop(handle uintptr) {
 			}
 
 			input := r.parseRecord(record)
-			if input.Type != InputKeyPress || input.Key != 0 || input.Special != KeyUnknown {
+			// 发送所有有效事件（包括鼠标事件）
+			if input.Type != 0 {
 				select {
 				case r.events <- input:
 				case <-r.quit:
@@ -153,6 +155,9 @@ func (r *windowsInputReader) parseRecord(record *INPUT_RECORD) RawInput {
 	switch record.EventType {
 	case KEY_EVENT:
 		return r.parseKeyEvent(record, now)
+
+	case MOUSE_EVENT:
+		return r.parseMouseEvent(record, now)
 
 	case WINDOW_BUFFER_SIZE_EVENT:
 		// 获取控制台屏幕缓冲区信息
@@ -207,6 +212,58 @@ func (r *windowsInputReader) parseKeyEvent(record *INPUT_RECORD, now time.Time) 
 
 	if input.Special == KeyUnknown && keyEvent.UChar > 0 {
 		input.Key = rune(keyEvent.UChar)
+	}
+
+	return input
+}
+
+// parseMouseEvent 解析鼠标事件
+func (r *windowsInputReader) parseMouseEvent(record *INPUT_RECORD, now time.Time) RawInput {
+	mouseEvent := (*MOUSE_EVENT_RECORD)(unsafe.Pointer(&record.Event[0]))
+
+	input := RawInput{
+		Type:      InputMouse,
+		Timestamp: now,
+		MouseX:    int(mouseEvent.MousePosition.X),
+		MouseY:    int(mouseEvent.MousePosition.Y),
+	}
+
+	// 确定鼠标按钮
+	buttonState := mouseEvent.ButtonState
+	if buttonState&FROM_LEFT_1ST_BUTTON_PRESSED != 0 {
+		input.MouseButton = MouseLeft
+	} else if buttonState&RIGHTMOST_BUTTON_PRESSED != 0 {
+		input.MouseButton = MouseRight
+	} else if buttonState&FROM_LEFT_2ND_BUTTON_PRESSED != 0 {
+		input.MouseButton = MouseMiddle
+	} else {
+		input.MouseButton = MouseNone
+	}
+
+	// 确定鼠标动作类型
+	eventFlags := mouseEvent.EventFlags
+	if eventFlags&MOUSE_WHEELED != 0 {
+		input.MouseAction = MouseWheelUp
+	} else if eventFlags&MOUSE_HWHEELED != 0 {
+		input.MouseAction = MouseWheelDown
+	} else if eventFlags&DOUBLE_CLICK != 0 {
+		// 双击事件 - 需要在上层处理
+		input.MouseAction = MousePress
+		// 设置双击标记
+		input.Modifiers |= ModShift // 临时使用 Shift 位表示双击
+	} else if eventFlags&MOUSE_MOVED != 0 {
+		if buttonState != 0 {
+			input.MouseAction = MousePress // 拖动
+		} else {
+			input.MouseAction = MouseMotion
+		}
+	} else {
+		// 普通点击
+		if buttonState != 0 {
+			input.MouseAction = MousePress
+		} else {
+			input.MouseAction = MouseRelease
+		}
 	}
 
 	return input
@@ -322,6 +379,7 @@ const (
 	STD_OUTPUT_HANDLE = ^uintptr(11 - 1) // -11 as unsigned
 
 	KEY_EVENT                  = 0x0001
+	MOUSE_EVENT                = 0x0002
 	WINDOW_BUFFER_SIZE_EVENT   = 0x0004
 )
 
@@ -339,6 +397,31 @@ type KEY_EVENT_RECORD struct {
 	UChar           uint16
 	ControlKeyState uint32
 }
+
+// MOUSE_EVENT_RECORD 鼠标事件记录
+type MOUSE_EVENT_RECORD struct {
+	MousePosition    COORD
+	ButtonState      uint32
+	ControlKeyState  uint32
+	EventFlags       uint32
+}
+
+// 鼠标按钮状态掩码
+const (
+	FROM_LEFT_1ST_BUTTON_PRESSED = 0x0001
+	RIGHTMOST_BUTTON_PRESSED     = 0x0002
+	FROM_LEFT_2ND_BUTTON_PRESSED = 0x0004
+	FROM_LEFT_3RD_BUTTON_PRESSED = 0x0008
+	FROM_LEFT_4TH_BUTTON_PRESSED = 0x0010
+)
+
+// 鼠标事件标志
+const (
+	DOUBLE_CLICK = 0x0002
+	MOUSE_MOVED   = 0x0001
+	MOUSE_WHEELED = 0x0004
+	MOUSE_HWHEELED = 0x0008
+)
 
 // CONSOLE_SCREEN_BUFFER_INFO 控制台屏幕缓冲区信息
 type CONSOLE_SCREEN_BUFFER_INFO struct {

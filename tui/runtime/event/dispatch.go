@@ -236,7 +236,7 @@ func dispatchMouseEventWithPropagation(ev *EventStruct, mouseEv *MouseEvent, box
 	}
 
 	// Find the target using hit testing
-	hitResult := HitTest(mouseEv.X, mouseEv.Y, boxes)
+	hitResult := LegacyHitTest(mouseEv.X, mouseEv.Y, boxes)
 	if !hitResult.Found {
 		return result
 	}
