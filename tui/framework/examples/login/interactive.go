@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework"
+	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/form"
 	"github.com/yaoapp/yao/tui/framework/input"
-	"github.com/yaoapp/yao/tui/runtime/style"
 	"github.com/yaoapp/yao/tui/framework/validation"
 	"github.com/yaoapp/yao/tui/runtime/paint"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // main 交互式登录表单示例 - 等待真实用户输入

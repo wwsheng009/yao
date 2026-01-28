@@ -502,8 +502,9 @@ func (a *App) handleEvent(ev frameworkevent.Event) {
 
 		// 然后发送到根组件
 		if a.root != nil {
-			// 使用 duck typing 检查是否有 HandleEvent 方法
-			if handler, ok := a.root.(interface{ HandleEvent(frameworkevent.Event) bool }); ok {
+			// 使用 event.Component 接口检查，而不是匿名接口
+			// 这样可以避免类型别名导致的类型断言失败
+			if handler, ok := a.root.(frameworkevent.Component); ok {
 				if handler.HandleEvent(ev) {
 					a.dirty = true
 				}
@@ -514,7 +515,7 @@ func (a *App) handleEvent(ev frameworkevent.Event) {
 
 	// 如果有目标组件，分发到组件
 	if target := ev.Target(); target != nil {
-		if handler, ok := target.(interface{ HandleEvent(frameworkevent.Event) bool }); ok {
+		if handler, ok := target.(frameworkevent.Component); ok {
 			if handler.HandleEvent(ev) {
 				a.dirty = true
 			}
