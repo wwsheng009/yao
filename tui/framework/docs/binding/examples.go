@@ -1,8 +1,15 @@
-package binding
+//go:build ignore
+// +build ignore
 
 // 应用示例：在 framework 中使用 binding 模块
 //
 // 本文件展示如何在 framework 组件中集成数据绑定功能
+//
+// 使用说明：
+// 本文件仅用于文档说明，不会被编译。
+// 如需测试示例代码，请将其复制到实际的测试文件中。
+
+package main
 
 import (
 	"fmt"
@@ -10,7 +17,9 @@ import (
 	"github.com/yaoapp/yao/tui/framework/binding"
 	cb "github.com/yaoapp/yao/tui/framework/component/binding"
 	"github.com/yaoapp/yao/tui/framework/component"
+	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/paint"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // ==============================================================================
@@ -89,10 +98,10 @@ func (l *Label) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		x = 0
 	}
 
-	// 绘制文本
+	// 绘制文本（使用默认样式）
 	for i, r := range text {
 		if x+i < width {
-			ctx.SetCell(x+i, 0, r)
+			ctx.SetCell(x+i, 0, r, style.Style{})
 		}
 	}
 }
@@ -157,7 +166,7 @@ func (rl *ReactiveList) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 		text := rl.itemTemplate(itemCtx)
 		for j, r := range text {
-			ctx.SetCell(ctx.X+j, y, r)
+			ctx.SetCell(ctx.X+j, y, r, style.Style{})
 		}
 	}
 }
@@ -224,27 +233,24 @@ func (f *Form) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 		return
 	}
 
-	// 创建绑定上下文
-	bindCtx := f.store.ToContext()
-
 	// 绘制每个字段
 	y := ctx.Y
 	for _, field := range f.fields {
 		// 绘制标签
 		labelText := field.Label + ": "
 		for i, r := range labelText {
-			ctx.SetCell(ctx.X+i, y, r)
+			ctx.SetCell(ctx.X+i, y, r, style.Style{})
 		}
 
 		// 绘制输入组件
 		if paintable, ok := field.Input.(interface{ Paint(component.PaintContext, *paint.Buffer) }); ok {
-			inputCtx := component.PaintContext{
-				PaintContext: ctx.PaintContext,
-				X:             ctx.X + len(labelText),
-				Y:             y,
-				AvailableWidth: ctx.AvailableWidth - len(labelText),
-				AvailableHeight: 1,
-			}
+			// 创建子上下文用于输入组件
+			inputCtx := component.PaintContext(*paint.NewPaintContext(buf, paint.Rect{
+				X:      ctx.X + len(labelText),
+				Y:      y,
+				Width:  ctx.AvailableWidth - len(labelText),
+				Height: 1,
+			}))
 			paintable.Paint(inputCtx, buf)
 		}
 
@@ -337,12 +343,12 @@ func (b *CounterButton) Paint(ctx component.PaintContext, buf *paint.Buffer) {
 
 	display := fmt.Sprintf("[ %s ]", text)
 	for i, r := range display {
-		ctx.SetCell(ctx.X+i, 0, r)
+		ctx.SetCell(ctx.X+i, 0, r, style.Style{})
 	}
 }
 
 func (b *CounterButton) HandleAction(a action.Action) bool {
-	if a.Type == action.ActionSelect {
+	if a.Type == action.ActionMouseClick {
 		if b.onClick != nil {
 			b.onClick()
 			return true
@@ -499,14 +505,15 @@ func ExampleBasicUsage() {
 	ctx := store.ToContext()
 
 	// 3. 创建绑定属性
-	label := NewLabelBinding("status")
-	usernameLabel := NewLabelBinding("username")
+	_ = NewLabelBinding("status")
+	_ = NewLabelBinding("username")
 
-	// 4. 解析属性
-	status := label.textProp.Resolve(ctx)      // "online"
-	username := usernameLabel.textProp.Resolve(ctx) // "alice"
+	// 4. 解析属性（实际使用时通过组件的 Paint 方法获取）
+	// 这里直接从上下文获取值
+	status, _ := ctx.Get("status")
+	username, _ := ctx.Get("username")
 
-	fmt.Printf("Status: %s, Username: %s\n", status, username)
+	fmt.Printf("Status: %v, Username: %v\n", status, username)
 }
 
 // ExampleScopeChain 作用链示例
@@ -553,12 +560,12 @@ func ExampleListRendering() {
 	// 为每个列表项创建独立上下文
 	contexts := binding.ListContext(ctx, items.([]interface{}))
 
-	for i, itemCtx := range contexts {
+	for _, itemCtx := range contexts {
 		index, _ := itemCtx.Get("$index")
 		name, _ := itemCtx.Get("name")
 		done, _ := itemCtx.Get("done")
 
-		fmt.Printf("[%d] %s (done: %v)\n", index, name, done)
+		fmt.Printf("[%v] %v (done: %v)\n", index, name, done)
 	}
 }
 
@@ -592,7 +599,7 @@ func ExampleDSLParsing() {
 	}
 
 	// 创建组件
-	label := factory.createLabel(dslConfig)
+	_ = factory.createLabel(dslConfig)
 
 	// 设置应用数据
 	factory.store.Set("app", map[string]interface{}{
@@ -601,7 +608,9 @@ func ExampleDSLParsing() {
 
 	// 解析属性
 	ctx := factory.store.ToContext()
-	text := label.textProp.Resolve(ctx)
+	// 实际使用时，组件会在 Paint 方法中解析绑定
+	// 这里直接从上下文获取值
+	title, _ := ctx.Get("app.title")
 
-	fmt.Printf("Label text: %s\n", text)  // "Dashboard"
+	fmt.Printf("Label text: %v\n", title) // "Dashboard"
 }
