@@ -788,7 +788,7 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 			currentField := f.getCurrentField()
 			if currentField != nil {
 				// 检查 Input 是否有 HandleEvent 方法
-				if handler, ok := currentField.Input.(interface{ HandleEvent(component.Event) bool }); ok {
+				if handler, ok := currentField.Input.(event.EventComponent); ok {
 					if handler.HandleEvent(ev) {
 						f.markDirty()
 						return true
@@ -811,7 +811,7 @@ func (f *Form) HandleEvent(ev component.Event) bool {
 			currentField := f.getCurrentField()
 			if currentField != nil {
 				// 优先使用接口类型断言
-				if handler, ok := currentField.Input.(interface{ HandleEvent(component.Event) bool }); ok {
+				if handler, ok := currentField.Input.(event.EventComponent); ok {
 					if handler.HandleEvent(ev) {
 						f.markDirty()
 						return true

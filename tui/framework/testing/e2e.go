@@ -133,7 +133,7 @@ func (k KeyPress) Execute(ctx *TestContext) error {
 	})
 
 	// 检查根组件是否有 HandleEvent 方法
-	if handler, ok := ctx.Root.(interface{ HandleEvent(component.Event) bool }); ok {
+	if handler, ok := ctx.Root.(event.EventComponent); ok {
 		ev := event.NewKeyEvent(event.Key{
 			Rune: k.Key,
 			Name: k.Special.String(),

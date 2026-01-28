@@ -132,6 +132,13 @@ type Component interface {
 // Event Handler Interface
 // =============================================================================
 
+// EventComponent is the interface for components that handle framework events.
+// The Component interface already declares HandleEvent, this serves as a named
+// marker for type assertions instead of using anonymous interfaces.
+type EventComponent interface {
+	Component
+}
+
 // Handler is the interface for event handlers.
 type Handler interface {
 	// HandleEvent handles an event.
