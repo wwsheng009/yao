@@ -3,6 +3,7 @@ package component
 import (
 	"sync"
 
+	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 
@@ -283,4 +284,17 @@ func (c *BaseComponent) GetParent() Container {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.parent
+}
+
+// ============================================================================
+// ActionTarget 接口默认实现
+// ============================================================================
+
+// HandleAction 处理语义化 Action
+// 默认实现返回 false，表示不处理任何 Action
+// 子类可以覆盖此方法来处理特定的 Action
+func (c *BaseComponent) HandleAction(a *action.Action) bool {
+	// 默认不处理任何 Action
+	// 子类应该覆盖此方法来实现 Action 处理逻辑
+	return false
 }

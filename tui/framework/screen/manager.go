@@ -1,7 +1,7 @@
 package screen
 
 import (
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // Manager 屏幕管理器

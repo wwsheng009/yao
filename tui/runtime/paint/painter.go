@@ -2,7 +2,7 @@ package paint
 
 import (
 	"github.com/mattn/go-runewidth"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // Painter provides a high-level drawing interface on top of PaintContext.

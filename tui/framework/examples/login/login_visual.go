@@ -10,7 +10,7 @@ import (
 	"github.com/yaoapp/yao/tui/framework/component"
 	"github.com/yaoapp/yao/tui/framework/form"
 	"github.com/yaoapp/yao/tui/framework/input"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 	"github.com/yaoapp/yao/tui/framework/validation"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )

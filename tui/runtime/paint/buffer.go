@@ -1,6 +1,6 @@
 package paint
 
-import "github.com/yaoapp/yao/tui/framework/style"
+import "github.com/yaoapp/yao/tui/runtime/style"
 
 // Buffer represents a grid of cells that components paint into.
 // It acts as the "canvas" for the TUI rendering engine.

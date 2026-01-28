@@ -8,7 +8,7 @@ import (
 
 	"github.com/yaoapp/yao/tui/framework/display"
 	"github.com/yaoapp/yao/tui/framework/event"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // main 简单示例 (默认)

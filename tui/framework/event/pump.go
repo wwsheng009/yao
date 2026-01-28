@@ -3,7 +3,7 @@ package event
 import (
 	"time"
 
-	"github.com/yaoapp/yao/tui/framework/platform"
+	"github.com/yaoapp/yao/tui/runtime/platform"
 	"github.com/yaoapp/yao/tui/runtime/event"
 )
 

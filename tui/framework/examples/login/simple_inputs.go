@@ -11,7 +11,7 @@ import (
 	"github.com/yaoapp/yao/tui/framework/event"
 	"github.com/yaoapp/yao/tui/framework/input"
 	"github.com/yaoapp/yao/tui/runtime/paint"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 )
 
 // SimpleInputBox 简单的双输入框容器

@@ -3,7 +3,7 @@ package theme
 import (
 	"fmt"
 
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 	"github.com/yaoapp/yao/tui/framework/styling"
 )
 

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yaoapp/yao/tui/framework/platform"
+	"github.com/yaoapp/yao/tui/runtime/platform"
 	"github.com/yaoapp/yao/tui/runtime/action"
 	"github.com/yaoapp/yao/tui/runtime/focus"
 	"github.com/yaoapp/yao/tui/runtime/input"

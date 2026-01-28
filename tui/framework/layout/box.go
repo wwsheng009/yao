@@ -2,7 +2,7 @@ package layout
 
 import (
 	"github.com/yaoapp/yao/tui/framework/component"
-	"github.com/yaoapp/yao/tui/framework/style"
+	"github.com/yaoapp/yao/tui/runtime/style"
 	"github.com/yaoapp/yao/tui/runtime/paint"
 )
 

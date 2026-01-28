@@ -72,6 +72,18 @@ const (
 )
 
 // ==============================================================================
+// 鼠标 Actions
+// ==============================================================================
+const (
+	ActionMouseClick      ActionType = "mouse_click"       // 鼠标点击
+	ActionMouseDoubleClick ActionType = "mouse_double_click" // 鼠标双击
+	ActionMousePress      ActionType = "mouse_press"       // 鼠标按下
+	ActionMouseRelease    ActionType = "mouse_release"     // 鼠标释放
+	ActionMouseMotion     ActionType = "mouse_motion"      // 鼠标移动
+	ActionMouseWheel      ActionType = "mouse_wheel"       // 鼠标滚轮
+)
+
+// ==============================================================================
 // 视图 Actions
 // ==============================================================================
 const (
